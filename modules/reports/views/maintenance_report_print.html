@@ -1,0 +1,183 @@
+{% extends "print_base.html" %}
+
+{% block title %}{{ report_title_text or 'تقرير الصيانة' }}{% endblock %}
+
+{% macro attachment_url(filename) -%}
+{%- if filename -%}
+{%- if filename.startswith('http') or filename.startswith('/') or filename.startswith('data:') -%}
+{{ filename }}
+{%- else -%}
+{{ url_for('static', filename=filename) }}
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro maintenance_fields(order) %}
+{% set fields = [
+    ('رقم الأمر', order.order_no or order.id),
+    ('نوع الصيانة', type_titles.get(order.type, order.type)),
+    ('الحالة', 'مفتوح' if order.status == 'open' else 'مغلق / مؤرشف'),
+    ('كود المركبة', order.disp_code or order.vehicle_code or order.vehicle_id),
+    ('رقم اللوحة', order.disp_plate or order.plate_number),
+    ('اسم السائق', order.disp_driver or order.driver_name),
+    ('درجة الخطورة', order.severity)
+] %}
+{% if order.type in ['internal', 'external'] %}
+    {% set fields = fields + [('نوع العمل', order.maintenance_type), ('وصف العطل', order.fault_description), ('سبب العطل', order.fault_cause)] %}
+{% endif %}
+{% if order.type == 'internal' %}
+    {% set fields = fields + [('الفني المسؤول', order.technician_name), ('الوقت المتوقع للإنجاز', order.expected_completion_time), ('تاريخ فتح الأمر', order.order_date)] %}
+{% elif order.type == 'external' %}
+    {% set fields = fields + [('الورشة الخارجية', order.workshop_name), ('هاتف الورشة', order.workshop_phone), ('موقع الورشة', order.workshop_location), ('سبب الإرسال', order.send_reason), ('تاريخ الإرسال', order.send_datetime), ('المسؤول', order.responsible_person), ('التكلفة المتوقعة', order.expected_cost), ('الوقت المتوقع', order.expected_time), ('ملاحظات الفتح', order.notes)] %}
+{% elif order.type == 'emergency' %}
+    {% set fields = fields + [('اسم المُبلغ', order.reporter_name), ('الفني المتابع', order.technician_name), ('وصف الحالة', order.case_description), ('سبب العطل', order.fault_cause), ('هل توجد إصابات؟', order.has_injuries), ('هل المركبة قابلة للحركة؟', order.is_drivable), ('هل تم إبلاغ جهة رسمية؟', order.official_notified), ('تاريخ الواقعة', order.incident_datetime)] %}
+{% elif order.type == 'exceptional' %}
+    {% set fields = fields + [('تاريخ الواقعة', order.incident_datetime), ('الموضوع', order.subject), ('الوصف', order.description), ('الأسباب', order.causes), ('تفاصيل أخرى', order.other_details)] %}
+{% endif %}
+{% if order.status == 'closed' %}
+    {% set fields = fields + [
+        ('تاريخ الإقفال', order.closure_date or order.closure_datetime),
+        ('تاريخ الاستلام', order.receipt_datetime),
+        ('سبب الإقفال', order.closure_reason),
+        ('الإجراء المتخذ', order.action_taken),
+        ('هل تم سحب المركبة؟', order.is_towed),
+        ('جهة السحب', order.towing_party),
+        ('تفاصيل المعالجة', order.treatment_details),
+        ('قطع الغيار', order.spare_parts),
+        ('التكلفة النهائية', order.final_cost),
+        ('التوصية', order.recommendation),
+        ('ملاحظات الإقفال', order.closing_notes)
+    ] %}
+{% endif %}
+<table class="maintenance-details-table">
+    <tbody>
+    {% for index in range(0, fields|length, 2) %}
+        <tr>
+            <th>{{ fields[index][0] }}</th>
+            <td>{{ fields[index][1] or '—' }}</td>
+            {% if index + 1 < fields|length %}
+            <th>{{ fields[index + 1][0] }}</th>
+            <td>{{ fields[index + 1][1] or '—' }}</td>
+            {% else %}
+            <th></th><td></td>
+            {% endif %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}
+
+{% macro attachment_card(title, filename) %}
+{% set source = attachment_url(filename) %}
+<div class="attachment-card" data-maintenance-photo>
+    <h3>{{ title }}</h3>
+    <div class="attachment-image">
+        {% if source and filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')) %}
+        <img src="{{ source }}" alt="{{ title }}" data-original-src="{{ source }}">
+        {% else %}
+        <img src="" alt="{{ title }}" hidden data-original-src="">
+        <span class="empty-photo">لا توجد صورة</span>
+        {% endif %}
+    </div>
+    <label class="photo-picker no-print">
+        اختيار صورة
+        <input type="file" accept="image/*" data-photo-input>
+    </label>
+</div>
+{% endmacro %}
+
+{% block extra_css %}
+<style>
+    .maintenance-details-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .maintenance-details-table th,
+    .maintenance-details-table td {
+        border: 1px solid #475569;
+        padding: 6px 8px;
+        vertical-align: top;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+    .maintenance-details-table th { width: 15%; background: #dbe7f2; text-align: right; font-weight: 800; }
+    .maintenance-details-table td { width: 35%; }
+    .attachment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .attachment-card { min-width: 0; border: 1px solid #64748b; padding: 8px; text-align: center; break-inside: avoid; }
+    .attachment-card h3 { margin: 0 0 6px; font-size: 13px; }
+    .attachment-image { height: 82mm; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc; }
+    .attachment-image img { width: 100%; height: 100%; object-fit: contain; }
+    .photo-picker { display: inline-flex; margin-top: 8px; padding: 5px 12px; border-radius: 4px; background: #1b365d; color: white; cursor: pointer; }
+    .photo-picker input { display: none; }
+    .empty-photo { color: #64748b; }
+    .maintenance-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    @media print {
+        .maintenance-details-table th, .maintenance-details-table td { padding: 5px 7px; font-size: 11px; }
+        .attachment-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8mm;
+            align-items: start;
+        }
+        .attachment-card { border: 0; padding: 0; }
+        .attachment-image { height: 76mm; max-height: 76mm; background: transparent; }
+        .attachment-image img { max-height: 76mm; }
+        .attachment-page {
+            height: 210mm;
+            min-height: 210mm;
+            max-height: 210mm;
+            overflow: hidden;
+            break-inside: avoid;
+            break-after: page;
+            page-break-inside: avoid;
+            page-break-after: always;
+        }
+        .empty-photo { display: none; }
+    }
+</style>
+{% endblock %}
+
+{% block pages %}
+{% if orders %}
+    {% for order in orders %}
+    <section class="page-container landscape">
+        {% include '_print_header.html' %}
+        <h2 class="maintenance-report-title">{{ report_title_text }} | بيانات أمر الصيانة</h2>
+        <div class="report-content">{{ maintenance_fields(order) }}</div>
+    </section>
+    <section class="page-container landscape attachment-page">
+        {% include '_print_header.html' %}
+        <h2 class="maintenance-report-title">{{ report_title_text }} | مرفقات أمر الصيانة</h2>
+        <div class="attachment-grid">
+            {{ attachment_card('صورة قبل الصيانة', order.photo_before) }}
+            {{ attachment_card('صورة بعد الصيانة', order.photo_after) }}
+        </div>
+    </section>
+    {% endfor %}
+{% else %}
+    <section class="page-container landscape">
+        {% include '_print_header.html' %}
+        <h2 class="maintenance-report-title">{{ report_title_text }}</h2>
+        <div class="text-center text-muted py-5">لا توجد أوامر صيانة مطابقة للفلاتر المحددة.</div>
+    </section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.querySelectorAll('[data-photo-input]').forEach(input => {
+        input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                input.value = '';
+                alert('يرجى اختيار ملف صورة.');
+                return;
+            }
+            const image = input.closest('[data-maintenance-photo]').querySelector('img');
+            image.src = URL.createObjectURL(file);
+            image.hidden = false;
+            const empty = input.closest('[data-maintenance-photo]').querySelector('.empty-photo');
+            if (empty) empty.hidden = true;
+        });
+    });
+</script>
+{% endblock %}

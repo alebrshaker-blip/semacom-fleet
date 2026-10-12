@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة فريق العمل - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    h2 { color: #2c3e50; margin: 0; }
+    .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn-primary { background-color: #0d6efd; color: white; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-success { background-color: #198754; color: white; }
+    .btn-success:hover { background-color: #157347; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #5c636a; }
+    .btn-danger { background-color: #dc3545; color: white; }
+    .btn-danger:hover { background-color: #bb2d3b; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 20px; }
+    .card-body { padding: 20px; }
+    .table-responsive { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+    th, td { padding: 10px 12px; border: 1px solid #dee2e6; vertical-align: middle; white-space: nowrap; }
+    thead { background-color: #cfe2ff; color: #084298; }
+    tbody tr:nth-child(even) { background-color: #f8f9fa; }
+    tbody tr:hover { background-color: #f1f3f5; }
+    .text-muted { color: #6c757d; padding: 20px; text-align: center; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1400px; margin: 0 auto;">
+    <div class="header-flex">
+        <h2><i class="fa-solid fa-users-gear ml-2"></i> إدارة فريق العمل</h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <!-- 🌟 استخدام url_for ديناميكياً للتصدير مع الحفاظ على فلتر البحث -->
+            <a href="{{ url_for('workshop.team.export_team_excel', q=request.args.get('q', '')) }}" class="btn btn-success">
+                <i class="fa-solid fa-file-excel"></i> تصدير إلى Excel
+            </a>
+            <a href="{{ url_for('reports.data_reports', report_key='employees') }}" class="btn btn-secondary">
+                <i class="fa-solid fa-file-lines"></i> تقارير الموظفين
+            </a>
+            <a href="{{ url_for('workshop.team.add_member') }}" class="btn btn-primary">إضافة عضـو جديد +</a>
+            <!-- تم تصحيح اسم الـ endpoint هنا إلى workshop.index -->
+            <a href="{{ url_for('workshop.index') }}" class="btn btn-secondary">الورشة والصيانة</a>
+        </div>
+    </div>
+
+    <!-- نموذج البحث -->
+    <form method="GET" action="{{ url_for('workshop.team.team_index') }}" style="background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+        <div style="flex: 1; min-width: 250px;">
+            <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="بحث بالاسم، رقم الهوية، الهاتف، التخصص، أو رقم الرخصة..." style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;">
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-primary">بحث</button>
+            <a href="{{ url_for('workshop.team.team_index') }}" class="btn btn-secondary">إعادة تعيين</a>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>الاسم الكامل</th>
+                            <th>رقم الهوية</th>
+                            <th>الجنسية</th>
+                            <th>رقم الهاتف</th>
+                            <th>الصفة الوظيفية</th>
+                            <th>المؤهل</th>
+                            <th>التخصص</th>
+                            <th>رقم الرخصة</th>
+                            <th>نوع الرخصة</th>
+                            <th>إصدار الرخصة</th>
+                            <th>انتهاء الرخصة</th>
+                            <th>حالة الرخصة</th>
+                            {% for f in fields %}
+                            <th>{{ f.label }}</th>
+                            {% endfor %}
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in members %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td style="font-weight: bold; text-align: right;">{{ member.full_name }}</td>
+                            <td>{{ member.national_id }}</td>
+                            <td>{{ member.nationality }}</td>
+                            <td>{{ member.phone }}</td>
+                            <td>{{ member.job_title }}</td>
+                            <td>{{ member.qualification }}</td>
+                            <td>{{ member.specialization }}</td>
+                            <td>{{ member.license_number }}</td>
+                            <td>{{ member.license_type or '—' }}</td>
+                            <td>{{ member.license_issue_date }}</td>
+                            <td>{{ member.license_expiry_date }}</td>
+                            <td>
+                                {% if member.license_status == 'ساري' %}
+                                <span class="badge bg-success">{{ member.license_status }}</span>
+                                {% elif member.license_status == 'قارب على الانتهاء' %}
+                                <span class="badge bg-warning text-dark">{{ member.license_status }}</span>
+                                {% elif member.license_status == 'منتهية' %}
+                                <span class="badge bg-danger">{{ member.license_status }}</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ member.license_status }}</span>
+                                {% endif %}
+                            </td>
+                            {% for f in fields %}
+                            <td>{{ member[f.name] }}</td>
+                            {% endfor %}
+                            <td>
+                                <a href="{{ url_for('reports.data_reports', report_key='employees', report_type='single', member_id=member.id, view='print') }}" target="_blank" class="btn btn-primary" style="padding: 3px 8px; font-size: 12px;">
+                                    تقرير الموظف
+                                </a>
+                                <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 12px;" onclick="openDeleteModal('{{ member.id }}', '{{ member.full_name }}')">
+                                    حذف
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{{ 14 + fields|length }}" class="text-muted">لا توجد سجلات لفريق العمل مسجلة حالياً.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- النافذة المنبثقة للحذف -->
+<div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+        <h3 style="margin-bottom: 15px; color: #dc3545;">تأكيد الحذف</h3>
+        <p id="deleteMessage" style="margin-bottom: 20px; color: #333; font-size: 15px;"></p>
+        <form id="deleteForm" method="POST" style="display: flex; justify-content: center; gap: 10px;">
+            <button type="submit" class="btn btn-danger">تأكيد الحذف</button>
+            <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">إلغاء</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openDeleteModal(memberId, memberName) {
+        const modal = document.getElementById('deleteModal');
+        const form = document.getElementById('deleteForm');
+        const msg = document.getElementById('deleteMessage');
+        msg.innerText = `هل أنت متأكد من رغبتك في حذف عضو فريق العمل: (${memberName})؟`;
+        form.action = `/workshop/team/delete/${memberId}`;
+        modal.style.display = 'flex';
+    }
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').style.display = 'none';
+    }
+</script>
+{% endblock %}

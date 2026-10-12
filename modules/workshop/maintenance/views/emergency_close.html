@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* المتغيرات والتنسيقات العامة - أسلوب أنيق جذاب أوفلاين */
+    :root {
+        --primary-color: #dc2626;
+        --primary-dark: #991b1b;
+        --success-color: #059669;
+        --border-color: #e2e8f0;
+        --bg-light: #f8fafc;
+        --text-dark: #0f172a;
+        --text-muted: #64748b;
+    }
+
+    .close-card {
+        background: #ffffff;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        margin-bottom: 24px;
+        overflow: hidden;
+        transition: box-shadow 0.2s ease;
+    }
+
+    .close-card:hover {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    }
+
+    .close-card-header {
+        background: var(--bg-light);
+        border-bottom: 1px solid var(--border-color);
+        padding: 16px 20px;
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: var(--text-dark);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .close-card-body {
+        padding: 24px;
+    }
+
+    .info-label {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+        font-weight: 600;
+        display: block;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-control-custom {
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.92rem;
+        color: var(--text-dark);
+        background-color: #ffffff;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-control-custom:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+    }
+
+    /* رفع وتعيين الملفات */
+    .file-upload-box {
+        border: 2px dashed #cbd5e1;
+        border-radius: 10px;
+        padding: 20px 15px;
+        text-align: center;
+        background: var(--bg-light);
+        transition: all 0.2s ease;
+        cursor: pointer;
+        position: relative;
+        min-height: 160px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .file-upload-box:hover {
+        border-color: var(--primary-color);
+        background: #fef2f2;
+    }
+
+    .thumb-preview {
+        max-width: 100%;
+        max-height: 130px;
+        border-radius: 8px;
+        object-fit: cover;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+
+    .thumb-preview:hover {
+        transform: scale(1.03);
+    }
+
+    .btn-remove-file {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: #ef4444;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 26px;
+        height: 26px;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        z-index: 5;
+    }
+
+    .btn-remove-file:hover {
+        background: #dc2626;
+    }
+
+    .action-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 24px;
+        margin-bottom: 40px;
+    }
+
+    /* النافذة المنبثقة للتأكيد */
+    dialog.offline-modal {
+        border: none;
+        border-radius: 16px;
+        padding: 0;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+        max-width: 440px;
+        width: 90%;
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        margin: 0 !important;
+        background: #ffffff;
+        z-index: 1050;
+    }
+
+    dialog.offline-modal::backdrop {
+        background: rgba(15, 23, 42, 0.65);
+        backdrop-filter: blur(4px);
+    }
+
+    .modal-card {
+        padding: 28px;
+        text-align: center;
+    }
+
+    /* Lightbox عرض الصور */
+    .img-lightbox {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: rgba(15, 23, 42, 0.85);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+        backdrop-filter: blur(6px);
+        padding: 20px;
+    }
+
+    .img-lightbox img {
+        max-width: 90vw;
+        max-height: 85vh;
+        border-radius: 10px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .img-lightbox-close {
+        position: absolute;
+        top: 20px;
+        right: 25px;
+        color: white;
+        font-size: 2.2rem;
+        cursor: pointer;
+        font-weight: bold;
+    }
+</style>
+
+<div class="container-fluid py-4 px-3 px-md-4" dir="rtl">
+
+    <!-- شريط العنوان والرجوع -->
+    <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded-3 shadow-sm border flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <div style="font-size: 1.8rem;">🚨</div>
+            <div>
+                <h4 class="fw-bold mb-0 text-danger">إقفال أمر الصيانة الطارئة</h4>
+                <small class="text-muted">تسجيل الإجراءات والتكاليف النهائية وحالة التقطير/السحب</small>
+            </div>
+        </div>
+        <div>
+            <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type='emergency') }}" 
+               class="btn btn-outline-secondary font-weight-bold px-3 py-2">
+                ↩️ العودة للقائمة
+            </a>
+        </div>
+    </div>
+
+    <!-- نموذج الإقفال الرئيسي -->
+    <form id="closeEmergencyOrderForm" 
+          action="{{ url_for('workshop.maintenance.maintenance_close', order_id=order.id) }}" 
+          method="POST" 
+          enctype="multipart/form-data">
+
+        <!-- 1. بيانات الإجراءات والسحب -->
+        <div class="close-card">
+            <div class="close-card-header">
+                <span>🛠️</span> الإجراءات المتخذة وحالة السحب
+            </div>
+            <div class="close-card-body">
+                <div class="row g-3">
+                    
+                    <!-- الإجراء المتخذ (action_taken) -->
+                    <div class="col-12">
+                        <div class="form-group">
+                            <label class="info-label">الإجراء المتخذ لمعالجة الحالة الطارئة (action_taken) <span class="text-danger">*</span></label>
+                            <textarea name="action_taken" class="form-control-custom" rows="3" required placeholder="توضيح الإجراءات الميدانية والفنية التي تم اتخاذها..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="info-label">فريق التدخل</label>
+                            <input type="text" name="intervention_team" class="form-control-custom" placeholder="أسماء أو جهة فريق التدخل">
+                        </div>
+                    </div>
+
+                    <!-- سُحبت؟ (is_towed) -->
+                    <div class="col-md-4">
+                        <div class="form-group pt-4">
+                            <label class="info-label">هل تم السحب؟</label>
+                            <select name="is_towed" id="isTowedCheck" class="form-control-custom" onchange="toggleTowingParty(this)" required>
+                                <option value="لا" selected>لا</option>
+                                <option value="نعم">نعم</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- جهة السحب (towing_party) -->
+                    <div class="col-md-8" id="towingPartyContainer" style="display: none;">
+                        <div class="form-group">
+                            <label class="info-label">جهة السحب (towing_party)</label>
+                            <input type="text" name="towing_party" id="towingPartyInput" class="form-control-custom" placeholder="اكتب جهة السحب...">
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. التكاليف وقطع الغيار والتوصية -->
+        <div class="close-card">
+            <div class="close-card-header">
+                <span>💰</span> التكاليف والقطع والتوصيات
+            </div>
+            <div class="close-card-body">
+                <div class="row g-3">
+                    
+                    <!-- التكلفة النهائية (final_cost) -->
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="info-label">التكلفة النهائية الإجمالية (final_cost) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" name="final_cost" class="form-control-custom" required placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <!-- قطع الغيار (spare_parts) -->
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="info-label">قطع الغيار المستخدمة (spare_parts)</label>
+                            <input type="text" name="spare_parts" class="form-control-custom" placeholder="قائمة القطع التي تم استبدالها طارئاً...">
+                        </div>
+                    </div>
+
+                    <!-- التوصية (recommendation) -->
+                    <div class="col-12">
+                        <div class="form-group">
+                            <label class="info-label">التوصيات النهائية (recommendation)</label>
+                            <textarea name="recommendation" class="form-control-custom" rows="2" placeholder="توصيات السلامة أو المتابعة اللاحقة للمركبة..."></textarea>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. المرفقات والصور (photo_before, photo_after, other_attachments) -->
+        <div class="close-card">
+            <div class="close-card-header">
+                <span>🖼️</span> الصور والتقارير الميدانية
+            </div>
+            <div class="close-card-body">
+                <div class="row g-4">
+                    
+                    <!-- صورة قبل (photo_before) -->
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="info-label">📷 صورة موقع الحادث / قبل (photo_before)</label>
+                            <div class="file-upload-box" onclick="triggerFileInput('photo_before_input')">
+                                <button type="button" class="btn-remove-file" id="remove_before" style="display:none;" onclick="clearFileInput(event, 'photo_before_input', 'before_preview', 'before_placeholder', 'remove_before')">&times;</button>
+                                
+                                <input type="file" id="photo_before_input" name="photo_before" accept="image/*" style="display:none;" onchange="previewImage(this, 'before_preview', 'before_placeholder', 'remove_before')">
+                                
+                                <div id="before_placeholder" style="{% if order.photo_before %}display:none;{% endif %}">
+                                    <span style="font-size:2rem;">📤</span>
+                                    <p class="mb-0 mt-2 text-muted small">اختر صورة موقع العطل/الحادث</p>
+                                </div>
+                                
+                                <img id="before_preview" 
+                                     src="{{ order.photo_before if order.photo_before else '#' }}" 
+                                     class="thumb-preview" 
+                                     style="{% if not order.photo_before %}display:none;{% endif %}" 
+                                     onclick="openLightbox(this.src); event.stopPropagation();" 
+                                     title="انقر لتكبير الصورة">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- صورة بعد الاصلاح (photo_after) -->
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="info-label">📸 صورة بعد الإصلاح / الجاهزية (photo_after)</label>
+                            <div class="file-upload-box" onclick="triggerFileInput('photo_after_input')">
+                                <button type="button" class="btn-remove-file" id="remove_after" style="display:none;" onclick="clearFileInput(event, 'photo_after_input', 'after_preview', 'after_placeholder', 'remove_after')">&times;</button>
+                                
+                                <input type="file" id="photo_after_input" name="photo_after" accept="image/*" style="display:none;" onchange="previewImage(this, 'after_preview', 'after_placeholder', 'remove_after')">
+                                
+                                <div id="after_placeholder">
+                                    <span style="font-size:2rem;">📤</span>
+                                    <p class="mb-0 mt-2 text-muted small">اختر صورة المركبة بعد الجاهزية</p>
+                                </div>
+                                
+                                <img id="after_preview" src="#" class="thumb-preview" style="display:none;" onclick="openLightbox(this.src); event.stopPropagation();" title="انقر لتكبير الصورة">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- مرفقات أخرى (other_attachments: تقارير مرور/مرشحين) -->
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="info-label">📎 تقرير الجهات الرسمية / المرفقات (other_attachments)</label>
+                            <div class="file-upload-box" onclick="triggerFileInput('other_attachments_input')">
+                                <input type="file" id="other_attachments_input" name="other_attachments" style="display:none;" onchange="previewFile(this, 'file_name_display')">
+                                <span style="font-size:2.2rem;">📄</span>
+                                <p id="file_name_display" class="mb-0 mt-2 text-muted small">اختر التقرير الطبي أو المروري (PDF/صور)...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- أزرار الإجراءات -->
+        <div class="action-buttons">
+            <button type="button" class="btn btn-danger fw-bold px-4 py-2 shadow-sm" onclick="validateAndOpenConfirmModal()">
+                🔒 حفظ وتقفيل امر الصيانة الطارئة
+            </button>
+            <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type='emergency') }}" 
+               class="btn btn-light border font-weight-bold px-4 py-2">
+               إلغاء
+            </a>
+        </div>
+
+    </form>
+</div>
+
+<!-- النافذة المنبثقة للتأكيد -->
+<dialog id="confirmCloseModal" class="offline-modal">
+    <div class="modal-card">
+        <div class="mb-3 text-danger fs-1">🚨</div>
+        <h5 class="fw-bold mb-2 text-dark">تأكيد تقفيل أمر الصيانة الطارئة</h5>
+        <p class="text-muted small mb-4">هل أنت متأكد من إنهاء الحالة وحفظ بيانات الإجراءات والإقفال بشكل نهائي؟</p>
+        <div class="d-flex justify-content-center gap-2">
+            <button type="button" class="btn btn-danger px-4 fw-bold" onclick="submitCloseForm()">نعم، تأكيد التقفيل</button>
+            <button type="button" class="btn btn-light px-3 border" onclick="closeConfirmCloseModal()">إلغاء</button>
+        </div>
+    </div>
+</dialog>
+
+<!-- Modal / Lightbox تكبير الصورة -->
+<div id="lightboxModal" class="img-lightbox" onclick="closeLightbox()">
+    <span class="img-lightbox-close" onclick="closeLightbox()">&times;</span>
+    <img id="lightboxImg" src="" onclick="event.stopPropagation();">
+</div>
+
+<script>
+function toggleTowingParty(checkbox) {
+    const container = document.getElementById('towingPartyContainer');
+    const input = document.getElementById('towingPartyInput');
+    if (checkbox.value === 'نعم') {
+        container.style.display = 'block';
+        input.required = true;
+    } else {
+        container.style.display = 'none';
+        input.required = false;
+        input.value = '';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    toggleTowingParty(document.getElementById('isTowedCheck'));
+});
+
+function validateAndOpenConfirmModal() {
+    const form = document.getElementById('closeEmergencyOrderForm');
+    if (form.checkValidity()) {
+        document.getElementById('confirmCloseModal').showModal();
+    } else {
+        form.reportValidity();
+    }
+}
+
+function closeConfirmCloseModal() {
+    document.getElementById('confirmCloseModal').close();
+}
+
+function submitCloseForm() {
+    document.getElementById('confirmCloseModal').close();
+    document.getElementById('closeEmergencyOrderForm').submit();
+}
+
+function triggerFileInput(inputId) {
+    document.getElementById(inputId).click();
+}
+
+function previewImage(input, previewId, placeholderId, removeBtnId) {
+    const file = input.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const previewImg = document.getElementById(previewId);
+            const placeholder = document.getElementById(placeholderId);
+            const removeBtn = document.getElementById(removeBtnId);
+            
+            previewImg.src = e.target.result;
+            previewImg.style.display = 'inline-block';
+            if (placeholder) placeholder.style.display = 'none';
+            if (removeBtn) removeBtn.style.display = 'flex';
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+function clearFileInput(event, inputId, previewId, placeholderId, removeBtnId) {
+    event.stopPropagation();
+    const input = document.getElementById(inputId);
+    const previewImg = document.getElementById(previewId);
+    const placeholder = document.getElementById(placeholderId);
+    const removeBtn = document.getElementById(removeBtnId);
+
+    input.value = '';
+    previewImg.src = '#';
+    previewImg.style.display = 'none';
+    if (placeholder) placeholder.style.display = 'block';
+    if (removeBtn) removeBtn.style.display = 'none';
+}
+
+function previewFile(input, displayId) {
+    const file = input.files[0];
+    const displayElement = document.getElementById(displayId);
+    if (file) {
+        displayElement.innerHTML = '✅ <strong class="text-success">' + file.name + '</strong>';
+    }
+}
+
+function openLightbox(src) {
+    if (!src || src === '#' || src.endsWith('#')) return;
+    document.getElementById('lightboxImg').src = src;
+    document.getElementById('lightboxModal').style.display = 'flex';
+}
+
+function closeLightbox() {
+    document.getElementById('lightboxModal').style.display = 'none';
+}
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === "Escape") {
+        closeLightbox();
+    }
+});
+</script>
+{% endblock %}

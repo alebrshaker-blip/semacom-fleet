@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}تسجيل عهدة جديدة - نظام SEMACOM{% endblock %}
+
+{% block content %}
+<style>
+    .container-form { max-width: 1000px; margin: 0 auto; padding: 10px; }
+    .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .header-flex h2 { color: #2c3e50; font-size: 22px; }
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 25px; margin-bottom: 30px; }
+    .row { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 15px; }
+    .col-md-3, .col-md-4, .col-md-6 { flex: 1; min-width: 250px; }
+    .col-12 { width: 100%; }
+    .form-label { display: block; margin-bottom: 8px; font-weight: bold; color: #333; font-size: 14px; }
+    .form-control, .form-select { width: 100%; padding: 10px 15px; border: 1px solid #ced4da; border-radius: 6px; font-size: 14px; background-color: #fff; }
+    .section-title { color: #007bff; margin: 20px 0 15px 0; font-size: 18px; border-bottom: 2px solid #e9ecef; padding-bottom: 8px; }
+    .btn { padding: 10px 18px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; font-size: 14px; display: inline-block; }
+    .btn-success { background-color: #28a745; color: white; width: 100%; padding: 12px; font-size: 16px; }
+    .btn-secondary { background-color: #6c757d; color: white; text-decoration: none; }
+</style>
+
+<div class="container-form">
+    <div class="header-flex">
+        <h2>نموذج تسليم أو إرجاع مركبة / معدة</h2>
+        <a href="/handover/" class="btn btn-secondary">← العودة للقائمة</a>
+    </div>
+
+    <div class="card">
+        <form action="/handover/save" method="POST" id="handoverForm">
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label">نوع العملية:</label>
+                    <select name="handover_type" id="handoverType" class="form-select" required onchange="toggleOperationType()">
+                        <option value="تسليم عهدة">تسليم عهدة للسائق (مركبات متاحة)</option>
+                        <option value="إرجاع عهدة">إرجاع عهدة للورشة (مركبات مسلمة)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">تاريخ ووقت العملية:</label>
+                    <input type="datetime-local" name="handover_date" class="form-control" required>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">الغرض:</label>
+                    <select name="purpose" class="form-select" required>
+                        <option value="صرف">صرف</option>
+                        <option value="مهمة عمل">مهمة عمل</option>
+                        <option value="أخرى">أخرى</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">القسم التابع له:</label>
+                    <input type="text" name="department" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الوصف:</label>
+                    <input type="text" name="description" class="form-control" required>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- اختيار المركبة -->
+                <div class="col-md-6">
+                    <label class="form-label">المركبة أو المعدة:</label>
+                    <select name="vehicle_info" id="vehicleSelect" class="form-select" required onchange="onVehicleChange()">
+                        <option value="">-- اختر المركبة --</option>
+                    </select>
+                </div>
+
+                <!-- اختيار السائق -->
+                <div class="col-md-6">
+                    <label class="form-label">السائق / الموظف المستلم:</label>
+                    <select name="driver_info" id="driverSelect" class="form-select" required onchange="onDriverChange()">
+                        <option value="">-- اختر السائق --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label">قراءة عداد الكيلومترات (Odometer):</label>
+                    <input type="text" name="odometer" class="form-control" placeholder="مثال: 45000 كم" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">مستوى الوقود:</label>
+                    <select name="fuel_level" class="form-select" required>
+                        <option value="ممتلئ (Full)">ممتلئ (Full)</option>
+                        <option value="3/4 ثلاثة ارباع">3/4 ثلاثة أرباع</option>
+                        <option value="1/2 نصف">1/2 نصف</option>
+                        <option value="1/4 ربع">1/4 ربع</option>
+                        <option value="فارغ (Empty)">فارغ (Empty)</option>
+                    </select>
+                </div>
+            </div>
+
+            <h4 class="section-title">فحص الحالة الفنية والتشغيلية</h4>
+
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">حالة الهيكل الخارجي:</label>
+                    <input type="text" name="body_condition" class="form-control" value="سليم وممتاز">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">حالة المقصورة الداخلية:</label>
+                    <input type="text" name="interior_condition" class="form-control" value="نظيف ومرتب">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">حالة الإطارات:</label>
+                    <input type="text" name="tires_condition" class="form-control" value="ممتازة مع الإستبنة والعدّة">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">الحالة الميكانيكية:</label>
+                    <input type="text" name="mechanical_condition" class="form-control" value="تعمل بكفاءة عالية">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">حالة نظام الكهرباء:</label>
+                    <input type="text" name="electrical_condition" class="form-control" value="البطارية والإضاءة سليمة 100%">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الفني الكهربائي المشرف:</label>
+                    <select name="electrical_technician" class="form-select">
+                        <option value="">-- اختر الفني --</option>
+                        {% for t in technicians %}
+                            <option value="{{ t.name|default(t.full_name, true) }}">{{ t.name|default(t.full_name, true) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الفني الميكانيكي المشرف:</label>
+                    <select name="mechanical_technician" class="form-select">
+                        <option value="">-- اختر الفني --</option>
+                        {% for t in technicians %}
+                            <option value="{{ t.name|default(t.full_name, true) }}">{{ t.name|default(t.full_name, true) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12">
+                    <label class="form-label">ملاحظات ومرفقات عامة إضافية:</label>
+                    <textarea name="notes" class="form-control" placeholder="أي ملاحظات حول حالة الاستلام أو الإرجاع..."></textarea>
+                </div>
+            </div>
+
+            <div class="row" style="margin-top: 25px;">
+                <div class="col-12">
+                    <button type="submit" class="btn btn-success">💾 حفظ وتوثيق العملية ونقل الحركة</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // بيانات القوالب المنقولة من البايثون
+    const availableVehicles = [
+        {% for v in available_vehicles %}
+            { "id": "{{ v.id }}", "name": "{{ (v.vehicle_code|default('', true)) ~ ' - ' ~ (v.plate_number|default(v.name, true)) }}" },
+        {% endfor %}
+    ];
+
+    const assignedHandovers = [
+        {% for item in assigned_vehicles %}
+            { "id": "{{ item.vehicle_id }}", "vehicle": "{{ item.vehicle_info }}", "driver": "{{ item.driver_info }}" },
+        {% endfor %}
+    ];
+
+    const allDrivers = [
+        {% for d in drivers %}
+            "{{ d.name|default(d.full_name, true) }}",
+        {% endfor %}
+    ];
+
+    function toggleOperationType() {
+        const type = document.getElementById('handoverType').value;
+        const vehicleSelect = document.getElementById('vehicleSelect');
+        const driverSelect = document.getElementById('driverSelect');
+        
+        vehicleSelect.innerHTML = '<option value="">-- اختر المركبة --</option>';
+        driverSelect.innerHTML = '<option value="">-- اختر السائق --</option>';
+
+        if (type === 'تسليم عهدة') {
+            // تعبئة المركبات المتاحة فقط
+            availableVehicles.forEach(v => {
+                let opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.name;
+                vehicleSelect.appendChild(opt);
+            });
+            // تعبئة كافة السائقين
+            allDrivers.forEach(d => {
+                let opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                driverSelect.appendChild(opt);
+            });
+        } else {
+            // إرجاع عهدة: تعبئة المركبات المسلمة فقط النشطة
+            assignedHandovers.forEach(item => {
+                let opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = item.vehicle + " (مع السائق: " + item.driver + ")";
+                vehicleSelect.appendChild(opt);
+            });
+            // تعبئة السائقين المرتبطين بالمركبات المسلمة فقط
+            assignedHandovers.forEach(item => {
+                let opt = document.createElement('option');
+                opt.value = item.driver;
+                opt.textContent = item.driver + " (على مركبة: " + item.vehicle + ")";
+                driverSelect.appendChild(opt);
+            });
+        }
+    }
+
+    // الربط التلقائي عند اختيار المركبة أو السائق في حالة الإرجاع
+    function onVehicleChange() {
+        const type = document.getElementById('handoverType').value;
+        if (type === 'إرجاع عهدة') {
+            const selectedVehicle = document.getElementById('vehicleSelect').value;
+            const match = assignedHandovers.find(i => i.id === selectedVehicle);
+            if (match) {
+                document.getElementById('driverSelect').value = match.driver;
+            }
+        }
+    }
+
+    function onDriverChange() {
+        const type = document.getElementById('handoverType').value;
+        if (type === 'إرجاع عهدة') {
+            const selectedDriver = document.getElementById('driverSelect').value;
+            const match = assignedHandovers.find(i => i.driver === selectedDriver);
+            if (match) {
+                document.getElementById('vehicleSelect').value = match.id;
+            }
+        }
+    }
+
+    // التشغيل عند تحميل الصفحة لأول مرة
+    window.onload = function() {
+        toggleOperationType();
+    };
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "print_base.html" %}
+
+{% block title %}{{ report_title_text }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .data-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    .data-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; }
+    .data-report-table th, .data-report-table td {
+        border: 1px solid #475569;
+        padding: 6px;
+        text-align: center;
+        overflow-wrap: anywhere;
+    }
+    .data-report-table th { background: #e9eff5; font-size: 11px; }
+    .data-report-table td { font-size: 10px; }
+    .data-report-table thead { display: table-header-group; }
+    .data-report-table tr { break-inside: avoid; }
+    @media print {
+        .data-report-table th, .data-report-table td { padding: 4px; }
+    }
+</style>
+{% endblock %}
+
+{% block pages %}
+<section class="page-container landscape">
+    {% include '_print_header.html' %}
+    <h2 class="data-report-title">{{ report_title_text }}</h2>
+    {% if rows %}
+    <div class="report-content">
+        <table class="data-report-table">
+            <thead>
+                <tr><th>م</th>{% for column in columns %}<th>{{ column.label }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    {% for column in columns %}
+                    <td>{{ row.get(column.key, '—') or '—' }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="report-content text-center text-muted py-5">لا توجد سجلات مطابقة لهذا التقرير.</div>
+    {% endif %}
+</section>
+{% endblock %}

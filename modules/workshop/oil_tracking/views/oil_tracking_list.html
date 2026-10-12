@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}سجلات زيوت المعدات والمركبات- SEMACOM{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 1200px; direction: rtl;">
+    <!-- الهيدر وأزرار الإجراءات الرئيسية -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+        <h2 style="color: #1b365d; font-weight: bold; margin: 0;">
+            <i class="fa-solid fa-oil-can"></i> إدارة ومتابعة فترات تغيير الزيوت
+        </h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <!-- زر التصدير إلى إكسل مرتبط بمسار البايثون في الخادم مباشرة -->
+            <a href="{{ url_for('workshop.oil_tracking.export_excel') }}" class="btn btn-success" style="background: #198754; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                <i class="fa-solid fa-file-excel me-1"></i> تصدير إلى Excel
+            </a>
+            <!-- زر إضافة سجل جديد -->
+            <a href="{{ url_for('workshop.oil_tracking.add') }}" class="btn btn-primary" style="background: #0d6efd; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                <i class="fa-solid fa-plus me-1"></i> تسجيل تغيير زيت جديد
+            </a>
+            <!-- زر العودة إلى الورشة -->
+            <a href="{{ url_for('workshop.index') if 'workshop.index' in url_for.__globals__ else '/workshop' }}" class="btn btn-secondary" style="background: #6c757d; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                <i class="fa-solid fa-arrow-right me-1"></i> العودة للورشة
+            </a>
+        </div>
+    </div>
+
+    <!-- 🔔 بنر الإشعارات للمركبات المستحقة -->
+    {% set alerts = [] %}
+    {% for rec in records %}
+        {% if rec.is_alert %}
+            {% set _ = alerts.append(rec) %}
+        {% endif %}
+    {% endfor %}
+
+    {% if alerts %}
+    <div style="background: #fff3cd; border-right: 5px solid #ffc107; padding: 15px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <h4 style="color: #664d03; font-size: 16px; margin-bottom: 10px; font-weight: bold;">
+            <i class="fa-solid fa-triangle-exclamation"></i> تنبيهات الزيوت المستحقة حالياً ({{ alerts | length }} مركبة):
+        </h4>
+        <ul style="margin: 0; padding-right: 20px; color: #664d03; font-size: 13px;">
+            {% for alt in alerts %}
+            <li style="margin-bottom: 5px;">
+                <strong>المركبة {{ alt.vehicle_plate }}:</strong> {{ alt.status_msg }} (الفني: {{ alt.technician_name }})
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- شريط البحث -->
+    <div style="margin-bottom: 15px;">
+        <div class="input-group" style="max-width: 650px;">
+            <span class="input-group-text" style="background: #e9ecef; border-color: #ced4da;"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="search" id="oilSearchInput" oninput="filterOilTable()" onkeydown="if(event.key === 'Enter') filterOilTable()" class="form-control" placeholder="ابحث برقم اللوحة أو الفني..." style="font-size: 14px;">
+            <button type="button" class="btn btn-primary" onclick="filterOilTable()"><i class="fa-solid fa-magnifying-glass"></i> بحث</button>
+            <button type="button" class="btn btn-secondary" onclick="resetOilSearch()"><i class="fa-solid fa-rotate-right"></i> إعادة تعيين</button>
+        </div>
+    </div>
+
+    <!-- حاوية الجدول مع التمرير الأفقي والرأسي -->
+    <div class="table-responsive" style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); max-height: 600px; overflow-x: auto; overflow-y: auto;">
+        <table id="oilTrackingTable" class="table table-bordered table-striped align-middle" style="width: 100%; min-width: 900px; font-size: 13px; text-align: center; margin-bottom: 0;">
+            <thead style="background: #f8f9fa; color: #2c3e50; position: sticky; top: 0; z-index: 2;">
+                <tr>
+                    <th>#</th>
+                    <th>رقم اللوحة</th>
+                    <th>الفني المسؤول</th>
+                    <th>تاريخ الخدمة</th>
+                    <th>نمط التتبع / الفاصل</th>
+                    <th>حد الإنذار</th>
+                    <th>حالة الزيت والتنبيه</th>
+                    <th>ملاحظات</th>
+                    <th class="no-export">الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rec in records %}
+                <tr {% if rec.is_alert %}style="background-color: #fff8e1;"{% endif %}>
+                    <td>{{ loop.index }}</td>
+                    <td style="font-weight: bold; color: #0d6efd;">{{ rec.vehicle_plate }}</td>
+                    <td>{{ rec.technician_name }}</td>
+                    <td>{{ rec.service_date }}</td>
+                    <td>
+                        {% if rec.tracking_mode == 'distance' %} مسافة ({{ rec.distance_interval }} كم)
+                        {% elif rec.tracking_mode == 'time' %} وقت ({{ rec.time_interval_months }} أشهر)
+                        {% else %} مسافة أو وقت
+                        {% endif %}
+                    </td>
+                    <td>
+                        <small style="color: #6c757d;">
+                            {% if rec.tracking_mode != 'time' %}{{ rec.distance_alert_threshold }} كم{% endif %}
+                            {% if rec.tracking_mode == 'time' %}{{ rec.time_alert_threshold }} يوم{% endif %}
+                        </small>
+                    </td>
+                    <td>
+                        <span class="badge bg-{{ rec.status_badge }}" style="padding: 6px 10px; border-radius: 4px; font-size: 12px;">
+                            {{ rec.status_msg }}
+                        </span>
+                    </td>
+                    <td>{{ rec.notes or '-' }}</td>
+                    <td class="no-export">
+                        <a href="{{ url_for('workshop.oil_tracking.print_report', id=rec.id) }}" target="_blank" class="btn btn-sm" style="padding: 5px 12px; font-size: 12px; text-decoration: none; background: #495057; color: white; border-radius: 4px; font-weight: bold;" title="طباعة وعرض التقرير">
+                            <i class="fa-solid fa-print"></i> تقرير
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" style="text-align: center; color: #6c757d; padding: 20px;">لا توجد سجلات مسجلة للزيوت حتى الآن.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function filterOilTable() {
+    var input = document.getElementById("oilSearchInput");
+    var filter = input.value.toLowerCase().trim();
+    var table = document.getElementById("oilTrackingTable");
+    var trs = table.getElementsByTagName("tr");
+
+    for (var i = 1; i < trs.length; i++) {
+        var row = trs[i];
+        if (row.getElementsByTagName("td").length > 0) {
+            var text = row.textContent || row.innerText;
+            if (text.toLowerCase().indexOf(filter) > -1) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
+            }
+        }
+    }
+}
+
+function resetOilSearch() {
+    document.getElementById("oilSearchInput").value = "";
+    filterOilTable();
+}
+</script>
+{% endblock %}

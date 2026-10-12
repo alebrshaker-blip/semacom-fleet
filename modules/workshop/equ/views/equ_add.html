@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}إضافة أصل أو عدة جديدة للورشة - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 30px; max-width: 800px; margin: 0 auto; direction: rtl; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; font-weight: bold; color: #2c3e50; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 5px; font-size: 14px; box-sizing: border-box; }
+    input:focus, select:focus, textarea:focus { border-color: #0d6efd; outline: none; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .btn-submit { background-color: #0d6efd; color: white; padding: 10px 20px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px; }
+    .btn-submit:hover { background-color: #0b5ed7; }
+    .btn-back { background-color: #6c757d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-right: 10px; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container" style="padding: 20px;">
+    <div class="form-container">
+        <h2 style="margin-top: 0; color: #2c3e50; margin-bottom: 25px;"><i class="fa-solid fa-plus-circle ml-2"></i> إضافة أصل أو عدة جديدة للورشة</h2>
+        
+        <form method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="asset_code">كود الأصل / الرصيد التسلسلي *</label>
+                    <input type="text" id="asset_code" name="asset_code" required placeholder="مثال: SEMACOM-EQ-9001">
+                </div>
+                <div class="form-group">
+                    <label for="name">اسم المعدة / العدة *</label>
+                    <input type="text" id="name" name="name" required placeholder="مثال: جهاز فحص تسرب الفريون الإلكتروني">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="category">التصنيف *</label>
+                    <select id="category" name="category" required>
+                        <option value="">اختر التصنيف...</option>
+                        <option value="أجهزة فحص تبريد وتكييف">أجهزة فحص تبريد وتكييف</option>
+                        <option value="عدد ومعدات رفع هيدروليكية">عدد ومعدات رفع هيدروليكية</option>
+                        <option value="أدوات لحام وقطع نحاس">أدوات لحام وقطع نحاس</option>
+                        <option value="عدد كهربائية ومقاييس">عدد كهربائية ومقاييس</option>
+                        <option value="معدات طاقة وتوليد">معدات طاقة وتوليد</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="status">الحالة التشغيلية</label>
+                    <select id="status" name="status">
+                        <option value="متاح">متاح بالورشة المركزية</option>
+                        <option value="قيد الاستخدام">قيد الاستخدام الميداني</option>
+                        <option value="تحت الصيانة">تحت الصيانة</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="location">موقع التواجد</label>
+                    <input type="text" id="location" name="location" placeholder="مثال: ركن الصيانة - دولاب A1">
+                </div>
+                <div class="form-group">
+                    <label for="condition_status">الحالة الفنية</label>
+                    <select id="condition_status" name="condition_status">
+                        <option value="ممتاز">ممتاز</option>
+                        <option value="جيد جداً">جيد جداً</option>
+                        <option value="جيد">جيد</option>
+                        <option value="يحتاج صيانة عاجلة">يحتاج صيانة عاجلة</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="purchase_date">تاريخ الشراء / الإدخال</label>
+                    <input type="date" id="purchase_date" name="purchase_date">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="notes">ملاحظات وصفية أو مواصفات فنية</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="أدخل الملحقات أو ملاحظات التشغيل..."></textarea>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <button type="submit" class="btn-submit"><i class="fa-solid fa-save ml-1"></i> حفظ الأصل</button>
+                <a href="{{ url_for('workshop.equ_bp.index') }}" class="btn-back">إلغاء</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

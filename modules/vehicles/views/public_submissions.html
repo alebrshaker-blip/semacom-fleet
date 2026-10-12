@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}بلاغات واستفسارات المركبات{% endblock %}
+
+{% block extra_css %}
+<style>
+    .submission-card { background: #fff; border-radius: 14px; padding: 20px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(27,54,93,.08); }
+    .submission-head { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+    .submission-head h2 { color: #1b365d; margin: 0 0 6px; font-size: 20px; }
+    .meta { color: #67768a; font-size: 14px; line-height: 1.8; }
+    .status { border-radius: 999px; padding: 6px 12px; background: #fff2cc; color: #795500; font-weight: 700; }
+    .status.reviewed { background: #e5f5eb; color: #146c43; }
+    .message { white-space: pre-wrap; line-height: 1.8; margin: 18px 0; }
+    .proposals { border: 1px solid #e6ebf1; border-radius: 10px; padding: 14px; margin: 14px 0; }
+    .proposals li { margin: 8px 0; }
+    .photos { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+    .photos img { width: min(220px, 100%); max-height: 180px; object-fit: contain; border: 1px solid #e3e9f0; border-radius: 9px; }
+    .empty { background: #fff; padding: 30px; text-align: center; border-radius: 14px; color: #67768a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:1100px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:22px;">
+        <div>
+            <h1 style="color:#1b365d;margin:0 0 6px;">بلاغات واستفسارات المركبات</h1>
+            <p style="margin:0;color:#67768a;">طلبات تحديث البيانات والبلاغات الواردة عبر رموز QR.</p>
+        </div>
+        <a class="btn btn-secondary" href="{{ url_for('vehicles.vehicles_index') }}">العودة للمركبات</a>
+    </div>
+    {% for submission in submissions %}
+    <article class="submission-card">
+        <div class="submission-head">
+            <div>
+                <h2>{{ submission.submission_type }} — {{ submission.vehicle_code }} / {{ submission.plate_number }}</h2>
+                <div class="meta">رقم الطلب: {{ submission.id }} | تاريخ الإرسال: {{ submission.submitted_at }}</div>
+            </div>
+            <span class="status {% if submission.status == 'تمت المراجعة' %}reviewed{% endif %}">{{ submission.status }}</span>
+        </div>
+        <div class="message">{{ submission.message }}</div>
+        {% if submission.proposed_values %}
+        <section class="proposals">
+            <strong>البيانات المقترح تحديثها (للمراجعة فقط):</strong>
+            <ul>
+                {% for key, proposal in submission.proposed_values.items() %}
+                <li><strong>{{ proposal.label }}:</strong> {{ proposal.value }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+        {% if submission.photo_1 or submission.photo_2 %}
+        <div class="photos">
+            {% for photo in [submission.photo_1, submission.photo_2] if photo %}
+            <a href="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ photo) }}" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ photo) }}" alt="صورة مرفقة بالبلاغ">
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if submission.status != 'تمت المراجعة' %}
+        <form method="post" action="{{ url_for('vehicles.review_public_submission', submission_id=submission.id) }}">
+            <button class="btn btn-success" type="submit">تحديد كمراجع</button>
+        </form>
+        {% endif %}
+    </article>
+    {% else %}
+    <div class="empty">لا توجد بلاغات أو استفسارات حتى الآن.</div>
+    {% endfor %}
+</div>
+{% endblock %}

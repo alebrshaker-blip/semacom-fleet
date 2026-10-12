@@ -1,0 +1,117 @@
+{% extends "print_base.html" %}
+
+{% block title %}{{ report_title_text or 'تقرير المعدات والمركبات' }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .vehicle-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    .vehicle-report-page { break-inside: avoid; }
+    .vehicle-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; margin: 0 0 10px; }
+    .vehicle-report-table th, .vehicle-report-table td {
+        border: 1px solid #475569;
+        padding: 5px;
+        text-align: center;
+        overflow-wrap: anywhere;
+        font-size: 9px;
+    }
+    .vehicle-report-table th { background: #e9eff5; font-size: 10px; }
+    .vehicle-report-section-title { margin: 10px 0 5px; font-size: 12px; color: #1b365d; }
+    .vehicle-report-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
+    .status-form { display: inline-flex; align-items: center; gap: 6px; }
+    .status-form select, .status-form button { padding: 4px 6px; }
+    .status-badge { font-weight: bold; }
+    .status-active { color: #198754; }
+    .status-near { color: #d39e00; }
+    .status-expired { color: #dc3545; }
+    @media print {
+        .vehicle-report-table th, .vehicle-report-table td { padding: 3px; }
+        .status-form { display: none; }
+    }
+</style>
+{% endblock %}
+
+{% block pages %}
+{% for item in report_data %}
+<section class="page-container landscape vehicle-report-page">
+    {% include '_print_header.html' %}
+    <h2 class="vehicle-report-title">
+        بيانات مركبة {{ item.vehicle.get('vehicle_code') or item.vehicle.get('id') }}
+        — رقم اللوحة {{ item.vehicle.get('plate_number') or '—' }}
+    </h2>
+
+    {% if vehicle_fields %}
+    <h3 class="vehicle-report-section-title">بيانات المركبة</h3>
+    <table class="vehicle-report-table">
+        <thead><tr>{% for field in vehicle_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+        <tbody><tr>{% for field in vehicle_fields %}<td>{{ item.vehicle.get(field.key, '—') or '—' }}</td>{% endfor %}</tr></tbody>
+    </table>
+    {% endif %}
+
+    {% if item.is_assigned %}
+    <h3 class="vehicle-report-section-title">السائق المستلم</h3>
+    {% if item.driver and driver_fields %}
+    <table class="vehicle-report-table">
+        <thead><tr>{% for field in driver_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+        <tbody><tr>{% for field in driver_fields %}<td>{{ item.driver.get(field.key, '—') or '—' }}</td>{% endfor %}</tr></tbody>
+    </table>
+    {% elif item.driver %}
+    <p>{{ item.driver.get('name') or 'السائق المستلم' }}</p>
+    {% else %}
+    <p>المركبة مسلمة، ولم تتوفر بيانات السائق.</p>
+    {% endif %}
+    {% else %}
+    <div class="vehicle-report-status">
+        <strong>حالة العهدة: في الورشة</strong>
+        <form method="POST" action="{{ url_for('reports.update_vehicle_report_status', vehicle_id=item.vehicle.id) }}" class="status-form">
+            <input type="hidden" name="report_type" value="{{ report_type }}">
+            {% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+            <label for="workshop-status-{{ item.vehicle.id }}">حالة المركبة في الورشة:</label>
+            <select id="workshop-status-{{ item.vehicle.id }}" name="workshop_status">
+                <option value="متاحة" {% if item.vehicle.workshop_status == 'متاحة' %}selected{% endif %}>متاحة</option>
+                <option value="تحت الصيانة" {% if item.vehicle.workshop_status == 'تحت الصيانة' %}selected{% endif %}>تحت الصيانة</option>
+            </select>
+            <button type="submit">حفظ</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <h3 class="vehicle-report-section-title">الفحص الدوري</h3>
+    {% if item.inspections %}
+    <table class="vehicle-report-table">
+        <thead><tr>{% for field in inspection_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+            {% for inspection in item.inspections %}
+            <tr>{% for field in inspection_fields %}
+                <td class="{% if field.key == 'status_type' %}{% if inspection.get(field.key) == 'ساري' %}status-active{% elif inspection.get(field.key) == 'قارب على الانتهاء' %}status-near{% else %}status-expired{% endif %}{% endif %}">
+                    {{ inspection.get(field.key, '—') or '—' }}
+                </td>
+            {% endfor %}</tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p>لا توجد سجلات فحص مرتبطة بالمركبة.</p>{% endif %}
+
+    <h3 class="vehicle-report-section-title">التأمينات</h3>
+    {% if item.policies %}
+    <table class="vehicle-report-table">
+        <thead><tr>{% for field in policy_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+            {% for policy in item.policies %}
+            <tr>{% for field in policy_fields %}
+                <td class="{% if field.key == 'status_type' %}{% if policy.get(field.key) == 'ساري' %}status-active{% elif policy.get(field.key) == 'قارب على الانتهاء' %}status-near{% else %}status-expired{% endif %}{% endif %}">
+                    {{ policy.get(field.key, '—') or '—' }}
+                </td>
+            {% endfor %}</tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p>لا توجد سجلات تأمين مرتبطة بالمركبة.</p>{% endif %}
+</section>
+{% else %}
+<section class="page-container landscape">
+    {% include '_print_header.html' %}
+    <h2 class="vehicle-report-title">{{ report_title_text }}</h2>
+    <div class="report-content text-center text-muted py-5">لا توجد مركبات مطابقة لهذا التقرير.</div>
+</section>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}جميع أوامر الصيانة{% endblock %}
+
+{% block content %}
+<style>
+    .maintenance-table-wrap { max-height: 72vh; overflow: auto; }
+    .maintenance-table { width: 100%; table-layout: fixed; }
+    .maintenance-table th,
+    .maintenance-table td {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        vertical-align: middle;
+    }
+    .maintenance-table th { position: sticky; top: 0; z-index: 2; }
+    .maintenance-table .order-number { direction: ltr; }
+    .maintenance-table .actions-cell { min-width: 180px; }
+    .filter-control { min-width: 150px; }
+</style>
+
+<div class="container-fluid py-3" dir="rtl">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <div>
+            <h3 class="fw-bold mb-1">جميع أوامر الصيانة</h3>
+            <div class="text-muted">عرض موحد للأوامر المفتوحة والمغلقة بجميع أنواعها</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-primary" href="{{ url_for('workshop.maintenance.maintenance_index') }}">أقسام الصيانة</a>
+            <a class="btn btn-primary" href="{{ url_for('reports.maintenance_reports') }}">تقارير الصيانة</a>
+        </div>
+    </div>
+
+    <form class="card card-body mb-3" method="GET" action="{{ url_for('workshop.maintenance.maintenance_all') }}">
+        <div class="row g-2 align-items-end">
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label" for="type-filter">نوع الصيانة</label>
+                <select class="form-select filter-control" id="type-filter" name="type">
+                    <option value="all" {{ 'selected' if filters.type == 'all' }}>كل الأنواع</option>
+                    {% for type_key, type_title in type_titles.items() %}
+                    <option value="{{ type_key }}" {{ 'selected' if filters.type == type_key }}>{{ type_title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label" for="status-filter">الحالة</label>
+                <select class="form-select filter-control" id="status-filter" name="status">
+                    <option value="all" {{ 'selected' if filters.status == 'all' }}>مفتوحة ومغلقة</option>
+                    <option value="open" {{ 'selected' if filters.status == 'open' }}>مفتوحة</option>
+                    <option value="closed" {{ 'selected' if filters.status == 'closed' }}>مغلقة / مؤرشفة</option>
+                </select>
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label" for="date-from">من تاريخ</label>
+                <input class="form-control" id="date-from" type="date" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label" for="date-to">إلى تاريخ</label>
+                <input class="form-control" id="date-to" type="date" name="date_to" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-dark" type="submit">تطبيق الفلاتر</button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('workshop.maintenance.maintenance_all') }}">مسح</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="table-responsive maintenance-table-wrap border rounded bg-white">
+        <table class="table table-hover table-bordered mb-0 maintenance-table">
+            <thead class="table-dark text-center">
+                <tr>
+                    <th>رقم الأمر</th>
+                    <th>النوع</th>
+                    <th>الحالة</th>
+                    <th>كود المركبة</th>
+                    <th>رقم اللوحة</th>
+                    <th>بيانات العمل</th>
+                    <th>الوصف</th>
+                    <th>المسؤول</th>
+                    <th>تاريخ الفتح</th>
+                    <th>تاريخ الإقفال</th>
+                    <th>التكلفة</th>
+                    <th class="actions-cell">الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td class="order-number fw-bold">{{ order.order_no or order.id }}</td>
+                    <td>{{ type_titles.get(order.type, order.type or '—') }}</td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if order.status == 'open' else 'bg-secondary' }}">
+                            {{ 'مفتوح' if order.status == 'open' else 'مغلق / مؤرشف' }}
+                        </span>
+                    </td>
+                    <td>{{ order.disp_code or order.vehicle_code or order.vehicle_id or '—' }}</td>
+                    <td>{{ order.disp_plate or order.plate_number or '—' }}</td>
+                    <td>{{ order.maintenance_type or order.subject or order.workshop_name or '—' }}</td>
+                    <td>{{ order.fault_description or order.case_description or order.description or order.send_reason or '—' }}</td>
+                    <td>{{ order.technician_name or order.responsible_person or order.reporter_name or '—' }}</td>
+                    <td>{{ order.order_date or order.send_datetime or order.incident_datetime or '—' }}</td>
+                    <td>{{ order.closure_date or order.closure_datetime or '—' }}</td>
+                    <td>{{ order.final_cost if order.final_cost else order.expected_cost or '—' }}</td>
+                    <td class="actions-cell">
+                        <div class="d-flex flex-wrap justify-content-center gap-1">
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.maintenance_reports', order_id=order.id, view='print') }}">تقرير</a>
+                            {% if order.status == 'open' %}
+                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('workshop.maintenance.maintenance_close', order_id=order.id) }}">إقفال</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td class="text-center text-muted py-5" colspan="12">لا توجد أوامر مطابقة للفلاتر المحددة.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

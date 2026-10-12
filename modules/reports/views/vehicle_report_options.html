@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}تقارير المعدات والمركبات{% endblock %}
+
+{% block content %}
+<div class="container py-4" dir="rtl" style="max-width: 1000px;">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">تقارير المعدات والمركبات</h2>
+            <p class="text-muted mb-0">اختر مركبة محددة أو اعرض المركبات وفقاً للفلاتر.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('vehicles.vehicles_index') }}">العودة إلى المركبات</a>
+    </div>
+    <form method="GET" action="{{ url_for('reports.vehicle_reports') }}" target="_blank" class="card shadow-sm">
+        <input type="hidden" name="view" value="print">
+        <div class="card-body">
+            <label class="form-label fw-bold" for="vehicleReportType">نوع التقرير</label>
+            <select class="form-select mb-3" name="report_type" id="vehicleReportType">
+                <option value="all">جميع المركبات / حسب الفلاتر</option>
+                <option value="single">مركبة محددة</option>
+            </select>
+            <div id="singleVehicleFilter" class="mb-3" hidden>
+                <label class="form-label" for="vehicleId">المركبة</label>
+                <select class="form-select" name="vehicle_id" id="vehicleId">
+                    {% for vehicle in vehicles %}
+                    <option value="{{ vehicle.id }}">{{ vehicle.vehicle_code or vehicle.id }} — {{ vehicle.plate_number or 'بدون لوحة' }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div id="vehicleFilters" class="row g-3">
+                {% set filter_fields = [
+                    ('manufacturer', 'الشركة المصنعة'),
+                    ('model', 'الموديل'),
+                    ('vehicle_type', 'النوع'),
+                    ('status', 'الحالة'),
+                    ('ownership', 'الملكية'),
+                    ('fuel_type', 'نوع الوقود')
+                ] %}
+                {% for key, label in filter_fields %}
+                <div class="col-md-6">
+                    <label class="form-label" for="filter-{{ key }}">{{ label }}</label>
+                    <select class="form-select" name="{{ key }}" id="filter-{{ key }}">
+                        <option value="">الكل</option>
+                        {% for value in options[key] %}
+                        <option value="{{ value }}" {% if filters[key] == value %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2">
+            <button class="btn btn-primary" type="submit" {% if not vehicles %}disabled{% endif %}>معاينة التقرير</button>
+        </div>
+    </form>
+</div>
+<script>
+    const vehicleReportType = document.getElementById('vehicleReportType');
+    const singleVehicleFilter = document.getElementById('singleVehicleFilter');
+    const vehicleId = document.getElementById('vehicleId');
+    const vehicleFilters = document.getElementById('vehicleFilters');
+    function updateVehicleReportFilters() {
+        const isSingle = vehicleReportType.value === 'single';
+        singleVehicleFilter.hidden = !isSingle;
+        vehicleId.disabled = !isSingle;
+        vehicleId.required = isSingle;
+        vehicleFilters.hidden = isSingle;
+        vehicleFilters.querySelectorAll('select').forEach(field => {
+            field.disabled = isSingle;
+        });
+    }
+    vehicleReportType.addEventListener('change', updateVehicleReportFilters);
+    updateVehicleReportFilters();
+</script>
+{% endblock %}

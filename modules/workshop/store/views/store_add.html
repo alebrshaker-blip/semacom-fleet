@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}إضافة صنف جديد للمستودع - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 30px; max-width: 800px; margin: 0 auto; direction: rtl; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; font-weight: bold; color: #2c3e50; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 5px; font-size: 14px; box-sizing: border-box; }
+    input:focus, select:focus, textarea:focus { border-color: #198754; outline: none; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .btn-submit { background-color: #198754; color: white; padding: 10px 20px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 16px; }
+    .btn-submit:hover { background-color: #157347; }
+    .btn-back { background-color: #6c757d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-right: 10px; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container" style="padding: 20px;">
+    <div class="form-container">
+        <h2 style="margin-top: 0; color: #2c3e50; margin-bottom: 25px;"><i class="fa-solid fa-plus-circle ml-2"></i> إضافة صنف جديد للمستودع</h2>
+        
+        <form method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="item_code">كود الصنف / الباركود *</label>
+                    <input type="text" id="item_code" name="item_code" required placeholder="مثال: PRT-1001">
+                </div>
+                <div class="form-group">
+                    <label for="name">اسم القطعة / الأداة *</label>
+                    <input type="text" id="name" name="name" required placeholder="مثال: فلتر زيت ديزل">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="category">التصنيف *</label>
+                    <select id="category" name="category" required>
+                        <option value="">اختر التصنيف...</option>
+                        <option value="قطع غيار محركات">قطع غيار محركات</option>
+                        <option value="نظام الفرامل">نظام الفرامل</option>
+                        <option value="زيوت ومحروقات">زيوت ومحروقات</option>
+                        <option value="عُدد وأدوات ورشة">عُدد وأدوات ورشة</option>
+                        <option value="فلترات وسيور">فلترات وسيور</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="unit">وحدة القياس</label>
+                    <select id="unit" name="unit">
+                        <option value="قطعة">قطعة</option>
+                        <option value="لتر">لتر</option>
+                        <option value="طقم">طقم</option>
+                        <option value="علبة">علبة</option>
+                        <option value="متر">متر</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="quantity">الكمية الافتتاحية</label>
+                    <input type="number" id="quantity" name="quantity" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="min_limit">حد التنبيه للمخزون المنخفض</label>
+                    <input type="number" id="min_limit" name="min_limit" value="5" min="1">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="location">موقع الرف بالمستودع</label>
+                    <input type="text" id="location" name="location" placeholder="مثال: رف A-3">
+                </div>
+                <div class="form-group">
+                    <label for="unit_price">سعر الوحدة التقديري (ريال)</label>
+                    <input type="number" step="0.01" id="unit_price" name="unit_price" value="0.00" min="0">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="notes">ملاحظات إضافية</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="أي تفاصيل أو ملاحظات تخص الصنف..."></textarea>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <button type="submit" class="btn-submit"><i class="fa-solid fa-save ml-1"></i> حفظ الصنف</button>
+                <a href="{{ url_for('workshop.store_bp.index') }}" class="btn-back">إلغاء</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

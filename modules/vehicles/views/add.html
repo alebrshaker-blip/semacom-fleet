@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إضافة مركبة جديدة</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Tahoma, Arial, sans-serif; }
+        body { background-color: #f8f9fa; color: #333; direction: rtl; text-align: right; padding: 20px; }
+        .container { max-width: 950px; margin: 0 auto; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 20px; }
+        .card-header { background-color: #0d6efd; color: white; padding: 15px 20px; }
+        .card-header h4 { margin: 0; font-size: 18px; }
+        .card-body { padding: 25px; }
+        .alert-danger { background-color: #f8d7da; color: #842029; padding: 12px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #f5c2c7; }
+        
+        /* تصميم عمودين للحقول الأساسية */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .mb-3 { margin-bottom: 18px; }
+        .full-width { grid-column: span 2; }
+        
+        .form-label { display: block; margin-bottom: 6px; font-weight: bold; color: #2c3e50; font-size: 14px; }
+        .form-control, .form-select { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #ced4da; border-radius: 4px; }
+        .form-control:focus, .form-select:focus { outline: none; border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
+        
+        /* قسم الحقول الإضافية */
+        .custom-fields-section {
+            margin-top: 30px;
+            border-top: 2px dashed #dee2e6;
+            padding-top: 20px;
+        }
+        .section-title { font-size: 16px; font-weight: bold; color: #0d6efd; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; }
+        .btn-primary { background-color: #0d6efd; color: white; }
+        .btn-primary:hover { background-color: #0b5ed7; }
+        .btn-success { background-color: #198754; color: white; }
+        .btn-success:hover { background-color: #157347; }
+        .btn-danger { background-color: #dc3545; color: white; padding: 6px 12px; font-size: 13px; }
+        .btn-danger:hover { background-color: #bb2d3b; }
+        .btn-secondary { background-color: #6c757d; color: white; }
+        
+        /* صف الحقل المضاف (أربعة مربعات متجانبة) */
+        .custom-field-row {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: grid;
+            grid-template-columns: 2fr 2fr 2fr 1.5fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .custom-field-row { grid-template-columns: 1fr; }
+        }
+        .actions-flex { display: flex; justify-content: space-between; align-items: center; margin-top: 25px; border-top: 1px solid #dee2e6; padding-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h4>إضافة مركبة جديدة</h4>
+            </div>
+            <div class="card-body">
+                
+                {% if error %}
+                <div class="alert-danger">{{ error }}</div>
+                {% endif %}
+
+                <form action="/vehicles/save" method="POST">
+                    
+                    <!-- الحقول الأساسية في عمودين -->
+                    <div class="form-grid">
+                        <div class="mb-3">
+                            <label for="vehicle_code" class="form-label">كود المركبة <span style="color:red">*</span></label>
+                            <input type="text" class="form-control" id="vehicle_code" name="vehicle_code" value="{{ form_data.get('vehicle_code', '') if form_data else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="plate_number" class="form-label">رقم اللوحة <span style="color:red">*</span></label>
+                            <input type="text" class="form-control" id="plate_number" name="plate_number" value="{{ form_data.get('plate_number', '') if form_data else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="vehicle_type" class="form-label">النوع</label>
+                            <input type="text" class="form-control" id="vehicle_type" name="vehicle_type" value="{{ form_data.get('vehicle_type', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="model" class="form-label">الموديل</label>
+                            <input type="text" class="form-control" id="model" name="model" value="{{ form_data.get('model', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="manufacturer" class="form-label">الشركة المصنعة</label>
+                            <input type="text" class="form-control" id="manufacturer" name="manufacturer" value="{{ form_data.get('manufacturer', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="color" class="form-label">اللون</label>
+                            <input type="text" class="form-control" id="color" name="color" value="{{ form_data.get('color', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="fuel_type" class="form-label">نوع الوقود</label>
+                            <input type="text" class="form-control" id="fuel_type" name="fuel_type" value="{{ form_data.get('fuel_type', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="engine_number" class="form-label">رقم المكينة</label>
+                            <input type="text" class="form-control" id="engine_number" name="engine_number" value="{{ form_data.get('engine_number', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3 full-width">
+                            <label for="chassis_number" class="form-label">رقم الهيكل</label>
+                            <input type="text" class="form-control" id="chassis_number" name="chassis_number" value="{{ form_data.get('chassis_number', '') if form_data else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="ownership" class="form-label">الملكية <span style="color:red">*</span></label>
+                            <select class="form-select" id="ownership" name="ownership" required>
+                                <option value="">-- اختر الملكية --</option>
+                                {% for owner in ['شركة سيماكم', 'شركة الذئب العربي', 'شركة نبض', 'شركة تالا', 'اجار', 'جهة خارجية'] %}
+                                    <option value="{{ owner }}" {% if form_data and form_data.get('ownership') == owner %}selected{% endif %}>{{ owner }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- قسم الحقول الإضافية الديناميكية (يمكن إضافة أكثر من حقل) -->
+                    <div class="custom-fields-section">
+                        <div class="section-title">
+                            <span>الحقول الإضافية (اختياري)</span>
+                            <button type="button" class="btn btn-primary" onclick="addCustomFieldRow()">+ إضافة حقل</button>
+                        </div>
+                        <div id="custom-fields-container">
+                            <!-- ستظهر المربعات الأربعة هنا عند النقر على الزر -->
+                        </div>
+                    </div>
+
+                    <div class="actions-flex">
+                        <div>
+                            <button type="submit" class="btn btn-success">حفظ المركبة</button>
+                            <a href="/vehicles" class="btn btn-secondary">رجوع للقائمة</a>
+                        </div>
+                    </div>
+
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function addCustomFieldRow() {
+            const container = document.getElementById('custom-fields-container');
+            const row = document.createElement('div');
+            row.className = 'custom-field-row';
+            row.innerHTML = `
+                <div>
+                    <label class="form-label" style="font-size: 12px;">اسم الحقل (إنجليزي):</label>
+                    <input type="text" class="form-control" name="custom_name[]" placeholder="مثال: gps_no" required>
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px;">عنوان الحقل (عربي):</label>
+                    <input type="text" class="form-control" name="custom_label[]" placeholder="مثال: رقم الـ GPS" required>
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px;">بيانات الحقل (القيمة):</label>
+                    <input type="text" class="form-control" name="custom_value[]" placeholder="القيمة لهذه المركبة" required>
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px;">هل اختياري أم إلزامي:</label>
+                    <select class="form-select" name="custom_required[]">
+                        <option value="0">اختياري</option>
+                        <option value="1">إلزامي</option>
+                    </select>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-danger" onclick="this.closest('.custom-field-row').remove()">حذف</button>
+                </div>
+            `;
+            container.appendChild(row);
+        }
+    </script>
+</body>
+</html>

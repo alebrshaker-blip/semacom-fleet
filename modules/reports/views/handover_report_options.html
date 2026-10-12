@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}تقارير استلام وتسليم المركبات{% endblock %}
+
+{% block content %}
+<div class="container py-4" dir="rtl" style="max-width: 1000px;">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">تقارير استلام وتسليم المركبات والمعدات</h2>
+            <p class="text-muted mb-0">اختر نوع الحركة والفترة أو اعرض حركة محددة للطباعة.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('handover.handover_index') }}">العودة إلى سجل الاستلام والتسليم</a>
+    </div>
+    <form method="GET" action="{{ url_for('reports.handover_reports') }}" target="_blank" class="card shadow-sm">
+        <input type="hidden" name="view" value="print">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" for="reportType">نوع التقرير</label>
+                    <select class="form-select" name="report_type" id="reportType">
+                        <option value="all">الكل — جميع حركات الاستلام والتسليم</option>
+                        <option value="delivery">تسليم عهدة</option>
+                        <option value="return">إرجاع عهدة</option>
+                        <option value="active">حركات التسليم النشطة</option>
+                        <option value="single">حركة محددة</option>
+                    </select>
+                </div>
+                <div class="col-md-6" id="movementFilter">
+                    <label class="form-label fw-bold" for="movementType">فلترة حسب نوع الحركة</label>
+                    <select class="form-select" name="movement_type" id="movementType">
+                        <option value="all">الكل</option>
+                        <option value="تسليم عهدة">تسليم عهدة</option>
+                        <option value="إرجاع عهدة">إرجاع عهدة</option>
+                    </select>
+                </div>
+                <div class="col-12" id="specificMovement" hidden>
+                    <label class="form-label fw-bold" for="handoverId">حركة الاستلام والتسليم</label>
+                    <select class="form-select" name="handover_id" id="handoverId">
+                        {% for item in options %}
+                        <option value="{{ item.id }}">
+                            {{ item.handover_type }} — {{ item.vehicle_info }} — {{ item.driver_info }} — {{ item.handover_date }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6" id="periodFilter">
+                    <label class="form-label fw-bold" for="period">الفترة</label>
+                    <select class="form-select" name="period" id="period">
+                        <option value="all">كل الفترات</option>
+                        <option value="today">اليوم</option>
+                        <option value="month">الشهر الحالي</option>
+                        <option value="year">السنة الحالية</option>
+                        <option value="range">فترة محددة</option>
+                    </select>
+                </div>
+                <div class="col-md-6" id="rangeFilter" hidden>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label" for="dateFrom">من تاريخ</label>
+                            <input class="form-control" type="date" name="date_from" id="dateFrom" disabled>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="dateTo">إلى تاريخ</label>
+                            <input class="form-control" type="date" name="date_to" id="dateTo" disabled>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end">
+            <button class="btn btn-primary" type="submit" {% if not options %}disabled{% endif %}>معاينة التقرير</button>
+        </div>
+    </form>
+</div>
+<script>
+    const reportType = document.getElementById('reportType');
+    const period = document.getElementById('period');
+    const movementFilter = document.getElementById('movementFilter');
+    const specificMovement = document.getElementById('specificMovement');
+    const handoverId = document.getElementById('handoverId');
+    const periodFilter = document.getElementById('periodFilter');
+    const rangeFilter = document.getElementById('rangeFilter');
+    const dateInputs = rangeFilter.querySelectorAll('input');
+
+    function updateHandoverFilters() {
+        const isSingle = reportType.value === 'single';
+        specificMovement.hidden = !isSingle;
+        handoverId.disabled = !isSingle;
+        handoverId.required = isSingle;
+        movementFilter.hidden = isSingle;
+        movementFilter.querySelector('select').disabled = isSingle;
+        periodFilter.hidden = isSingle;
+        period.disabled = isSingle;
+        rangeFilter.hidden = isSingle || period.value !== 'range';
+        dateInputs.forEach(input => {
+            input.disabled = isSingle || period.value !== 'range';
+        });
+    }
+
+    reportType.addEventListener('change', updateHandoverFilters);
+    period.addEventListener('change', updateHandoverFilters);
+    document.querySelector('form').addEventListener('submit', event => {
+        if (reportType.value !== 'single' && period.value === 'range' &&
+            !document.getElementById('dateFrom').value &&
+            !document.getElementById('dateTo').value) {
+            event.preventDefault();
+            alert('حدد تاريخ بداية أو نهاية للفترة.');
+        }
+    });
+    updateHandoverFilters();
+</script>
+{% endblock %}

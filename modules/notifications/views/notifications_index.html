@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}الإشعارات - SEMACOM{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="notifications-page" dir="rtl">
+    <header class="notifications-heading">
+        <div>
+            <h1><i class="fa-solid fa-bell"></i> مركز الإشعارات</h1>
+            <p>تنبيهات تشغيلية من وحدات المركبات والورشة والصيانة.</p>
+        </div>
+        <form method="post" action="{{ url_for('notifications_bp.mark_all_read') }}">
+            <input type="hidden" name="category" value="{{ selected_category }}">
+            <input type="hidden" name="read" value="{{ selected_read_filter }}">
+            <button class="notification-button secondary" type="submit" {% if not notification_unread_count %}disabled{% endif %}>
+                تعليم الكل كمقروء
+            </button>
+        </form>
+    </header>
+
+    <form class="notification-filters" method="get" action="{{ url_for('notifications_bp.index') }}">
+        <label>
+            القسم
+            <select name="category">
+                <option value="all" {% if selected_category == 'all' %}selected{% endif %}>جميع الأقسام</option>
+                {% for key, label in categories.items() %}
+                <option value="{{ key }}" {% if selected_category == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            حالة القراءة
+            <select name="read">
+                <option value="all" {% if selected_read_filter == 'all' %}selected{% endif %}>الكل</option>
+                <option value="unread" {% if selected_read_filter == 'unread' %}selected{% endif %}>غير مقروء</option>
+                <option value="read" {% if selected_read_filter == 'read' %}selected{% endif %}>مقروء</option>
+            </select>
+        </label>
+        <button class="notification-button primary" type="submit">تطبيق الفرز</button>
+    </form>
+
+    {% if notifications %}
+    <div class="notification-bulk">
+        <form method="post" action="{{ url_for('notifications_bp.delete_filtered') }}"
+              onsubmit="return confirm('سيتم حذف جميع الإشعارات المطابقة للفرز الحالي. هل تريد المتابعة؟');">
+            <input type="hidden" name="category" value="{{ selected_category }}">
+            <input type="hidden" name="read" value="{{ selected_read_filter }}">
+            <button class="notification-button danger" type="submit">حذف النتائج المعروضة</button>
+        </form>
+    </div>
+
+    <div class="notification-list">
+        {% for notification in notifications %}
+        <article class="notification-card severity-{{ notification.severity }} {% if not notification.is_read %}unread{% endif %}">
+            <div class="notification-icon" aria-hidden="true">
+                {% if notification.category == 'store' %}
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                {% elif notification.category in ('driver_licenses', 'team_licenses') %}
+                    <i class="fa-solid fa-id-card"></i>
+                {% elif notification.category in ('inspections', 'comprehensive_inspection') %}
+                    <i class="fa-solid fa-clipboard-check"></i>
+                {% elif notification.category == 'accidents' %}
+                    <i class="fa-solid fa-car-burst"></i>
+                {% elif notification.category == 'insurance' %}
+                    <i class="fa-solid fa-file-shield"></i>
+                {% else %}
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                {% endif %}
+            </div>
+            <div class="notification-content">
+                <div class="notification-meta">
+                    <span class="notification-category">{{ notification.category_label }}</span>
+                    {% if notification.is_pinned %}<span class="notification-pin"><i class="fa-solid fa-thumbtack"></i> مثبت</span>{% endif %}
+                    {% if not notification.is_read %}<span class="notification-unread-label">جديد</span>{% endif %}
+                </div>
+                <h2>{{ notification.title }}</h2>
+                <p>{{ notification.message }}</p>
+                {% if notification.created_at %}<time>{{ notification.created_at }}</time>{% endif %}
+            </div>
+            <div class="notification-actions">
+                <a class="notification-button primary" href="{{ notification.url }}">فتح القسم</a>
+                <a class="notification-button secondary" href="{{ url_for('tasks_bp.from_notification', notification_id=notification.id) }}">
+                    <i class="fa-solid fa-list-check"></i> إنشاء مهمة
+                </a>
+                <form method="post" action="{{ url_for('notifications_bp.update', notification_id=notification.id, action='read' if not notification.is_read else 'unread') }}">
+                    <input type="hidden" name="category" value="{{ selected_category }}">
+                    <input type="hidden" name="read" value="{{ selected_read_filter }}">
+                    <button class="notification-button secondary" type="submit">{{ 'تعليم كمقروء' if not notification.is_read else 'تعليم كغير مقروء' }}</button>
+                </form>
+                <form method="post" action="{{ url_for('notifications_bp.update', notification_id=notification.id, action='unpin' if notification.is_pinned else 'pin') }}">
+                    <input type="hidden" name="category" value="{{ selected_category }}">
+                    <input type="hidden" name="read" value="{{ selected_read_filter }}">
+                    <button class="notification-button secondary" type="submit">{{ 'إلغاء التثبيت' if notification.is_pinned else 'تثبيت' }}</button>
+                </form>
+                <form method="post" action="{{ url_for('notifications_bp.update', notification_id=notification.id, action='delete') }}"
+                      onsubmit="return confirm('هل تريد حذف هذا الإشعار؟');">
+                    <input type="hidden" name="category" value="{{ selected_category }}">
+                    <input type="hidden" name="read" value="{{ selected_read_filter }}">
+                    <button class="notification-button danger" type="submit">حذف</button>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="notification-empty">
+        <i class="fa-regular fa-bell-slash"></i>
+        <h2>لا توجد إشعارات مطابقة</h2>
+        <p>سيتم عرض التنبيهات الجديدة هنا عند توفرها.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

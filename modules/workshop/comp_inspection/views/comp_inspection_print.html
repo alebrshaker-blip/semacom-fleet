@@ -1,0 +1,97 @@
+{% extends "print_base.html" %}
+
+{% block title %}تقرير الفحص الشامل - SEMACOM{% endblock %}
+
+{% block report_title %}تقرير الفحص الشامل والتشغيلي للسيارات والمعدات{% endblock %}
+
+{% block extra_css %}
+<style>
+    .print-info-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 15px;
+        border: 1px solid #000;
+        padding: 10px;
+        font-size: 12.5px;
+        background: #f8fafc;
+    }
+    .print-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 12px;
+    }
+    .print-table th, .print-table td {
+        border: 1px solid #000;
+        padding: 5px 8px;
+        text-align: center;
+    }
+    .print-table th {
+        background: #e2e8f0 !important;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="print-container">
+    <div class="print-info-grid">
+        <div><strong>رقم اللوحة:</strong> {{ inspection.vehicle_plate }}</div>
+        <div><strong>اسم الفاحص:</strong> {{ inspection.inspector_name }}</div>
+        <div><strong>تاريخ الفحص:</strong> {{ inspection.inspection_date }}</div>
+        <div><strong>عداد السيارة الحالي:</strong> {{ inspection.current_mileage or '---' }} كم</div>
+        <div><strong>عداد آخر تغيير زيت:</strong> {{ inspection.oil_change_mileage or '---' }} كم</div>
+        <div><strong>التقييم العام:</strong> {{ inspection.overall_status }}</div>
+    </div>
+
+    <table class="print-table">
+        <thead>
+            <tr>
+                <th style="width: 5%;">م</th>
+                <th style="width: 25%;">المجموعة</th>
+                <th style="width: 35%;">البند المفحوص</th>
+                <th style="width: 15%;">الحالة</th>
+                <th style="width: 20%;">الملاحظات</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td style="font-weight: bold;">{{ item.category }}</td>
+                <td style="text-align: right; padding-right: 8px;">{{ item.item_name }}</td>
+                <td>
+                    <span style="font-weight: bold;">
+                        {% if item.status == 'pass' %}سليم ✅{% elif item.status == 'warning' %}تنبيه ⚠️{% else %}تالف ❌{% endif %}
+                    </span>
+                </td>
+                <td style="text-align: right; padding-right: 5px;">{{ item.item_notes or '---' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if inspection.notes %}
+    <div style="margin-top: 12px; border: 1px solid #000; padding: 8px; font-size: 12px;">
+        <strong>ملاحظات وتوصيات فنية:</strong>
+        <p style="margin: 3px 0 0 0;">{{ inspection.notes }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block footer %}
+<div style="margin-top: 25px;">
+    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 12px; font-weight: bold;">
+        <tr>
+            <td style="border: 1px solid #000; padding: 6px; width: 50%;">توقيع الفاحص الفني الميداني</td>
+            <td style="border: 1px solid #000; padding: 6px; width: 50%;">اعتماد مدير الورشة والصيانة</td>
+        </tr>
+        <tr>
+            <td style="border: 1px solid #000; height: 50px; vertical-align: bottom;">التوقيع: .......................................</td>
+            <td style="border: 1px solid #000; height: 50px; vertical-align: bottom;">التوقيع والختم: .......................................</td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

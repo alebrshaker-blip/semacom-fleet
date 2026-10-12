@@ -1,0 +1,259 @@
+{% extends "print_base.html" %}
+
+{% block title %}تقرير الحوادث المرورية{% endblock %}
+
+{% macro attachment_src(filename) -%}
+{%- if filename -%}
+{%- if filename.startswith('http') or filename.startswith('/') or filename.startswith('data:') -%}
+{{ filename }}
+{%- else -%}
+{{ url_for('static', filename='uploads/accidents/' ~ filename) }}
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro money(value) -%}
+{%- if value is not none and value != '' -%}
+{{ "{:,.2f}".format(value|float) }} ريال
+{%- else -%}
+---
+{%- endif -%}
+{%- endmacro %}
+
+{% macro accident_field_table(accident) %}
+<table class="accident-details-table">
+    <tr>
+        <td class="field-label">رقم الحادث</td>
+        <td class="field-value">{{ accident.get('accident_number') or accident.get('id') or '---' }}</td>
+        <td class="field-label">التاريخ والوقت</td>
+        <td class="field-value">{{ accident.get('accident_datetime') or '---' }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">رقم المركبة</td>
+        <td class="field-value">{{ accident.get('vehicle_plate') or '---' }}</td>
+        <td class="field-label">اسم السائق</td>
+        <td class="field-value">{{ accident.get('driver_name') or '---' }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">نوع الحادث</td>
+        <td class="field-value">{{ accident.get('accident_type') or '---' }}</td>
+        <td class="field-label">جهة البلاغ</td>
+        <td class="field-value">{{ accident.get('issuer') or accident.get('reporting_party') or '---' }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">الموقع</td>
+        <td class="field-value">{{ accident.get('location') or '---' }}</td>
+        <td class="field-label">تكلفة الإصلاح</td>
+        <td class="field-value">{{ money(accident.get('repair_cost')) }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">الحالة</td>
+        <td class="field-value">{{ accident.get('status_type') or accident.get('status') or 'مفتوح' }}</td>
+        <td class="field-label">تاريخ التقفيل</td>
+        <td class="field-value">{{ accident.get('closed_at') or 'غير مقفل' }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">الوصف</td>
+        <td class="field-value full-row-value" colspan="3">{{ accident.get('description') or 'لا يوجد وصف مدون' }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">سبب التسوية</td>
+        <td class="field-value full-row-value" colspan="3">{{ accident.get('closure_reason') or accident.get('settlement_reason') or 'لا توجد بيانات تسوية' }}</td>
+    </tr>
+    <tr>
+        <td class="field-label">الملاحظات</td>
+        <td class="field-value full-row-value" colspan="3">{{ accident.get('closure_notes') or accident.get('notes') or 'لا توجد ملاحظات' }}</td>
+    </tr>
+</table>
+{% endmacro %}
+
+{% macro accident_photos(accident) %}
+{% set acc_src = attachment_src(accident.get('accident_attachment') or accident.get('accident_image')) %}
+{% set acc_src_2 = attachment_src(accident.get('accident_attachment_2')) %}
+<div class="attachments-section">
+    <div class="accident-number-banner">
+        رقم الحادث: {{ accident.get('accident_number') or accident.get('id') or '---' }}
+    </div>
+    <div class="attachments-grid">
+        <div class="attachment-card">
+            <div class="card-title">صورة الحادث الأولى</div>
+            <div class="attachment-img-container">
+                {% if acc_src %}
+                <img src="{{ acc_src }}" alt="صورة الحادث" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <span class="no-image-placeholder" style="display:none;">لا يوجد مرفق حادث</span>
+                {% else %}
+                <span class="no-image-placeholder">لا يوجد مرفق حادث</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="attachment-card">
+            <div class="card-title">صورة الحادث الثانية</div>
+            <div class="attachment-img-container">
+                {% if acc_src_2 %}
+                <img src="{{ acc_src_2 }}" alt="صورة الحادث الثانية" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <span class="no-image-placeholder" style="display:none;">لا توجد صورة ثانية للحادث</span>
+                {% else %}
+                <span class="no-image-placeholder">لا توجد صورة ثانية للحادث</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% block extra_css %}
+<style>
+    .accident-details-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+        font-size: 13px;
+    }
+
+    .accident-details-table td {
+        border: 1px solid #1b365d;
+        padding: 8px 10px;
+        vertical-align: middle;
+    }
+
+    .accident-details-table .field-label {
+        background-color: #f1f5f9;
+        font-weight: bold;
+        color: #1b365d;
+        width: 16%;
+        white-space: nowrap;
+    }
+
+    .accident-details-table .field-value {
+        width: 34%;
+        color: #0f172a;
+    }
+
+    .accident-details-table .full-row-value {
+        width: auto;
+        line-height: 1.6;
+    }
+
+    .accident-number-banner {
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+        color: #1b365d;
+        border: 1px solid #1b365d;
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 16px;
+        background: #f8fafc;
+    }
+
+    .attachments-grid {
+        display: flex;
+        gap: 16px;
+    }
+
+    .attachment-card {
+        flex: 1;
+        border: 1px solid #1b365d;
+        border-radius: 6px;
+        padding: 8px;
+        background: #fafafa;
+    }
+
+    .attachment-card .card-title {
+        font-size: 13px;
+        font-weight: bold;
+        color: #1b365d;
+        text-align: center;
+        margin-bottom: 8px;
+        border-bottom: 1px dashed #cbd5e1;
+        padding-bottom: 6px;
+    }
+
+    .attachment-img-container {
+        min-height: 280px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        overflow: hidden;
+    }
+
+    .attachment-img-container img {
+        width: 100%;
+        height: 320px;
+        object-fit: contain;
+        background: #fff;
+    }
+
+    .no-image-placeholder {
+        color: #94a3b8;
+        font-size: 13px;
+    }
+
+    .empty-print-msg {
+        text-align: center;
+        padding: 40px 20px;
+        color: #64748b;
+        font-size: 16px;
+        font-weight: bold;
+    }
+
+    @media print {
+        .accident-details-table td {
+            padding: 6px 8px !important;
+            font-size: 12px !important;
+        }
+
+        .attachment-img-container img {
+            height: 360px !important;
+        }
+
+        .no-print {
+            display: none !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block pages %}
+{% set sheet_class = 'landscape' if orientation == 'landscape' else 'portrait' %}
+
+{% if accidents %}
+    {% for accident in accidents %}
+    <div class="page-container {{ sheet_class }}">
+        {% with page_document_number = document_number if report_type != 'single' else (accident.get('document_number') or document_number) %}
+            {% include '_print_header.html' %}
+        {% endwith %}
+        <div class="report-title-box">
+            <h2>{{ report_title_text or 'تقرير حادث سير' }}</h2>
+        </div>
+        <div class="report-content">
+            {{ accident_field_table(accident) }}
+        </div>
+    </div>
+
+    {% if report_format == 'illustrated' %}
+    <div class="page-container {{ sheet_class }}">
+        {% with page_document_number = document_number if report_type != 'single' else (accident.get('document_number') or document_number) %}
+            {% include '_print_header.html' %}
+        {% endwith %}
+        <div class="report-title-box">
+            <h2>مرفقات الحادث</h2>
+        </div>
+        <div class="report-content">
+            {{ accident_photos(accident) }}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+{% else %}
+    <div class="page-container {{ sheet_class }}">
+        {% include '_print_header.html' %}
+        <div class="report-title-box">
+            <h2>{{ report_title_text or 'تقرير الحوادث المرورية' }}</h2>
+        </div>
+        <div class="empty-print-msg">لا توجد حوادث مطابقة لخيارات التصفية المحددة.</div>
+    </div>
+{% endif %}
+{% endblock %}

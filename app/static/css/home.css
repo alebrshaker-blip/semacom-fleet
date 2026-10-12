@@ -1,0 +1,53 @@
+body {
+    font-family: "Cairo", sans-serif;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 0;
+}
+
+.header {
+    background: #004d40;
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+.logo {
+    width: 80px;
+    height: 80px;
+}
+
+.company-name {
+    margin: 10px 0 0 0;
+    font-size: 28px;
+}
+
+.company-info {
+    margin: 5px 0;
+    font-size: 16px;
+}
+
+.main-menu {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    padding: 20px;
+}
+
+.menu-item {
+    background: white;
+    padding: 20px;
+    text-align: center;
+    border-radius: 10px;
+    font-size: 18px;
+    text-decoration: none;
+    color: #004d40;
+    font-weight: bold;
+    border: 2px solid #004d40;
+    transition: 0.3s;
+}
+
+.menu-item:hover {
+    background: #004d40;
+    color: white;
+}

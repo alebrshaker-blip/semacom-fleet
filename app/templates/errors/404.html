@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}الصفحة غير موجودة{% endblock %}
+
+{% block content %}
+<section class="card text-center p-4" role="status">
+    <div class="card-body">
+        <h1>الصفحة غير موجودة</h1>
+        <p>تعذر العثور على الصفحة المطلوبة. تحقق من الرابط أو عد إلى الصفحة الرئيسية.</p>
+        <a class="btn btn-primary" href="{{ url_for('home') }}">العودة إلى الرئيسية</a>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 1100px; margin: 0 auto;" dir="rtl">
+    <div class="card shadow-sm border-0 rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3 px-4">
+            <h5 class="mb-0 fw-bold">
+                🛠️ إضافة أمر صيانة جديد (صيانة داخلية)
+            </h5>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-primary fw-semibold px-3 py-2" style="font-size: 0.85rem;">
+                    🔢 رقم الأمر: توليد تلقائي
+                </span>
+                <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type='internal') }}" class="btn btn-outline-light btn-sm fw-semibold">
+                    ↩ رجوع للقائمة
+                </a>
+            </div>
+        </div>
+
+        <div class="card-body p-4">
+            <form method="POST" action="">
+
+                <!-- 1. اختيار المركبة (vehicle_id) ورقم اللوحة -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">كود / اختيار المركبة (vehicle_id) <span class="text-danger">*</span></label>
+                        <select name="vehicle_id" id="vehicleCodeSelect" class="form-select" required onchange="syncByVehicleCode()">
+                            <option value="">-- اختر المركبة --</option>
+                            {% for v in vehicles %}
+                                {% set v_id = v.get('id') or v.get('vehicle_code') or '' %}
+                                {% set v_code = v.get('vehicle_code') or '' %}
+                                {% set v_plate = v.get('plate_number') or '' %}
+                                <option value="{{ v_id }}" data-plate="{{ v_plate }}" data-code="{{ v_code }}">
+                                    {{ v_code }}{% if v_plate %} - (لوحة: {{ v_plate }}){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">رقم اللوحة (تحديث متزامن)</label>
+                        <select id="plateNumberSelect" class="form-select" onchange="syncByPlateNumber()">
+                            <option value="">-- اختر رقم اللوحة --</option>
+                            {% for v in vehicles %}
+                                {% set v_id = v.get('id') or v.get('vehicle_code') or '' %}
+                                {% set v_code = v.get('vehicle_code') or '' %}
+                                {% set v_plate = v.get('plate_number') or '' %}
+                                <option value="{{ v_id }}" data-code-val="{{ v_id }}">
+                                    {{ v_plate }}{% if v_code %} - (كود: {{ v_code }}){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 2. نوع الصيانة - تاريخ الأمر - درجة الخطورة -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">نوع الصيانة (maintenance_type) <span class="text-danger">*</span></label>
+                        <select name="maintenance_type" class="form-select" required>
+                            <option value="تصحيحية" selected>تصحيحية</option>
+                            <option value="وقائية">وقائية</option>
+                            <option value="طارئة">طارئة</option>
+                            <option value="دورية">دورية</option>
+                            <option value="تعديل">تعديل</option>
+                            <option value="أخرى">أخرى</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">تاريخ أمر العمل (order_date) <span class="text-danger">*</span></label>
+                        <input type="datetime-local" name="order_date" id="orderDateInput" class="form-control" required>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">درجة الخطورة (severity)</label>
+                        <select name="severity" class="form-select">
+                            <option value="منخفضة">منخفضة</option>
+                            <option value="متوسطة" selected>متوسطة</option>
+                            <option value="عالية">عالية</option>
+                            <option value="خطيرة">خطيرة</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 3. الفني المستلم - الوقت المتوقع للإنجاز -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">الفني المستلم (technician_name)</label>
+                        <select name="technician_name" class="form-select">
+                            <option value="">-- اختر الفني --</option>
+                            {% for tech in team_members %}
+                                {% set t_name = tech.get('name') or tech %}
+                                {% set t_job = tech.get('job_title') or '' %}
+                                <option value="{{ t_name }}">
+                                    {{ t_name }}{% if t_job %} - ({{ t_job }}){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">الوقت المتوقع للإنجاز (expected_completion_time)</label>
+                        <input type="text" name="expected_completion_time" class="form-control" placeholder="مثال: 3 ساعات / يومين">
+                    </div>
+                </div>
+
+                <!-- 4. وصف العطل - سبب العطل -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">وصف العطل (fault_description) <span class="text-danger">*</span></label>
+                        <textarea name="fault_description" class="form-control" rows="3" required placeholder="وصف تفصيلي للخلل..."></textarea>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">سبب العطل المتوقع (fault_cause)</label>
+                        <textarea name="fault_cause" class="form-control" rows="3" placeholder="تحديد سبب العطل إن وجد..."></textarea>
+                    </div>
+                </div>
+
+                <!-- زر الإضافة -->
+                <div class="text-end mt-4 pt-3 border-top">
+                    <button type="submit" class="btn btn-success px-5 py-2 fw-bold shadow-sm">
+                        💾 حفظ وتوليد أمر الصيانة
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var dateInput = document.getElementById('orderDateInput');
+    if (dateInput && !dateInput.value) {
+        var now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        dateInput.value = now.toISOString().slice(0, 16);
+    }
+});
+
+function syncByVehicleCode() {
+    var codeSelect = document.getElementById('vehicleCodeSelect');
+    var plateSelect = document.getElementById('plateNumberSelect');
+    if (codeSelect && plateSelect) {
+        plateSelect.value = codeSelect.value;
+    }
+}
+
+function syncByPlateNumber() {
+    var codeSelect = document.getElementById('vehicleCodeSelect');
+    var plateSelect = document.getElementById('plateNumberSelect');
+    if (codeSelect && plateSelect) {
+        codeSelect.value = plateSelect.value;
+    }
+}
+</script>
+{% endblock %}

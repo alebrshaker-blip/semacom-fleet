@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}إضافة سجل فحص دوري جديد - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container { max-width: 900px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 25px; }
+    .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #dee2e6; padding-bottom: 15px; }
+    h2 { color: #2c3e50; margin: 0; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #2c3e50; font-size: 14px; }
+    .form-control, .form-select { width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+    .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn-primary { background-color: #0d6efd; color: white; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #5c636a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-header">
+        <h2>إضافة سجل فحص دوري جديد</h2>
+        <a href="{{ url_for('inspection_bp.index') }}" class="btn btn-secondary">العودة للقائمة</a>
+    </div>
+
+    <!-- تم إضافة enctype لضمان رفع وثائق الفحص بشكل صحيح -->
+    <form action="{{ url_for('inspection_bp.add_post') }}" method="POST" enctype="multipart/form-data">
+        <div class="form-row">
+            <div class="form-group">
+                <label>رقم لوحة المركبة <span style="color: red;">*</span></label>
+                <select name="vehicle_plate" class="form-select" required>
+                    <option value="" disabled selected>اختر المركبة...</option>
+                    {% for v in vehicles %}
+                    <option value="{{ v.plate_number }}">{{ v.plate_number }} {% if v.vehicle_code %}(- {{ v.vehicle_code }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>نتيجة الفحص <span style="color: red;">*</span></label>
+                <select name="result_status" class="form-select" required>
+                    <option value="" disabled selected>اختر النتيجة...</option>
+                    <option value="ناجح">ناجح (Pass)</option>
+                    <option value="راسب">راسب (Fail)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>تاريخ الفحص <span style="color: red;">*</span></label>
+                <input type="date" name="inspection_date" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>تاريخ انتهاء الفحص <span style="color: red;">*</span></label>
+                <input type="date" name="expiry_date" class="form-control" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>اسم الفاحص / الجهة المسؤولة</label>
+                <input type="text" name="inspection_center" class="form-control" placeholder="اسم المحطة أو الفني المسؤول">
+            </div>
+            <div class="form-group">
+                <label>تكلفة الفحص (ر.س)</label>
+                <input type="number" name="inspection_cost" class="form-control" min="0" step="0.01" value="0">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>إرفاق وثيقة الفحص (صورة أو PDF)</label>
+                <input type="file" name="attachment" class="form-control" accept=".pdf,image/*">
+            </div>
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <input type="text" name="notes" class="form-control">
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #dee2e6; padding-top: 15px;">
+            <button type="submit" class="btn btn-primary">حفظ السجل</button>
+            <a href="{{ url_for('inspection_bp.index') }}" class="btn btn-secondary">إلغاء</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

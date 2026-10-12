@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if report_key == 'employees' %}تقارير الموظفين
+{% elif report_key == 'insurance' %}تقارير التأمينات
+{% elif report_key == 'inspections' %}تقارير الفحص الدوري
+{% else %}تقارير المخالفات المرورية{% endif %}
+{% endblock %}
+
+{% block content %}
+{% set labels = {
+    'employees': {'all': 'الكل', 'single': 'موظف محدد'},
+    'insurance': {'all': 'الكل', 'single': 'تأمين مركبة محددة', 'active': 'التأمينات السارية', 'expired': 'التأمينات المنتهية', 'near_expiry': 'المقاربة على الانتهاء'},
+    'inspections': {'all': 'الكل', 'single': 'فحص محدد', 'active': 'الفحوصات السارية', 'expired': 'الفحوصات المنتهية', 'near_expiry': 'المقاربة على الانتهاء'},
+    'violations': {'all': 'الكل', 'vehicle': 'فلترة بالمركبة', 'driver': 'فلترة بالسائق', 'month': 'خلال شهر', 'year': 'خلال سنة', 'range': 'خلال فترة محددة', 'single': 'مخالفة محددة'}
+} %}
+{% set module_links = {
+    'employees': url_for('workshop.team.team_index'),
+    'insurance': url_for('insurance_bp.index'),
+    'inspections': url_for('inspection_bp.index'),
+    'violations': url_for('violations.index')
+} %}
+<div class="container py-4" dir="rtl" style="max-width: 1000px;">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">{{ self.title() }}</h2>
+            <p class="text-muted mb-0">اختر نوع التقرير والبيانات المطلوبة، ثم اعرض التقرير للطباعة.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ module_links[report_key] }}">العودة إلى السجلات</a>
+    </div>
+    <form method="GET" action="{{ url_for('reports.data_reports', report_key=report_key) }}" target="_blank" class="card shadow-sm">
+        <input type="hidden" name="view" value="print">
+        <div class="card-body">
+            <label class="form-label fw-bold" for="reportType">نوع التقرير</label>
+            <select class="form-select mb-3" name="report_type" id="reportType" required>
+                {% for key, label in labels[report_key].items() %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            {% if report_key == 'employees' %}
+            <div class="report-filter" data-filter="single">
+                <label class="form-label" for="memberId">الموظف</label>
+                <select class="form-select" name="member_id" id="memberId">
+                    {% for item in options %}
+                    <option value="{{ item.id }}">{{ item.full_name or ('موظف ' ~ item.id) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% elif report_key == 'insurance' %}
+            <div class="report-filter" data-filter="single">
+                <label class="form-label" for="policyId">التأمين</label>
+                <select class="form-select" name="policy_id" id="policyId">
+                    {% for item in options %}
+                    <option value="{{ item.id }}">{{ item.vehicle_plate }} — {{ item.policy_number }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% elif report_key == 'inspections' %}
+            <div class="report-filter" data-filter="single">
+                <label class="form-label" for="inspectionId">سجل الفحص</label>
+                <select class="form-select" name="inspection_id" id="inspectionId">
+                    {% for item in options %}
+                    <option value="{{ item.id }}">{{ item.vehicle_plate }} — {{ item.inspection_date }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% else %}
+            <div class="report-filter" data-filter="vehicle">
+                <label class="form-label" for="vehiclePlate">المركبة</label>
+                <select class="form-select" name="vehicle_plate" id="vehiclePlate">
+                    {% for plate in options.vehicles %}<option value="{{ plate }}">{{ plate }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="report-filter" data-filter="driver">
+                <label class="form-label" for="driverName">السائق</label>
+                <select class="form-select" name="driver_name" id="driverName">
+                    {% for driver in options.drivers %}<option value="{{ driver }}">{{ driver }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="report-filter" data-filter="month">
+                <label class="form-label" for="month">الشهر</label>
+                <input class="form-control" type="month" name="month" id="month">
+            </div>
+            <div class="report-filter" data-filter="year">
+                <label class="form-label" for="year">السنة</label>
+                <input class="form-control" type="number" name="year" id="year" min="2000" max="2200">
+            </div>
+            <div class="report-filter" data-filter="range">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label" for="dateFrom">من تاريخ</label>
+                        <input class="form-control" type="date" name="date_from" id="dateFrom">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="dateTo">إلى تاريخ</label>
+                        <input class="form-control" type="date" name="date_to" id="dateTo">
+                    </div>
+                </div>
+            </div>
+            <div class="report-filter" data-filter="single">
+                <label class="form-label" for="violationId">رقم المخالفة</label>
+                <select class="form-select" name="violation_id" id="violationId">
+                    {% for item in options.violations %}<option value="{{ item.id }}">{{ item.violation_number or item.id }} — {{ item.vehicle_plate }} — {{ item.violation_datetime }}</option>{% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2">
+            <button class="btn btn-primary" type="submit">معاينة التقرير</button>
+        </div>
+    </form>
+</div>
+<script>
+    const reportType = document.getElementById('reportType');
+    const filters = document.querySelectorAll('.report-filter');
+    function updateReportFilters() {
+        filters.forEach(filter => {
+            filter.hidden = filter.dataset.filter !== reportType.value;
+            filter.querySelectorAll('select, input').forEach(input => {
+                input.disabled = filter.hidden;
+                input.required = !filter.hidden && !(filter.dataset.filter === 'range' && input.type === 'date');
+            });
+        });
+    }
+    reportType.addEventListener('change', updateReportFilters);
+    document.querySelector('form').addEventListener('submit', event => {
+        if (reportType.value === 'range' &&
+            !document.getElementById('dateFrom').value &&
+            !document.getElementById('dateTo').value) {
+            event.preventDefault();
+            alert('أدخل تاريخ بداية أو نهاية للفترة.');
+        }
+    });
+    updateReportFilters();
+</script>
+{% endblock %}

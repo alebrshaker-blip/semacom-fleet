@@ -1,0 +1,56 @@
+{% extends "print_base.html" %}
+
+{% block title %}{{ report_title_text or 'تقرير السائقين' }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .driver-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    .driver-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; }
+    .driver-report-table th, .driver-report-table td {
+        border: 1px solid #475569;
+        padding: 6px;
+        text-align: center;
+        overflow-wrap: anywhere;
+    }
+    .driver-report-table th { background: #e9eff5; font-size: 11px; }
+    .driver-report-table td { font-size: 10px; }
+    .driver-report-table thead { display: table-header-group; }
+    .driver-report-table tr { break-inside: avoid; }
+    @media print {
+        .driver-report-table th, .driver-report-table td { padding: 4px; }
+    }
+</style>
+{% endblock %}
+
+{% block pages %}
+<section class="page-container landscape">
+    {% include '_print_header.html' %}
+    <h2 class="driver-report-title">{{ report_title_text }}</h2>
+    {% if rows %}
+    <div class="report-content">
+        <table class="driver-report-table">
+            <thead>
+                <tr>
+                    <th>م</th>
+                    {% for column in columns %}
+                    <th>{{ column.label }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    {% for column in columns %}
+                    <td>{{ row.get(column.key, '—') }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="report-content text-center text-muted py-5">لا توجد سجلات مطابقة لهذا التقرير.</div>
+    {% endif %}
+</section>
+{% endblock %}

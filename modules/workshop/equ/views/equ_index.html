@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}أصول ومعدات الورشة - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .store-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+    h2 { color: #2c3e50; margin: 0; }
+    .card { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    .table th, .table td { padding: 12px; text-align: right; border-bottom: 1px solid #dee2e6; }
+    .table th { background-color: #f8f9fa; color: #2c3e50; }
+    .btn-primary { background-color: #0d6efd; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold; border: none; cursor: pointer; display: inline-block; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-secondary { background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold; display: inline-block; }
+    .badge { padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .badge-success { background-color: #d1e7dd; color: #0f5132; }
+    .badge-warning { background-color: #fff3cd; color: #664d03; }
+    .badge-danger { background-color: #f8d7da; color: #842029; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px; margin: 0 auto; padding: 20px; direction: rtl;">
+    
+    <div class="store-header">
+        <h2><i class="fa-solid fa-screwdriver-wrench ml-2"></i> إدارة أصول ومعدات الورشة</h2>
+        <div>
+            <a href="{{ url_for('workshop.equ_bp.add_item') }}" class="btn-primary"><i class="fa-solid fa-plus ml-1"></i> إضافة أصل / عدة جديدة</a>
+            <a href="{{ url_for('workshop.index') }}" class="btn-secondary"><i class="fa-solid fa-arrow-right ml-1"></i> عودة للورشة</a>
+        </div>
+    </div>
+
+    <!-- جدول عرض الأصول -->
+    <div class="card">
+        <h3 style="margin-top: 0; color: #2c3e50; font-size: 18px;">قائمة المعدات، الأجهزة، والعدد المسجلة</h3>
+        
+        {% if assets %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>كود الأصل</th>
+                    <th>اسم المعدة / العدة</th>
+                    <th>التصنيف</th>
+                    <th>الحالة التشغيلية</th>
+                    <th>الموقع داخل الورشة</th>
+                    <th>الحالة الفنية</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for asset in assets %}
+                <tr>
+                    <td><code>{{ asset.asset_code }}</code></td>
+                    <td><strong>{{ asset.name }}</strong></td>
+                    <td>{{ asset.category }}</td>
+                    <td>
+                        {% if asset.status == 'متاح' %}
+                            <span class="badge badge-success">متاح</span>
+                        {% elif asset.status == 'قيد الاستخدام' %}
+                            <span class="badge badge-warning">قيد الاستخدام</span>
+                        {% else %}
+                            <span class="badge badge-danger">{{ asset.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ asset.location }}</td>
+                    <td>{{ asset.condition_status }}</td>
+                    <td>
+                        <a href="#" style="background: #0d6efd; color: white; padding: 5px 10px; border-radius: 3px; text-decoration: none;" title="تعديل"><i class="fa-solid fa-pen"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="text-align: center; color: #6c757d; padding: 30px; margin: 0;">لا توجد أصول أو عدد مسجلة للورشة حالياً. قم بإضافة أصل جديد للبدء.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,516 @@
+{% extends "print_base.html" %}
+
+{% block title %}تقرير حادث سير - {{ accident.accident_number or accident.id or 'جديد' }}{% endblock %}
+
+{% block report_title %}تقرير حادث سير{% endblock %}
+
+{% block document_number %}{% endblock %}
+{% block ref_number %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ---------------------------------------------------------
+       تنسيقات الشاشة العامة (Screen View)
+       --------------------------------------------------------- */
+    .report-main-container {
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+    }
+
+    /* جدول البيانات المتراص */
+    .accident-details-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 8px;
+        font-size: 12.5px;
+    }
+
+    .accident-details-table td, 
+    .accident-details-table th {
+        border: 1px solid #1b365d;
+        padding: 5px 8px;
+        vertical-align: middle;
+    }
+
+    .accident-details-table .field-label {
+        background-color: #f1f5f9;
+        font-weight: bold;
+        color: #1b365d;
+        width: 15%;
+        text-align: right;
+    }
+
+    .accident-details-table .field-value {
+        width: 35%;
+        color: #0f172a;
+    }
+
+    .accident-details-table .full-row-value {
+        width: 85%;
+    }
+
+    /* قسم الملاحظات */
+    .notes-section {
+        margin-bottom: 8px;
+    }
+
+    .section-header-title {
+        font-size: 12.5px;
+        font-weight: bold;
+        color: #1b365d;
+        margin-bottom: 4px;
+    }
+
+    .notes-editor-box {
+        border: 1px solid #1b365d;
+        border-radius: 4px;
+        min-height: 35px;
+        padding: 5px 8px;
+        font-size: 12px;
+        background-color: #ffffff;
+        line-height: 1.3;
+    }
+
+    /* قسم المرفقات */
+    .attachments-section {
+        margin-bottom: 5px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .attachments-grid {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+    }
+
+    .attachment-card {
+        flex: 1;
+        border: 1px solid #1b365d;
+        border-radius: 4px;
+        padding: 6px;
+        text-align: center;
+        background-color: #fafafa;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .attachment-card .card-title {
+        font-size: 11.5px;
+        font-weight: bold;
+        color: #1b365d;
+        margin-bottom: 4px;
+        border-bottom: 1px dashed #cbd5e1;
+        padding-bottom: 2px;
+    }
+
+    .attachment-img-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+        overflow: hidden;
+        padding: 0;
+        height: 250px;
+    }
+
+    .attachment-img-container img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .no-image-placeholder {
+        font-size: 11px;
+        color: #94a3b8;
+    }
+
+    .upload-action-box {
+        margin-top: 5px;
+    }
+
+    .btn-upload-label {
+        display: inline-block;
+        background-color: #2563eb;
+        color: #ffffff;
+        padding: 3px 8px;
+        font-size: 10.5px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .file-input-hidden {
+        display: none;
+    }
+
+    /* الترويسة المكررة للورقة الثانية - مخفية في الشاشة والوضع العمودي */
+    .landscape-page2-header {
+        display: none;
+    }
+
+    /* ========================================================= */
+    /* 🖨️ قواعد الطباعة للراسي والأفقي                           */
+    /* ========================================================= */
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            height: auto !important;
+        }
+
+        .report-main-container {
+            display: block !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* ---------------------------------------------------------
+           1. الوضع العمودي / الرأسي (Portrait): ورقة A4 واحدة فقط
+           --------------------------------------------------------- */
+        body.portrait, body:not(.landscape) {
+            @page {
+                size: A4 portrait;
+                margin: 4mm 6mm;
+            }
+        }
+
+        body.portrait .report-main-container,
+        body:not(.landscape) .report-main-container {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+        }
+
+        body.portrait .page-break-landscape,
+        body:not(.landscape) .page-break-landscape {
+            display: block !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+            margin-bottom: 4px !important;
+        }
+
+        body.portrait .accident-details-table td,
+        body:not(.landscape) .accident-details-table td,
+        body.portrait .accident-details-table th,
+        body:not(.landscape) .accident-details-table th {
+            padding: 2px 5px !important;
+            font-size: 10px !important;
+            line-height: 1.2 !important;
+        }
+
+        body.portrait .notes-editor-box,
+        body:not(.landscape) .notes-editor-box {
+            min-height: 20px !important;
+            padding: 2px 5px !important;
+            font-size: 10px !important;
+        }
+
+        body.portrait .attachments-section,
+        body:not(.landscape) .attachments-section {
+            display: block !important;
+            page-break-before: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+            margin-bottom: 0 !important;
+        }
+
+        body.portrait .attachment-img-container,
+        body:not(.landscape) .attachment-img-container {
+            height: 230px !important;
+            padding: 0 !important;
+        }
+
+        body.portrait .attachment-img-container img,
+        body:not(.landscape) .attachment-img-container img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+
+        body.portrait .landscape-page2-header,
+        body:not(.landscape) .landscape-page2-header {
+            display: none !important;
+        }
+
+        /* ---------------------------------------------------------
+           2. الوضع الأفقي (Landscape): ورقتان بالضبط مع الترويسة لكليتهما
+           --------------------------------------------------------- */
+        body.landscape {
+            @page {
+                size: A4 landscape;
+                margin: 5mm 8mm;
+            }
+        }
+
+        /* الورقة الأولى أفقياً: تضم الترويسة الأصلية والجدول والملاحظات وتكسر الصفحة أوتوماتيكياً */
+        body.landscape .page-break-landscape {
+            display: block !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            margin-bottom: 0 !important;
+        }
+
+        body.landscape .accident-details-table {
+            margin-bottom: 12px !important;
+        }
+
+        body.landscape .accident-details-table td,
+        body.landscape .accident-details-table th {
+            padding: 5px 8px !important;
+            font-size: 12px !important;
+        }
+
+        body.landscape .notes-editor-box {
+            min-height: 70px !important; /* توسيع الملاحظات لملء الورقة الأولى أفقياً بشكل أنيق */
+            font-size: 11.5px !important;
+            padding: 6px 8px !important;
+        }
+
+        /* الورقة الثانية أفقياً: تبدأ بكسر الصفحة وتحتوي على الترويسة المكررة والمرفقات */
+        body.landscape .attachments-section {
+            display: block !important;
+            page-break-before: always !important;
+            break-before: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+            margin-bottom: 0 !important;
+        }
+
+        body.landscape .landscape-page2-header {
+            display: block !important;
+            margin-bottom: 10px !important;
+        }
+
+        body.landscape .attachments-grid {
+            display: flex !important;
+            gap: 15px !important;
+            width: 100% !important;
+        }
+
+        body.landscape .attachment-card {
+            flex: 1 !important;
+            padding: 6px !important;
+            border: 1px solid #1b365d !important;
+            background-color: #ffffff !important;
+        }
+
+        body.landscape .attachment-img-container {
+            height: 360px !important; /* تكبير واسع لتعبئة الورقة الثانية الأفقية بالكامل */
+            width: 100% !important;
+            padding: 0 !important;
+        }
+
+        body.landscape .attachment-img-container img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-main-container">
+
+    <!-- جلب مسارات الصور من قاعدة البيانات -->
+    {% set acc_filename = accident.accident_attachment or accident.accident_image %}
+    {% set set_filename = accident.payment_attachment or accident.settlement_image %}
+
+    {% if acc_filename %}
+        {% set acc_src = acc_filename if (acc_filename.startswith('http') or acc_filename.startswith('/') or acc_filename.startswith('data:')) else url_for('static', filename='uploads/accidents/' ~ acc_filename) %}
+    {% else %}
+        {% set acc_src = '' %}
+    {% endif %}
+
+    {% if set_filename %}
+        {% set set_src = set_filename if (set_filename.startswith('http') or set_filename.startswith('/') or set_filename.startswith('data:')) else url_for('static', filename='uploads/accidents/' ~ set_filename) %}
+    {% else %}
+        {% set set_src = '' %}
+    {% endif %}
+
+    <!-- الورقة الأولى (في الوضع الأفقي) / الصفحة الكاملة (في الوضع العمودي) -->
+    <div class="page-break-landscape">
+        <!-- 1. جدول بيانات الحادث -->
+        <table class="accident-details-table">
+            <tr>
+                <td class="field-label">رقم الحادث:</td>
+                <td class="field-value" contenteditable="true">{{ accident.accident_number or accident.id or '---' }}</td>
+                
+                <td class="field-label">التاريخ والوقت:</td>
+                <td class="field-value" contenteditable="true">{{ accident.accident_datetime or '---' }}</td>
+            </tr>
+            <tr>
+                <td class="field-label">رقم المركبة:</td>
+                <td class="field-value" contenteditable="true">{{ accident.vehicle_plate or '---' }}</td>
+                
+                <td class="field-label">اسم السائق:</td>
+                <td class="field-value" contenteditable="true">{{ accident.driver_name or '---' }}</td>
+            </tr>
+            <tr>
+                <td class="field-label">نوع الحادث:</td>
+                <td class="field-value" contenteditable="true">{{ accident.accident_type or '---' }}</td>
+                
+                <td class="field-label">جهة البلاغ:</td>
+                <td class="field-value" contenteditable="true">{{ accident.issuer or accident.reporting_party or '---' }}</td>
+            </tr>
+            <tr>
+                <td class="field-label">الموقع:</td>
+                <td class="field-value" contenteditable="true">{{ accident.location or '---' }}</td>
+                
+                <td class="field-label">تكلفة الإصلاح:</td>
+                <td class="field-value" contenteditable="true">
+                    {% if accident.repair_cost %}
+                        {{ "{:,.2f}".format(accident.repair_cost) }} ريال
+                    {% else %}
+                        ---
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="field-label">الحالة:</td>
+                <td class="field-value" contenteditable="true">{{ accident.status_type or accident.status or 'مفتوح' }}</td>
+                
+                <td class="field-label">تاريخ التقفيل:</td>
+                <td class="field-value" contenteditable="true">{{ accident.closed_at or 'غير مقفل' }}</td>
+            </tr>
+            <tr>
+                <td class="field-label">الوصف:</td>
+                <td class="field-value full-row-value" colspan="3" contenteditable="true">
+                    {{ accident.description or 'لا يوجد وصف مدون' }}
+                </td>
+            </tr>
+            <tr>
+                <td class="field-label">سبب التسوية:</td>
+                <td class="field-value full-row-value" colspan="3" contenteditable="true">
+                    {{ accident.closure_reason or accident.settlement_reason or 'لا توجد بيانات تسوية' }}
+                </td>
+            </tr>
+        </table>
+
+        <!-- 2. الملاحظات -->
+        <div class="notes-section">
+            <div class="section-header-title">📌 الملاحظات:</div>
+            <div class="notes-editor-box" contenteditable="true" placeholder="ملاحظات التقرير...">
+                {{ accident.closure_notes or accident.notes or '' }}
+            </div>
+        </div>
+    </div>
+
+    <!-- الورقة الثانية (في الوضع الأفقي) -->
+    <div class="attachments-section">
+        
+        <!-- الترويسة العامة الكاملة للورقة الثانية أفقياً -->
+        <div class="landscape-page2-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1b365d; padding-bottom: 6px; margin-bottom: 6px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="{{ url_for('static', filename='assets/img/logo.png') }}" alt="شعار الشركة" style="max-height: 44px; object-fit: contain;" onerror="this.style.display='none';">
+                    <div>
+                        <h3 style="margin: 0; color: #1b365d; font-size: 14px;">الشركة السعودية للكهرباء والتبريد للاستثمار (سيماكم)</h3>
+                        <p style="margin: 2px 0 0 0; font-size: 10px; color: #555;">SAUDI ELECTRO MECHANICAL & AIR CONDITIONING INVESTMENT CO. LTD.</p>
+                    </div>
+                </div>
+                <div style="text-align: left; font-size: 11px; color: #1b365d; font-weight: bold; line-height: 1.4;">
+                    <div>الرقم المرجعي: ACC-{{ accident.accident_number or accident.id or '000' }}</div>
+                    <div>التاريخ: {{ report_date_gregorian or '' }}م | {{ report_date_hijri or '' }}هـ</div>
+                </div>
+            </div>
+            <div style="text-align: center; margin-bottom: 8px;">
+                <h4 style="margin: 0; font-size: 13.5px; color: #1b365d; font-weight: bold;">تقرير حادث سير - مرفقات الصور</h4>
+            </div>
+        </div>
+
+        <div class="section-header-title">🖼️ مرفقات الحادث:</div>
+        <div class="attachments-grid">
+            
+            <!-- مرفق الحادث -->
+            <div class="attachment-card">
+                <div class="card-title">مرفق الحادث</div>
+                <div class="attachment-img-container">
+                    <img id="accident_img_preview" 
+                         src="{{ acc_src }}" 
+                         alt="صورة الحادث"
+                         {% if not acc_src %}style="display:none;"{% endif %}
+                         onerror="this.style.display='none'; document.getElementById('accident_placeholder').style.display='block';">
+                    
+                    <span id="accident_placeholder" 
+                          class="no-image-placeholder" 
+                          {% if acc_src %}style="display:none;"{% endif %}>
+                        لا يوجد مرفق حادث
+                    </span>
+                </div>
+                <div class="upload-action-box no-print">
+                    <label class="btn-upload-label" for="accident_file_input">
+                        📂 {{ 'تغيير صورة الحادث' if acc_src else 'إضافة صورة الحادث' }}
+                    </label>
+                    <input type="file" id="accident_file_input" class="file-input-hidden" accept="image/*" onchange="previewSelectedImage(this, 'accident_img_preview', 'accident_placeholder')">
+                </div>
+            </div>
+
+            <!-- مرفق التسوية -->
+            <div class="attachment-card">
+                <div class="card-title">مرفق التسوية</div>
+                <div class="attachment-img-container">
+                    <img id="settlement_img_preview" 
+                         src="{{ set_src }}" 
+                         alt="صورة التسوية"
+                         {% if not set_src %}style="display:none;"{% endif %}
+                         onerror="this.style.display='none'; document.getElementById('settlement_placeholder').style.display='block';">
+                    
+                    <span id="settlement_placeholder" 
+                          class="no-image-placeholder" 
+                          {% if set_src %}style="display:none;"{% endif %}>
+                        لا يوجد مرفق تسوية
+                    </span>
+                </div>
+                <div class="upload-action-box no-print">
+                    <label class="btn-upload-label" for="settlement_file_input">
+                        📂 {{ 'تغيير صورة التسوية' if set_src else 'إضافة صورة التسوية' }}
+                    </label>
+                    <input type="file" id="settlement_file_input" class="file-input-hidden" accept="image/*" onchange="previewSelectedImage(this, 'settlement_img_preview', 'settlement_placeholder')">
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block signatures %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block extra_js %}
+<script>
+    function previewSelectedImage(input, imgId, placeholderId) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById(imgId);
+                const placeholder = document.getElementById(placeholderId);
+                
+                if (img) {
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                }
+                if (placeholder) {
+                    placeholder.style.display = 'none';
+                }
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+</script>
+{% endblock %}

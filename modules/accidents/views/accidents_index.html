@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة الحوادث المرورية - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    h2 { color: #2c3e50; margin: 0; }
+    .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn-primary { background-color: #0d6efd; color: white; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-success { background-color: #198754; color: white; }
+    .btn-success:hover { background-color: #157347; }
+    .btn-danger { background-color: #dc3545; color: white; }
+    .btn-danger:hover { background-color: #bb2d3b; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #5c636a; }
+    .btn-info { background-color: #0dcaf0; color: #000; }
+    .btn-info:hover { background-color: #31d2f2; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 20px; }
+    .card-body { padding: 20px; }
+    .table-responsive { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+    th, td { padding: 10px 12px; border: 1px solid #dee2e6; vertical-align: middle; white-space: nowrap; }
+    thead { background-color: #cfe2ff; color: #084298; }
+    tbody tr:nth-child(even) { background-color: #f8f9fa; }
+    tbody tr:hover { background-color: #f1f3f5; }
+    .text-muted { color: #6c757d; padding: 20px; text-align: center; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+    .tab-btn { padding: 8px 20px; border-radius: 4px; text-decoration: none; font-weight: bold; border: 1px solid #ced4da; background: #f8f9fa; color: #333; }
+    .tab-btn.active { background: #0d6efd; color: white; border-color: #0d6efd; }
+    .drop-zone { border: 2px dashed #0d6efd; padding: 15px; text-align: center; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
+    .drop-zone:hover { background: #e9ecef; }
+    .search-bar { display: flex; gap: 10px; margin-bottom: 15px; }
+    .search-bar input { flex: 1; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1400px; margin: 0 auto;">
+    <div class="header-flex">
+        <h2><i class="fa-solid fa-car-burst"></i> إدارة الحوادث المرورية</h2>
+        <div style="display: flex; gap: 10px;">
+            <a href="/reports/accidents" class="btn btn-info"><i class="fa-solid fa-file-invoice"></i> تقارير الحوادث</a>
+            <a href="/accidents/export?tab={{ active_tab }}" class="btn btn-success"><i class="fa-solid fa-file-excel"></i> تصدير إلى Excel</a>
+            <a href="/accidents/add" class="btn btn-primary">تسجيل حادث جديد +</a>
+        </div>
+    </div>
+
+    <!-- شريط البحث والفلترة -->
+    <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="بحث متقدم (برقم اللوحة، اسم السائق، رقم الحادث، نوعه)..." onkeyup="filterTable()">
+        <button type="button" class="btn btn-primary" onclick="filterTable()"><i class="fa-solid fa-search"></i> بحث</button>
+        <button type="button" class="btn btn-secondary" onclick="resetSearch()"><i class="fa-solid fa-rotate-right"></i> إعادة تعيين</button>
+    </div>
+
+    <!-- تبويبات التنقل بين السارية والمؤرشفة -->
+    <div class="tabs">
+        <a href="/accidents?tab=active" class="tab-btn {% if active_tab == 'active' %}active{% endif %}">
+            <i class="fa-solid fa-folder-open"></i> الحوادث السارية (جاري المتابعة)
+        </a>
+        <a href="/accidents?tab=closed" class="tab-btn {% if active_tab == 'closed' %}active{% endif %}">
+            <i class="fa-solid fa-box-archive"></i> الحوادث المؤرشفة (المقفل / المسواة)
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="accidentsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>رقم الحادث</th>
+                            <th>المركبة</th>
+                            <th>السائق</th>
+                            <th>نوع الحادث</th>
+                            <th>جهة البلاغ</th>
+                            <th>الموقع</th>
+                            <th>التاريخ والوقت</th>
+                            <th>تكلفة الإصلاح</th>
+                            <th>الحالة</th>
+                            <th>الوصف</th>
+                            <th>صورة الحادث الأولى</th>
+                            <th>صورة الحادث الثانية</th>
+                            {% if active_tab == 'closed' %}
+                            <th>سبب التسوية</th>
+                            <th>مرفق التسوية</th>
+                            <th>تاريخ التقفيل</th>
+                            {% endif %}
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for acc in accidents %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td style="font-weight: bold;">{{ acc.accident_number or '-' }}</td>
+                            <td>{{ acc.vehicle_plate }}</td>
+                            <td style="font-weight: bold; color: #0d6efd;">{{ acc.driver_name }}</td>
+                            <td>{{ acc.accident_type }}</td>
+                            <td>{{ acc.issuer or '-' }}</td>
+                            <td>{{ acc.location or '-' }}</td>
+                            <td>{{ acc.accident_datetime }}</td>
+                            <td style="color: #dc3545; font-weight: bold;">{{ acc.repair_cost }} ر.س</td>
+                            <td>
+                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #fff3cd; color: #856404; font-weight: bold;">
+                                    {{ acc.status_type }}
+                                </span>
+                            </td>
+                            <td>{{ acc.description or '-' }}</td>
+                            <td>
+                                {% if acc.accident_attachment %}
+                                <a href="{{ url_for('static', filename='uploads/accidents/' ~ acc.accident_attachment) }}" target="_blank" class="btn btn-secondary" style="padding: 2px 6px; font-size: 11px;">عرض</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if acc.accident_attachment_2 %}
+                                <a href="{{ url_for('static', filename='uploads/accidents/' ~ acc.accident_attachment_2) }}" target="_blank" class="btn btn-secondary" style="padding: 2px 6px; font-size: 11px;">عرض</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            
+                            {% if active_tab == 'closed' %}
+                            <td>
+                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #d1e7dd; color: #0f5132; font-weight: bold;">
+                                    {{ acc.closure_reason }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if acc.payment_attachment %}
+                                <a href="{{ url_for('static', filename='uploads/accidents/' ~ acc.payment_attachment) }}" target="_blank" class="btn btn-success" style="padding: 2px 6px; font-size: 11px;">الإيصال</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ acc.closed_at }}</td>
+                            {% endif %}
+
+                            <td>
+                                <div style="display: flex; gap: 5px; justify-content: center;">
+                                    <!-- زر فتح تقرير الحادث المباشر باستخدام id الفريد بدقة -->
+                                    <a href="/reports/accidents?report_type=single&accident_id={{ acc.id }}" target="_blank" class="btn btn-info" style="padding: 3px 8px; font-size: 11px;" title="عرض طباعة التقرير">
+                                        <i class="fa-solid fa-file-contract"></i> التقرير
+                                    </a>
+
+                                    {% if active_tab == 'active' %}
+                                    <button type="button" class="btn btn-success" style="padding: 3px 8px; font-size: 11px;" onclick="openCloseModal('{{ acc.id }}', '{{ acc.accident_number or acc.id }}')">
+                                        <i class="fa-solid fa-check-to-slot"></i> تسوية وتقفيل
+                                    </button>
+                                    {% endif %}
+                                    <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 11px;" onclick="confirmDelete('{{ acc.id }}', '{{ acc.accident_number or acc.id }}')">
+                                        <i class="fa-solid fa-trash"></i> حذف
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{% if active_tab == 'closed' %}17{% else %}14{% endif %}" class="text-muted">
+                                لا توجد حوادث مسجلة في هذا القسم حالياً.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نافذة التسوية والتقفيل المنبثقة -->
+<div id="closeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 450px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); direction: rtl; text-align: right;">
+        <h3 style="margin-bottom: 15px; color: #198754; text-align: center;"><i class="fa-solid fa-shield-halved"></i> تسوية وتقفيل الحادث</h3>
+        <p id="modalTitle" style="text-align: center; margin-bottom: 15px; font-weight: bold; color: #333;"></p>
+        
+        <form id="closeForm" method="POST" enctype="multipart/form-data">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">حالة / سبب التسوية: *</label>
+                <select name="closure_reason" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                    <option value="تم الإصلاح والتسوية">تم الإصلاح والتسوية</option>
+                    <option value="تعويض تأميني">تعويض تأميني</option>
+                    <option value="تحمل السائق">تحمل السائق</option>
+                    <option value="حفظ لعدم الأهمية">حفظ لعدم الأهمية</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">ملاحظات التسوية والإصلاح:</label>
+                <textarea name="closure_notes" rows="2" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;" placeholder="تفاصيل ورشة الصيانة أو شركة التأمين..."></textarea>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">مرفق التسوية (فاتورة / إيصال):</label>
+                <div class="drop-zone" onclick="document.getElementById('paymentFile').click();">
+                    <i class="fa-solid fa-cloud-arrow-up fa-2x" style="color: #0d6efd; margin-bottom: 5px;"></i>
+                    <p style="margin: 0; font-size: 13px; color: #6c757d;">انقر للاختيار أو ألصق لقطة الشاشة (Ctrl+V)</p>
+                    <input type="file" id="paymentFile" name="payment_attachment" style="display: none;">
+                </div>
+                <div id="fileInfo" style="margin-top: 5px; font-size: 12px; color: #198754; font-weight: bold; text-align: center;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: center; gap: 10px;">
+                <button type="submit" class="btn btn-success">تأكيد التسوية والتقفيل</button>
+                <button type="button" class="btn btn-secondary" onclick="closeCloseModal()">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- نافذة تأكيد الحذف -->
+<div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); direction: rtl; text-align: center;">
+        <i class="fa-solid fa-triangle-exclamation fa-3x" style="color: #dc3545; margin-bottom: 15px;"></i>
+        <h3 style="margin-bottom: 10px; color: #dc3545;">تأكيد الحذف</h3>
+        <p id="deleteModalText" style="margin-bottom: 20px; color: #333; font-weight: bold;"></p>
+        <form id="deleteForm" method="GET">
+            <div style="display: flex; justify-content: center; gap: 10px;">
+                <button type="submit" class="btn btn-danger">نعم، حذف نهائي</button>
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openCloseModal(accId, accNum) {
+        document.getElementById('modalTitle').innerText = `تسوية وتقفيل الحادث رقم: (${accNum})`;
+        document.getElementById('closeForm').action = `/accidents/close/${accId}`;
+        document.getElementById('closeModal').style.display = 'flex';
+    }
+
+    function closeCloseModal() {
+        document.getElementById('closeModal').style.display = 'none';
+        document.getElementById('fileInfo').innerText = '';
+    }
+
+    function confirmDelete(accId, accNum) {
+        document.getElementById('deleteModalText').innerText = `هل أنت متأكد من حذف سجل الحادث رقم (${accNum})؟`;
+        document.getElementById('deleteForm').action = `/accidents/delete/${accId}`;
+        document.getElementById('deleteModal').style.display = 'flex';
+    }
+
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').style.display = 'none';
+    }
+
+    const fileInput = document.getElementById('paymentFile');
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files.length > 0) {
+            document.getElementById('fileInfo').innerText = `تم اختيار الملف: ${fileInput.files[0].name}`;
+        }
+    });
+
+    window.addEventListener('paste', function(e) {
+        const modal = document.getElementById('closeModal');
+        if (modal.style.display === 'flex') {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let index in items) {
+                let item = items[index];
+                if (item.kind === 'file') {
+                    let blob = item.getAsFile();
+                    let container = new DataTransfer();
+                    container.items.add(blob);
+                    fileInput.files = container.files;
+                    document.getElementById('fileInfo').innerText = `تم لصق صورة الإيصال بنجاح`;
+                }
+            }
+        }
+    });
+
+    function filterTable() {
+        let input = document.getElementById('searchInput');
+        let filter = input.value.toLowerCase();
+        let table = document.getElementById('accidentsTable');
+        let tr = table.getElementsByTagName('tr');
+
+        for (let i = 1; i < tr.length; i++) {
+            let rowText = tr[i].innerText.toLowerCase();
+            if (rowText.indexOf(filter) > -1) {
+                tr[i].style.display = "";
+            } else {
+                tr[i].style.display = "none";
+            }
+        }
+    }
+
+    function resetSearch() {
+        document.getElementById('searchInput').value = '';
+        filterTable();
+    }
+</script>
+{% endblock %}

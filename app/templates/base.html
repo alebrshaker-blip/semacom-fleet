@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}نظام SEMACOM لإدارة المركبات والمعدات{% endblock %}</title>
+    {% block extra_head %}{% endblock %}
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Tahoma', Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f4f6f9;
+            color: #333;
+            direction: rtl;
+            text-align: right;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-header {
+            background-color: var(--app-primary, #1b365d);
+            color: #ffffff;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .brand-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .company-logo {
+            width: 45px;
+            height: 45px;
+            object-fit: contain;
+            border-radius: 4px;
+            background-color: #fff;
+            padding: 2px;
+        }
+
+        .header-title h2 {
+            font-size: 20px;
+            margin-bottom: 2px;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+
+        .header-title p {
+            font-size: 12px;
+            color: #adb5bd;
+        }
+
+        .main-nav {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-toggle {
+            display: none;
+            min-width: 46px;
+            min-height: 46px;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,.35);
+            border-radius: 9px;
+            background: transparent;
+            color: #fff;
+            font-size: 1.25rem;
+            cursor: pointer;
+        }
+
+        .main-nav a {
+            color: #ffffff;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            transition: background 0.2s;
+            font-size: var(--app-font-size, 17px);
+        }
+
+        .main-nav a:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        .main-nav .notification-bell {
+            position: relative;
+            padding: 8px 10px;
+        }
+
+        .notification-bell-count {
+            position: absolute;
+            top: 1px;
+            left: 0;
+            min-width: 18px;
+            padding: 1px 5px;
+            color: #fff;
+            background: #dc3545;
+            border-radius: 999px;
+            font-size: 11px;
+            line-height: 16px;
+            text-align: center;
+        }
+
+        .btn-logout {
+            background-color: #dc3545 !important;
+            color: white !important;
+        }
+
+        .btn-logout:hover {
+            background-color: #bb2d3b !important;
+        }
+
+        .user-welcome {
+            color: #ffc107;
+            font-size: 13px;
+            margin-left: 10px;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            padding: 30px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* تنبيهات النظام عامة */
+        .flash-alert {
+            padding: 12px 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: var(--app-font-size, 17px);
+        }
+        .flash-alert-success { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+        .flash-alert-danger { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .flash-alert-info { background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .dashboard-btn {
+            background-color: #ffffff;
+            border: 1px solid #ced4da;
+            padding: 22px;
+            text-align: center;
+            text-decoration: none;
+            color: #212529;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+            transition: all 0.2s ease-in-out;
+            display: block;
+        }
+
+        .dashboard-btn:hover {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+            color: #0d6efd;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+        }
+
+        .card {
+            background: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: bold;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-body { padding: 20px; }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+            background-color: #fff;
+        }
+
+        .table th, .table td {
+            padding: 12px;
+            vertical-align: middle;
+            border-bottom: 1px solid #dee2e6;
+            text-align: center;
+            font-size: var(--app-font-size, 17px);
+        }
+
+        .table th { background-color: var(--app-primary, #1b365d); color: #fff; }
+        .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(0,0,0,0.02); }
+
+        .btn {
+            display: inline-block;
+            font-weight: 400;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: middle;
+            border: 1px solid transparent;
+            padding: 6px 12px;
+            font-size: 14px;
+            border-radius: 4px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .btn-sm { padding: 4px 8px; font-size: 12px; }
+        .btn-primary { background-color: #0d6efd; color: #fff; }
+        .btn-success { background-color: #198754; color: #fff; }
+        .btn-danger { background-color: #dc3545; color: #fff; }
+        .btn-light { background-color: #f8f9fa; color: #212529; border: 1px solid #dee2e6; }
+
+        .form-control, .form-select {
+            display: block;
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: #495057;
+            background-color: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+
+        .form-label { font-weight: 600; font-size: 13px; color: #495057; }
+
+        .main-footer {
+            background-color: #212529;
+            color: #adb5bd;
+            text-align: center;
+            padding: 15px;
+            font-size: 13px;
+            margin-top: auto;
+        }
+
+        {% block extra_css %}{% endblock %}
+    </style>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom_modal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app_theme.css') }}">
+</head>
+<body style="{{ appearance.style }}">
+
+    <header class="main-header">
+        <div class="brand-container">
+            <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Logo" class="company-logo" onerror="this.style.display='none'">
+            <div class="header-title">
+                <h2>شركة SEMACOM</h2>
+                <p>نظام إدارة المركبات والمعدات</p>
+            </div>
+        </div>
+        {% if session.get('user_id') %}
+        <button class="nav-toggle" type="button" aria-label="فتح القائمة" aria-controls="main-navigation" aria-expanded="false">
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        {% endif %}
+        <nav class="main-nav" id="main-navigation">
+            <a href="/">الرئيسية</a>
+            {% if session.get('user_id') %}
+                <span class="user-welcome">مرحباً، {{ session.get('username', 'المستخدم') }}</span>
+                <a href="{{ url_for('notifications_bp.index') }}" class="notification-bell" aria-label="الإشعارات">
+                    <i class="fa-solid fa-bell"></i>
+                    {% if notification_unread_count %}
+                    <span class="notification-bell-count">{{ notification_unread_count if notification_unread_count < 100 else '99+' }}</span>
+                    {% endif %}
+                </a>
+                <a href="{{ url_for('tasks_bp.index') }}" aria-label="سجل المهام">
+                    <i class="fa-solid fa-list-check"></i> المهام
+                </a>
+                <a href="{{ url_for('settings.logout') }}" class="btn-logout" data-confirm-logout>تسجيل الخروج</a>
+            {% endif %}
+        </nav>
+    </header>
+
+    <main class="content-wrapper">
+        <!-- عرض رسائل النظام العامة إن وجدت -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash-alert flash-alert-{{ category if category in ['success', 'danger', 'info'] else 'info' }}">
+                {{ message }}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="main-footer">
+        <p>جميع حقوق الطبع محفوظة &copy; 2026 - شركة SEMACOM</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/custom_modal.js') }}"></script>
+    <script>
+        const navToggle = document.querySelector('.nav-toggle');
+        const mainNavigation = document.querySelector('#main-navigation');
+        if (navToggle && mainNavigation) {
+            navToggle.addEventListener('click', function () {
+                const isExpanded = navToggle.getAttribute('aria-expanded') === 'true';
+                navToggle.setAttribute('aria-expanded', String(!isExpanded));
+                navToggle.setAttribute('aria-label', isExpanded ? 'فتح القائمة' : 'إغلاق القائمة');
+                mainNavigation.classList.toggle('is-open', !isExpanded);
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') {
+                    navToggle.setAttribute('aria-expanded', 'false');
+                    navToggle.setAttribute('aria-label', 'فتح القائمة');
+                    mainNavigation.classList.remove('is-open');
+                }
+            });
+        }
+
+        document.querySelectorAll('main table').forEach(function (table) {
+            if (table.closest('.table-scroll, .table-responsive')) return;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'table-scroll';
+            table.parentNode.insertBefore(wrapper, table);
+            wrapper.appendChild(table);
+        });
+    </script>
+
+    <script>
+        window.addEventListener("pageshow", function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

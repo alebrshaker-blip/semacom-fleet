@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}لوحة التقارير والإدارة{% endblock %}
+
+{% block content %}
+<style>
+    .reports-hub {
+        padding: 10px 0;
+        direction: rtl;
+    }
+
+    .hub-header {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    }
+
+    .hub-title {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .search-box input {
+        width: 280px;
+        padding: 9px 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-box input:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .reports-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+    }
+
+    .report-card {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 22px 16px;
+        text-decoration: none;
+        color: #1e293b;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+        cursor: pointer;
+    }
+
+    .report-card:hover {
+        border-color: #2563eb;
+        transform: translateY(-4px);
+        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
+        color: #2563eb;
+    }
+
+    .report-card .card-icon {
+        font-size: 2rem;
+        line-height: 1;
+    }
+
+    .report-card .card-label {
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+</style>
+
+<div class="reports-hub">
+    <div class="hub-header">
+        <h1 class="hub-title">
+            <span>📋</span> لوحة تقارير وإدارة المركبات والمعدات
+        </h1>
+        <div class="search-box">
+            <input type="text" id="reportSearch" placeholder="🔍 بحث عن تقرير..." onkeyup="filterReports()">
+        </div>
+    </div>
+
+    <div class="reports-grid" id="reportsGrid">
+        
+        <a href="{{ url_for('reports.maintenance_reports') }}" class="report-card">
+            <span class="card-icon">🛠️</span>
+            <span class="card-label">تقارير الصيانة</span>
+        </a>
+
+        <a href="{{ url_for('reports.drivers_reports') }}" class="report-card">
+            <span class="card-icon">👨‍✈️</span>
+            <span class="card-label">تقارير السائقين</span>
+        </a>
+
+        <a href="{{ url_for('reports.data_reports', report_key='employees') }}" class="report-card">
+            <span class="card-icon">👥</span>
+            <span class="card-label">تقارير الموظفين</span>
+        </a>
+
+        <a href="{{ url_for('reports.data_reports', report_key='violations') }}" class="report-card">
+            <span class="card-icon">🚨</span>
+            <span class="card-label">المخالفات المرورية</span>
+        </a>
+
+        <a href="{{ url_for('reports.data_reports', report_key='inspections') }}" class="report-card">
+            <span class="card-icon">🔍</span>
+            <span class="card-label">الفحص الدوري</span>
+        </a>
+
+        <a href="{{ url_for('reports.vehicle_reports') }}" class="report-card">
+            <span class="card-icon">🚜</span>
+            <span class="card-label">تقارير المعدات والمركبات</span>
+        </a>
+
+        <a href="{{ url_for('reports.handover_reports') }}" class="report-card">
+            <span class="card-icon">🔑</span>
+            <span class="card-label">استلام وتسليم المركبات</span>
+        </a>
+
+        <a href="{{ url_for('reports.data_reports', report_key='insurance') }}" class="report-card">
+            <span class="card-icon">🛡️</span>
+            <span class="card-label">التأمينات</span>
+        </a>
+
+        <!-- ⚠️ تم تصحيح الرابط هنا ليذهب مباشرة لمسار تقارير الحوادث -->
+        <a href="{{ url_for('reports.accidents_reports') }}" class="report-card">
+            <span class="card-icon">⚠️</span>
+            <span class="card-label">الحوادث</span>
+        </a>
+
+        <a href="{{ url_for('reports.workshop_request_form') }}" class="btn btn-outline-primary" style="border: 2px solid #1b365d; color: #1b365d; font-weight: bold; padding: 10px 20px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-file-invoice fa-lg"></i> مذكرة طلبات الورشة
+        </a>
+
+        <a href="#" class="report-card">
+            <span class="card-icon">📋</span>
+            <span class="card-label">إخلاء عهدة</span>
+        </a>
+
+        <a href="#" class="report-card">
+            <span class="card-icon">📝</span>
+            <span class="card-label">مذكرة</span>
+        </a>
+
+    </div>
+</div>
+
+<script>
+    function filterReports() {
+        const input = document.getElementById('reportSearch');
+        const filter = input.value.trim().toLowerCase();
+        const cards = document.querySelectorAll('.report-card');
+
+        cards.forEach(card => {
+            const label = card.querySelector('.card-label').textContent.toLowerCase();
+            if (label.includes(filter)) {
+                card.style.display = 'flex';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+</script>
+{% endblock %}

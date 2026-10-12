@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 1100px; margin: 0 auto;" dir="rtl">
+    <div class="card shadow-sm border-0 rounded-3">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-3 px-4">
+            <h5 class="mb-0 fw-bold">إضافة أمر صيانة طارئة جديد</h5>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-danger fw-semibold px-3 py-2">رقم الأمر: توليد تلقائي</span>
+                <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type='emergency') }}" class="btn btn-outline-light btn-sm fw-semibold">رجوع للقائمة</a>
+            </div>
+        </div>
+
+        <div class="card-body p-4">
+            <form method="POST" action="">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">المركبة / كود المركبة <span class="text-danger">*</span></label>
+                        <select name="vehicle_id" id="vehicleCodeSelect" class="form-select" required onchange="syncByVehicleCode()">
+                            <option value="">-- اختر المركبة --</option>
+                            {% for v in vehicles %}
+                                <option value="{{ v.get('id') }}" data-plate="{{ v.get('plate_number') }}" data-code="{{ v.get('vehicle_code') }}">
+                                    {{ v.get('vehicle_code') }}{% if v.get('plate_number') %} - {{ v.get('plate_number') }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">رقم اللوحة (متزامن مع كود المركبة)</label>
+                        <select id="plateNumberSelect" class="form-select" onchange="syncByPlateNumber()">
+                            <option value="">-- اختر رقم اللوحة --</option>
+                            {% for v in vehicles %}
+                                <option value="{{ v.get('id') }}">{{ v.get('plate_number') }} - {{ v.get('vehicle_code') }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">السائق</label>
+                        <select name="driver_id" class="form-select">
+                            <option value="">-- اختر السائق --</option>
+                            {% for d in drivers %}
+                                <option value="{{ d.get('id') }}">{{ d.get('name') }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">درجة الخطورة <span class="text-danger">*</span></label>
+                        <select name="severity" class="form-select" required>
+                            <option value="لا يوجد">لا يوجد</option>
+                            <option value="منخفضة">منخفضة</option>
+                            <option value="متوسطة" selected>متوسطة</option>
+                            <option value="عالية">عالية</option>
+                            <option value="حرجة">حرجة</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">التاريخ <span class="text-danger">*</span></label>
+                        <input type="datetime-local" name="incident_datetime" id="incidentDateInput" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">الموقع <span class="text-danger">*</span></label>
+                        <input type="text" name="emergency_location" class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">هل يوجد إصابة؟</label>
+                        <select name="has_injuries" class="form-select" required>
+                            <option value="لا" selected>لا</option>
+                            <option value="نعم">نعم</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">هل المركبة قابلة للحركة؟</label>
+                        <select name="is_drivable" class="form-select" required>
+                            <option value="نعم" selected>نعم</option>
+                            <option value="لا">لا</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">هل تم تبليغ جهة حكومية؟</label>
+                        <select name="official_notified" class="form-select" required>
+                            <option value="لا" selected>لا</option>
+                            <option value="المرور">المرور</option>
+                            <option value="النجم">النجم</option>
+                            <option value="المرور والنجوم">المرور والنجوم</option>
+                            <option value="أمن الطرق">أمن الطرق</option>
+                            <option value="جهة أخرى">جهة أخرى</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">وصف الحالة <span class="text-danger">*</span></label>
+                        <textarea name="case_description" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">سبب العطل <span class="text-danger">*</span></label>
+                        <select name="fault_cause" class="form-select" required>
+                            <option value="">-- اختر سبب العطل --</option>
+                            <option value="حادث">حادث</option>
+                            <option value="عطل مفاجئ">عطل مفاجئ</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="text-end mt-4 pt-3 border-top">
+                    <button type="submit" class="btn btn-danger px-5 py-2 fw-bold shadow-sm">حفظ وتسجيل أمر الصيانة الطارئ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function syncByVehicleCode() {
+    document.getElementById('plateNumberSelect').value = document.getElementById('vehicleCodeSelect').value;
+}
+
+function syncByPlateNumber() {
+    document.getElementById('vehicleCodeSelect').value = document.getElementById('plateNumberSelect').value;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var dateInput = document.getElementById('incidentDateInput');
+    if (dateInput && !dateInput.value) {
+        var now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        dateInput.value = now.toISOString().slice(0, 16);
+    }
+});
+</script>
+{% endblock %}

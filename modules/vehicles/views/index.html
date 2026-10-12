@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة المركبات والمعدات{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* التنسيقات الخاصة بصفحة إدارة المركبات والمعدات */
+    .header-flex {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    h2 {
+        color: #2c3e50;
+        margin: 0;
+    }
+    .btn {
+        display: inline-block;
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: bold;
+        text-decoration: none;
+        border-radius: 4px;
+        cursor: pointer;
+        border: none;
+        transition: background 0.2s;
+    }
+    .btn-primary { background-color: #0d6efd; color: white; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #5c636a; }
+    .btn-warning { background-color: #ffc107; color: #000; }
+    .btn-warning:hover { background-color: #ffca2c; }
+    .btn-danger { background-color: #dc3545; color: white; }
+    .btn-danger:hover { background-color: #bb2d3b; }
+    /* 🌟 زر التصدير إلى إكسل بتنسيق متناسق */
+    .btn-success { background-color: #198754; color: white; }
+    .btn-success:hover { background-color: #157347; }
+
+    .card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .card-body {
+        padding: 20px;
+    }
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: center;
+    }
+    th, td {
+        padding: 12px 15px;
+        border: 1px solid #dee2e6;
+        vertical-align: middle;
+    }
+    thead {
+        background-color: #cfe2ff;
+        color: #084298;
+    }
+    tbody tr:nth-child(even) {
+        background-color: #f8f9fa;
+    }
+    tbody tr:hover {
+        background-color: #f1f3f5;
+    }
+    .text-muted {
+        color: #6c757d;
+        padding: 20px;
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header-flex">
+        <h2>إدارة المركبات والمعدات</h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('vehicles.public_submissions') }}" class="btn btn-warning">
+                <i class="fas fa-inbox"></i> بلاغات واستفسارات QR
+            </a>
+            <!-- 🌟 زر التصدير إلى Excel مع الحفاظ على نتائج البحث الحالية -->
+            <a href="/vehicles/export{% if request.args.get('q') %}?q={{ request.args.get('q') }}{% endif %}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> تصدير إلى Excel
+            </a>
+            <a href="/vehicles/add" class="btn btn-primary">إضافة مركبة جديدة +</a>
+        </div>
+    </div>
+
+    <!-- نموذج البحث المتقدم والفلترة -->
+    <form method="GET" action="/vehicles" style="background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+        <div style="flex: 1; min-width: 250px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #2c3e50;">بحث شامل:</label>
+            <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="اكتب للبحث (كود المركبة، اللوحة، النوع، اللون...)" style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;">
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-end; margin-top: 5px;">
+            <button type="submit" class="btn btn-primary">بحث</button>
+            <a href="/vehicles" class="btn btn-secondary">إعادة تعيين</a>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            {% for field in fields %}
+                            <th>{{ field.label }}</th>
+                            {% endfor %}
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vehicle in vehicles %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            {% for field in fields %}
+                            <td>{{ vehicle.get(field.name, '-') }}</td>
+                            {% endfor %}
+                            <!-- عمود الإجراءات -->
+                            <td>
+                                <a class="btn btn-warning btn-sm"
+                                   href="{{ url_for('vehicles.vehicle_information', vehicle_id=vehicle.id) }}">
+                                    <i class="fas fa-circle-info" aria-hidden="true"></i> المعلومات
+                                </a>
+                                <a class="btn btn-primary btn-sm"
+                                   href="{{ url_for('reports.vehicle_reports', report_type='single', vehicle_id=vehicle.id) }}">
+                                    تقرير
+                                </a>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="openDeleteModal('{{ vehicle.id }}', '{{ vehicle.vehicle_code }}')">
+                                    حذف
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{{ fields|length + 2 }}" class="text-muted">لا توجد مركبات مضافة تطابق بحثك.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- النافذة المنبثقة لتأكيد الحذف -->
+<div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+        <h3 style="margin-bottom: 15px; color: #dc3545;">تأكيد الحذف</h3>
+        <p id="deleteMessage" style="margin-bottom: 20px; color: #333; font-size: 15px;">هل أنت متأكد من حذف هذه المركبة؟</p>
+        
+        <form id="deleteForm" method="POST" style="display: flex; justify-content: center; gap: 10px;">
+            <button type="submit" class="btn btn-danger" style="padding: 8px 20px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">تأكيد الحذف</button>
+            <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">إلغاء</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openDeleteModal(vehicleId, vehicleCode) {
+        const modal = document.getElementById('deleteModal');
+        const form = document.getElementById('deleteForm');
+        const msg = document.getElementById('deleteMessage');
+        
+        // تحديث النص ورابط الإرسال بناءً على المركبة المحددة
+        msg.innerText = `هل أنت متأكد من رغبتك في حذف المركبة ذات الكود: (${vehicleCode})؟`;
+        form.action = `/vehicles/delete/${vehicleId}`;
+        
+        modal.style.display = 'flex';
+    }
+
+    function closeDeleteModal() {
+        const modal = document.getElementById('deleteModal');
+        modal.style.display = 'none';
+    }
+</script>
+{% endblock %}

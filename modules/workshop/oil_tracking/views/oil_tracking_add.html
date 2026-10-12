@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}تسجيل تغيير زيت - SEMACOM{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 800px; direction: rtl;">
+    <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h2 style="color: #1b365d; margin-bottom: 20px;"><i class="fa-solid fa-oil-can"></i> تسجيل عملية تغيير زيت ومتابعة</h2>
+        
+        <form method="POST">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">رقم لوحة المركبة: *</label>
+                    <select name="vehicle_plate" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                        <option value="">-- اختر المركبة --</option>
+                        {% for plate in vehicles %}
+                        <option value="{{ plate }}">{{ plate }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">الفني المسؤول: *</label>
+                    <select name="technician_name" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                        <option value="">-- اختر الفني --</option>
+                        {% for member in team_members %}
+                        <option value="{{ member }}">{{ member }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">تاريخ الخدمة:</label>
+                    <input type="date" name="service_date" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px; color: #084298;">نمط تتبع وجدولة التغيير: *</label>
+                    <select name="tracking_mode" id="trackingModeSelect" onchange="toggleInputs()" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                        <option value="distance">حسب المسافة (كم) فقط</option>
+                        <option value="time">حسب الوقت (الأشهر) فقط</option>
+                        <option value="both">كلاهما (مسافة أو وقت)</option>
+                    </select>
+                </div>
+
+                <div id="distanceInputs" style="grid-column: span 2; display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">عداد آخر تغيير زيت (كم): *</label>
+                        <input type="number" name="last_oil_mileage" placeholder="مثال: 70000" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">الفاصل المسموح بالمسافة (كم): *</label>
+                        <input type="number" name="distance_interval" value="5000" placeholder="مثال: 5000" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    </div>
+                </div>
+
+                <div id="timeInputs" style="grid-column: span 2; display: none; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">الفاصل الزمني المسموح (بالأشهر): *</label>
+                    <input type="number" name="time_interval_months" value="3" placeholder="مثال: 3 أشهر" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                </div>
+
+                <div style="grid-column: span 2;">
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">قراءة عداد المركبة الحالي (كم):</label>
+                    <input type="number" name="current_mileage" placeholder="مثال: 72000" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                </div>
+
+                <!-- قسم تحديد حدود الإنذار والإنذارات المبكرة المخصصة -->
+                <div style="grid-column: span 2; background: #fff3cd; padding: 12px; border-radius: 6px; border: 1px solid #ffeeba; margin-top: 5px;">
+                    <h4 style="font-size: 14px; color: #856404; margin-bottom: 10px; font-weight: bold;">
+                        <i class="fa-solid fa-bell"></i> إعدادات الإنذار والتنبيه المبكر (يتحكم بها الفني):
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                        <div id="distAlertDiv">
+                            <label style="display: block; font-weight: bold; margin-bottom: 5px; font-size: 12px;">حد الإنذار المبكر بالمسافة (كم قبل الموعد):</label>
+                            <input type="number" name="distance_alert_threshold" value="1000" placeholder="مثال: 1000" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
+                            <small style="color: #6c757d; font-size: 11px;">سيظهر تنبيه صفحة الجدول فور تبقي هذه المسافة.</small>
+                        </div>
+                        <div id="timeAlertDiv" style="display: none;">
+                            <label style="display: block; font-weight: bold; margin-bottom: 5px; font-size: 12px;">حد الإنذار المبكر بالوقت (أيام قبل الموعد):</label>
+                            <input type="number" name="time_alert_threshold" value="15" placeholder="مثال: 15" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
+                            <small style="color: #6c757d; font-size: 11px;">سيظهر تنبيه صفحة الجدول قبل انقضاء المدة.</small>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 5px;">ملاحظات الزيوت والفلاتر:</label>
+                <textarea name="notes" rows="3" placeholder="نوع الزيت المستخدم، الفلتر، اللزوجة..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;"></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <a href="{{ url_for('workshop.oil_tracking.list') }}" class="btn" style="background: #6c757d; color: white; padding: 9px 20px; border-radius: 4px; text-decoration: none;">إلغاء</a>
+                <button type="submit" class="btn" style="background: #198754; color: white; padding: 9px 20px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer;">حفظ السجل</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleInputs() {
+    let mode = document.getElementById('trackingModeSelect').value;
+    let distDiv = document.getElementById('distanceInputs');
+    let timeDiv = document.getElementById('timeInputs');
+    let distAlertDiv = document.getElementById('distAlertDiv');
+    let timeAlertDiv = document.getElementById('timeAlertDiv');
+    
+    if (mode === 'distance') {
+        distDiv.style.display = 'grid';
+        timeDiv.style.display = 'none';
+        distAlertDiv.style.display = 'block';
+        timeAlertDiv.style.display = 'none';
+    } else if (mode === 'time') {
+        distDiv.style.display = 'none';
+        timeDiv.style.display = 'block';
+        distAlertDiv.style.display = 'none';
+        timeAlertDiv.style.display = 'block';
+    } else {
+        distDiv.style.display = 'grid';
+        timeDiv.style.display = 'block';
+        distAlertDiv.style.display = 'block';
+        timeAlertDiv.style.display = 'block';
+    }
+}
+
+// تنفيذ الدالة عند فتح الصفحة لضبط العرض الافتراضي
+window.onload = function() {
+    toggleInputs();
+};
+</script>
+{% endblock %}

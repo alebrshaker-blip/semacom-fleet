@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}سجل المهام - SEMACOM{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tasks.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="tasks-page" dir="rtl">
+    <header class="tasks-heading">
+        <div>
+            <h1><i class="fa-solid fa-list-check"></i> سجل المهام</h1>
+            <p>جدولة المهام وترتيبها حسب الأولوية ومتابعة إنجازها وأرشفتها.</p>
+        </div>
+        <a class="task-button secondary" href="{{ url_for('notifications_bp.index') }}">
+            <i class="fa-solid fa-bell"></i> مركز الإشعارات
+        </a>
+    </header>
+
+    {% if source_notification_id %}
+    <div class="task-source-note">
+        <i class="fa-solid fa-arrow-right-arrow-left"></i>
+        يتم إنشاء المهمة من إشعار. بعد الحفظ سيُعلّم الإشعار كمقروء ويُربط بهذه المهمة.
+    </div>
+    {% endif %}
+
+    {% if not selected_archived %}
+    <details class="task-create" {% if source_notification_id %}open{% endif %}>
+        <summary><i class="fa-solid fa-plus"></i> إضافة مهمة جديدة</summary>
+        <form method="post" action="{{ url_for('tasks_bp.add') }}" class="task-form">
+            <input type="hidden" name="source_notification_id" value="{{ source_notification_id or '' }}">
+            <div class="task-form-grid">
+                <label class="wide">
+                    عنوان المهمة *
+                    <input type="text" name="title" required maxlength="200"
+                           value="{{ new_task.title if new_task is mapping else '' }}"
+                           placeholder="اكتب عنواناً واضحاً للمهمة">
+                </label>
+                <label>
+                    الأولوية
+                    <select name="priority">
+                        {% for priority in priorities %}
+                        <option value="{{ priority }}" {% if (new_task.priority if new_task is mapping else 'متوسطة') == priority %}selected{% endif %}>{{ priority }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    موعد التنفيذ
+                    <input type="date" name="due_date" value="{{ new_task.due_date if new_task is mapping else '' }}">
+                </label>
+                <label class="wide">
+                    الوصف والتفاصيل
+                    <textarea name="description" rows="3" maxlength="4000"
+                              placeholder="تفاصيل المهمة أو الخطوات المطلوبة">{{ new_task.description if new_task is mapping else '' }}</textarea>
+                </label>
+            </div>
+            <button class="task-button primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> حفظ المهمة</button>
+        </form>
+    </details>
+    {% endif %}
+
+    <div class="task-overview">
+        <a class="task-stat {% if not selected_archived %}active{% endif %}" href="{{ url_for('tasks_bp.index') }}">
+            <span>المهام النشطة</span><strong>{{ active_counts.get('مجدولة', 0) + active_counts.get('قيد التنفيذ', 0) + active_counts.get('مكتملة', 0) }}</strong>
+        </a>
+        <div class="task-stat"><span>مجدولة</span><strong>{{ active_counts.get('مجدولة', 0) }}</strong></div>
+        <div class="task-stat"><span>قيد التنفيذ</span><strong>{{ active_counts.get('قيد التنفيذ', 0) }}</strong></div>
+        <div class="task-stat"><span>مكتملة</span><strong>{{ active_counts.get('مكتملة', 0) }}</strong></div>
+        <a class="task-stat {% if selected_archived %}active{% endif %}" href="{{ url_for('tasks_bp.index', archived=1) }}">
+            <span>الأرشيف</span><strong>{{ archived_counts.get('مجدولة', 0) + archived_counts.get('قيد التنفيذ', 0) + archived_counts.get('مكتملة', 0) }}</strong>
+        </a>
+    </div>
+
+    <form method="get" action="{{ url_for('tasks_bp.index') }}" class="task-filters">
+        <input type="hidden" name="archived" value="{{ 1 if selected_archived else 0 }}">
+        <label>الحالة
+            <select name="status">
+                <option value="all" {% if selected_status == 'all' %}selected{% endif %}>كل الحالات</option>
+                {% for status in statuses %}
+                <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>الأولوية
+            <select name="priority">
+                <option value="all" {% if selected_priority == 'all' %}selected{% endif %}>كل الأولويات</option>
+                {% for priority in priorities %}
+                <option value="{{ priority }}" {% if selected_priority == priority %}selected{% endif %}>{{ priority }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button class="task-button primary" type="submit">تطبيق الفرز</button>
+    </form>
+
+    {% if tasks %}
+    <div class="task-list">
+        {% for task in tasks %}
+        <article class="task-card" data-priority="{{ task.priority }}" data-due-date="{{ task.due_date or '' }}">
+            <div class="task-card-top">
+                <div class="task-priority">
+                    <span class="priority-dot"></span>{{ task.priority }}
+                </div>
+                <span class="task-status status-{{ task.status|replace(' ', '-') }}">{{ task.status }}</span>
+            </div>
+            <form method="post" action="{{ url_for('tasks_bp.update', task_id=task.id) }}" class="task-edit-form">
+                <input type="hidden" name="archived" value="{{ 1 if selected_archived else 0 }}">
+                <input type="hidden" name="status_filter" value="{{ selected_status }}">
+                <input type="hidden" name="priority_filter" value="{{ selected_priority }}">
+                <label class="task-title-label">عنوان المهمة
+                    <input name="title" value="{{ task.title }}" required maxlength="200">
+                </label>
+                <label>التفاصيل
+                    <textarea name="description" rows="2" maxlength="4000">{{ task.description or '' }}</textarea>
+                </label>
+                <div class="task-edit-grid">
+                    <label>الأولوية
+                        <select name="priority">
+                            {% for priority in priorities %}
+                            <option value="{{ priority }}" {% if task.priority == priority %}selected{% endif %}>{{ priority }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>موعد التنفيذ
+                        <input type="date" name="due_date" value="{{ task.due_date or '' }}">
+                    </label>
+                    {% if not selected_archived %}
+                    <label>الحالة
+                        <select name="status">
+                            {% for status in statuses %}
+                            <option value="{{ status }}" {% if task.status == status %}selected{% endif %}>{{ status }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% else %}
+                    <div class="task-archived-status">مؤرشفة</div>
+                    {% endif %}
+                </div>
+                <div class="task-card-footer">
+                    <small>
+                        أُنشئت في {{ task.created_at[:10] if task.created_at else '—' }}
+                        {% if task.due_date %}
+                            <span class="task-due {% if task.due_date < today and task.status != 'مكتملة' %}overdue{% endif %}">
+                                {% if task.due_date < today and task.status != 'مكتملة' %}متأخرة — {% else %}موعدها {% endif %}{{ task.due_date }}
+                            </span>
+                        {% endif %}
+                        {% if task.source_notification_id %}<span class="task-origin">من إشعار</span>{% endif %}
+                    </small>
+                    <div class="task-actions">
+                        <button class="task-button primary" type="submit">حفظ التعديلات</button>
+                    </div>
+                </div>
+            </form>
+            <div class="task-secondary-actions">
+                {% if selected_archived %}
+                <form method="post" action="{{ url_for('tasks_bp.restore', task_id=task.id) }}">
+                    <input type="hidden" name="archived" value="1">
+                    <button class="task-button secondary" type="submit">استعادة</button>
+                </form>
+                {% else %}
+                <form method="post" action="{{ url_for('tasks_bp.archive', task_id=task.id) }}">
+                    <input type="hidden" name="archived" value="0">
+                    <input type="hidden" name="status" value="{{ selected_status }}">
+                    <input type="hidden" name="priority" value="{{ selected_priority }}">
+                    <button class="task-button secondary" type="submit"><i class="fa-solid fa-box-archive"></i> أرشفة</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{{ url_for('tasks_bp.delete', task_id=task.id) }}"
+                      onsubmit="return confirm('هل تريد حذف هذه المهمة نهائياً؟');">
+                    <input type="hidden" name="archived" value="{{ 1 if selected_archived else 0 }}">
+                    <button class="task-button danger" type="submit"><i class="fa-solid fa-trash"></i> حذف</button>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="task-empty">
+        <i class="fa-regular fa-calendar-check"></i>
+        <h2>{% if selected_archived %}الأرشيف فارغ{% else %}لا توجد مهام مطابقة{% endif %}</h2>
+        <p>أضف مهمة جديدة أو عدّل خيارات الفرز.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,224 @@
+{% extends "print_base.html" %}
+
+{% block title %}خيارات تقارير الحوادث المرورية - SEMACOM{% endblock %}
+
+{% block report_title %}مركز استخراج وتقارير الحوادث المرورية{% endblock %}
+
+{% block document_number %}{% endblock %}
+{% block ref_number %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-main-card {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 30px;
+        max-width: 850px;
+        margin: 20px auto;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        direction: rtl;
+    }
+
+    .section-header {
+        font-size: 15px;
+        font-weight: bold;
+        color: #1b365d;
+        margin-bottom: 12px;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .options-container {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+    }
+
+    .option-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: #1e293b;
+        cursor: pointer;
+        margin-bottom: 12px;
+        font-weight: 600;
+    }
+
+    .option-label:last-child {
+        margin-bottom: 0;
+    }
+
+    .sub-input-box {
+        margin-right: 28px;
+        margin-bottom: 15px;
+        display: none;
+    }
+
+    .form-control-custom {
+        padding: 9px 12px;
+        font-size: 13.5px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background-color: #ffffff;
+        color: #0f172a;
+        width: 100%;
+        max-width: 300px;
+    }
+
+    .form-control-custom:focus {
+        border-color: #1b365d;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(27, 54, 93, 0.1);
+    }
+
+    .date-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        max-width: 600px;
+    }
+
+    .actions-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 30px;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 20px;
+    }
+
+    .btn-custom {
+        padding: 10px 22px;
+        font-size: 14px;
+        font-weight: bold;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        transition: background 0.2s;
+    }
+
+    .btn-print-report { background-color: #1b365d; color: white; }
+    .btn-print-report:hover { background-color: #0f2341; }
+    .btn-back-module { background-color: #6c757d; color: white; }
+    .btn-back-module:hover { background-color: #5c636a; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="filter-main-card">
+    <form action="{{ url_for('reports.accidents_reports') }}" method="GET" target="_blank">
+        <input type="hidden" name="report_type" value="total">
+        <input type="hidden" name="view" value="print">
+
+        <!-- 1. اختيار هيكل ونموذج التقرير -->
+        <div class="section-header"><i class="fa-solid fa-file-lines"></i> 1. حدد نموذج التقرير المطلوب:</div>
+        <div class="options-container">
+            <label class="option-label">
+                <input type="radio" name="report_format" value="normal" checked>
+                <span>التقرير العادي (جداول بيانات تنظيمية شاملة لسجلات الحوادث)</span>
+            </label>
+            <label class="option-label">
+                <input type="radio" name="report_format" value="illustrated">
+                <span>التقرير المصور (جداول البيانات مدعومة بعرض صور مرفقات الحوادث والتسوية لكل سجل)</span>
+            </label>
+        </div>
+
+        <!-- 2. تحديد النطاق الزمني والفلترة المرتبطة بجدول الحوادث -->
+        <div class="section-header"><i class="fa-solid fa-calendar-days"></i> 2. خيارات التصفية والفلترة الزمنية:</div>
+        <div class="options-container">
+            
+            <!-- كل الحوادث -->
+            <label class="option-label">
+                <input type="radio" name="filter_type" value="all" checked onclick="toggleInputs('all')">
+                <span>كافة الحوادث المرورية المسجلة في النظام</span>
+            </label>
+
+            <!-- يومية (تاريخ محدد) -->
+            <label class="option-label">
+                <input type="radio" name="filter_type" value="daily" onclick="toggleInputs('daily')">
+                <span>حوادث يوم معّين</span>
+            </label>
+            <div id="box_daily" class="sub-input-box">
+                <input type="date" name="daily_date" class="form-control-custom">
+            </div>
+
+            <!-- شهرية -->
+            <label class="option-label">
+                <input type="radio" name="filter_type" value="month" onclick="toggleInputs('month')">
+                <span>حوادث شهر معّين</span>
+            </label>
+            <div id="box_month" class="sub-input-box">
+                <input type="month" name="month" class="form-control-custom">
+            </div>
+
+            <!-- سنوية -->
+            <label class="option-label">
+                <input type="radio" name="filter_type" value="year" onclick="toggleInputs('year')">
+                <span>حوادث سنة معّينة</span>
+            </label>
+            <div id="box_year" class="sub-input-box">
+                <select name="year" class="form-control-custom">
+                    <option value="2026" selected>2026</option>
+                    <option value="2025">2025</option>
+                    <option value="2024">2024</option>
+                </select>
+            </div>
+
+            <!-- فترة زمنية محددة -->
+            <label class="option-label">
+                <input type="radio" name="filter_type" value="range" onclick="toggleInputs('range')">
+                <span>حوادث خلال فترة زمنية محددة (من - إلى)</span>
+            </label>
+            <div id="box_range" class="sub-input-box">
+                <div class="date-grid">
+                    <div>
+                        <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: bold;">من تاريخ:</label>
+                        <input type="date" name="date_from" class="form-control-custom" style="max-width: 100%;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 12px; margin-bottom: 4px; font-weight: bold;">إلى تاريخ:</label>
+                        <input type="date" name="date_to" class="form-control-custom" style="max-width: 100%;">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- أزرار الإجراءات (طباعة + العودة لموديول الحوادث) -->
+        <div class="actions-bar">
+            <a href="/accidents" class="btn-custom btn-back-module">
+                <i class="fa-solid fa-arrow-right"></i> العودة إلى موديول الحوادث (قسم العرض)
+            </a>
+            <button type="submit" class="btn-custom btn-print-report">
+                <i class="fa-solid fa-print"></i> طباعة التقرير المختار
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block signatures %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block extra_js %}
+<script>
+    function toggleInputs(type) {
+        document.getElementById('box_daily').style.display = (type === 'daily') ? 'block' : 'none';
+        document.getElementById('box_month').style.display = (type === 'month') ? 'block' : 'none';
+        document.getElementById('box_year').style.display = (type === 'year') ? 'block' : 'none';
+        document.getElementById('box_range').style.display = (type === 'range') ? 'block' : 'none';
+    }
+</script>
+{% endblock %}

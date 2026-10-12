@@ -1,0 +1,99 @@
+{% extends "print_base.html" %}
+
+{% block title %}تقرير متابعة الزيوت والفلاتر - SEMACOM{% endblock %}
+
+{% block report_title %}تقرير متابعة تغيير الزيوت والفلاتر للمركبات والمعدات{% endblock %}
+
+{% block extra_css %}
+<style>
+    .print-info-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 15px;
+        border: 1px solid #000;
+        padding: 10px;
+        font-size: 12.5px;
+        background: #f8fafc;
+    }
+    .print-info-grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 15px;
+        border: 1px solid #000;
+        padding: 10px;
+        font-size: 12.5px;
+        background: #f8fafc;
+    }
+    .section-box {
+        border: 1px solid #000;
+        padding: 10px;
+        margin-bottom: 15px;
+        font-size: 12px;
+        background: #fff;
+    }
+    .section-title-bar {
+        background: #e2e8f0 !important;
+        font-weight: bold;
+        padding: 5px 8px;
+        border: 1px solid #000;
+        margin-bottom: 10px;
+        font-size: 13px;
+        text-align: right;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="print-container">
+    <!-- بيانات المستند الأساسية -->
+    <div class="print-info-grid-3">
+        <div><strong>رقم المستند:</strong> {{ document_number }}</div>
+        <div><strong>تاريخ الإصدار:</strong> {{ report_date_gregorian }}</div>
+        <div><strong>تاريخ الخدمة:</strong> {{ record.service_date }}</div>
+        <div><strong>رقم اللوحة:</strong> {{ record.vehicle_plate }}</div>
+        <div><strong>الفني المسؤول:</strong> {{ record.technician_name }}</div>
+        <div><strong>نمط التتبع:</strong> 
+            {% if record.tracking_mode == 'distance' %} مسافة ({{ record.distance_interval }} كم)
+            {% elif record.tracking_mode == 'time' %} وقت ({{ record.time_interval_months }} أشهر)
+            {% else %} مسافة أو وقت
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- بيانات العدادات والإنذارات المبكرة -->
+    <div class="section-box">
+        <div class="section-title-bar">قراءات العدادات وضبط الإنذارات المبكرة</div>
+        <div class="print-info-grid">
+            <div><strong>قراءة عداد آخر تغيير زيت:</strong> {{ record.last_oil_mileage or '---' }} كم</div>
+            <div><strong>قراءة عداد المركبة الحالي:</strong> {{ record.current_mileage or '---' }} كم</div>
+            <div><strong>حد الإنذار المبكر بالمسافة:</strong> {{ record.distance_alert_threshold }} كم</div>
+            <div><strong>حد الإنذار المبكر بالوقت:</strong> {{ record.time_alert_threshold }} يوم</div>
+        </div>
+    </div>
+
+    <!-- ملاحظات وتوصيات الفني -->
+    <div class="section-box">
+        <div class="section-title-bar">ملاحظات وتوصيات الفني والورشة</div>
+        <div style="padding: 5px 0; min-height: 40px; font-size: 12px; text-align: right;">
+            {{ record.notes or 'لا توجد ملاحظات إضافية مسجلة لهذه العملية.' }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block footer %}
+<div style="margin-top: 25px;">
+    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 12px; font-weight: bold;">
+        <tr>
+            <td style="border: 1px solid #000; padding: 6px; width: 50%;">توقيع الفني المنفذ للخدمة</td>
+            <td style="border: 1px solid #000; padding: 6px; width: 50%;">اعتماد مشرف الورشة والصيانة</td>
+        </tr>
+        <tr>
+            <td style="border: 1px solid #000; height: 50px; vertical-align: bottom;">التوقيع: {{ record.technician_name }}</td>
+            <td style="border: 1px solid #000; height: 50px; vertical-align: bottom;">التوقيع والختم: .......................................</td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

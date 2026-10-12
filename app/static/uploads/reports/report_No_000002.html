@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تقرير جميع أنواع الصيانة المفتوحة والمغلقة - SEMACOM</title>
+    <style>
+        /* نظام الخطوط والتنسيق العام - يعمل أوفلاين 100% */
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 'Traditional Arabic', 'Cairo', sans-serif;
+        }
+
+        body {
+            background-color: #e9ecef;
+            margin: 0;
+            padding: 20px 0;
+            direction: rtl;
+            color: #000000;
+        }
+
+        /* شريط التحكم الخارجي */
+        .action-bar {
+            width: 297mm;
+            margin: 0 auto 15px auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-action {
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-approve { background-color: #28a745; color: #ffffff; }
+        .btn-approve:hover { background-color: #218838; }
+        .btn-print { background-color: #1b365d; color: #ffffff; }
+        .btn-print:hover { background-color: #0f2341; }
+        .btn-back { background-color: #6c757d; color: #ffffff; }
+        .btn-back:hover { background-color: #5a6268; }
+        .btn-active-orientation { background-color: #1b365d; color: #ffffff; }
+        .btn-inactive-orientation { background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; }
+        .btn-inactive-orientation:hover { background-color: #cbd5e1; }
+
+        /* حاوية الورقة A4 الموحدة */
+        .page-container {
+            background: #ffffff;
+            margin: 0 auto;
+            border: 1px solid #dcdcdc;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* نمط A4 العمودي (Portrait) */
+        .page-container.portrait {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm 15mm;
+        }
+
+        /* نمط A4 الأفقي (Landscape) */
+        .page-container.landscape {
+            width: 297mm;
+            min-height: 210mm;
+            padding: 12mm 15mm;
+        }
+
+        .page-container + .page-container {
+            margin-top: 20px;
+        }
+
+        /* --- 1. الترويسة الرسمية --- */
+        .official-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 6px;
+        }
+
+        .header-right-zone {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-logo-zone img {
+            max-width: 95px;
+            max-height: 80px;
+            object-fit: contain;
+        }
+
+        .header-company-info {
+            text-align: right;
+        }
+
+        .header-company-info .title-ar {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1b365d;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .header-company-info .sub-ar {
+            font-size: 11px;
+            font-weight: bold;
+            color: #222222;
+            margin: 3px 0;
+        }
+
+        .header-company-info .title-en {
+            font-size: 9px;
+            font-weight: bold;
+            color: #1b365d;
+            margin: 0;
+            direction: ltr;
+            text-align: right;
+            letter-spacing: 0.2px;
+        }
+
+        /* المربع الأيسر للـ QR Code */
+        .header-qr-zone {
+            width: 85px;
+            height: 85px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #cbd5e1;
+            border-radius: 4px;
+            background-color: #fafafa;
+        }
+
+        .header-qr-zone img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .header-double-line {
+            border-top: 3px solid #1b365d;
+            border-bottom: 1px solid #1b365d;
+            height: 3px;
+            margin: 6px 0 12px 0;
+        }
+
+        /* --- 2. شريط بيانات المستند --- */
+        .document-meta-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 18px;
+            padding: 0 4px;
+        }
+
+        .meta-right {
+            text-align: right;
+            color: #111827;
+        }
+
+        /* الرقم المرجعي الموحد باللون الأحمر العريض */
+        .meta-left.ref-number-red {
+            color: #dc3545 !important;
+            font-size: 14px;
+            font-weight: bold;
+            direction: ltr;
+            text-align: left;
+        }
+
+        .meta-left.ref-number-red .ref-label {
+            direction: rtl;
+            display: inline-block;
+            margin-right: 4px;
+            color: #111827;
+        }
+
+        /* --- 3. مربع عنوان التقرير --- */
+        .report-title-box {
+            border: 1px solid #000000;
+            border-radius: 8px 0 8px 0;
+            padding: 8px 15px;
+            text-align: center;
+            margin: 0 auto 20px auto;
+            width: 70%;
+            background-color: #ffffff;
+        }
+
+        .report-title-box h2 {
+            margin: 0;
+            font-size: 19px;
+            font-weight: bold;
+            color: #000000;
+        }
+
+        /* --- 4. محتوى التقرير الأساسي --- */
+        .report-content {
+            flex-grow: 1;
+        }
+
+        [contenteditable="true"] {
+            outline: none;
+            transition: background-color 0.2s;
+        }
+
+        [contenteditable="true"]:hover, 
+        [contenteditable="true"]:focus {
+            background-color: #fffde7;
+            box-shadow: inset 0 0 0 1px #fbc02d;
+            border-radius: 2px;
+        }
+
+        /* --- 5. التوقيعات والذيل الرسمي --- */
+        .official-footer {
+            margin-top: 25px;
+            padding-top: 10px;
+        }
+
+        .signatures-grid {
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .signature-box {
+            width: 30%;
+        }
+
+        .signature-space {
+            height: 45px;
+        }
+
+        /* --- 6. النوافذ المنبثقة للأوفلاين (Modals) --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal-box {
+            background: #ffffff;
+            padding: 24px 28px;
+            border-radius: 10px;
+            width: 420px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+            border-top: 6px solid #1b365d;
+            animation: modalFadeIn 0.2s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1b365d;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .modal-desc {
+            font-size: 13.5px;
+            color: #475569;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        /* ========================================================= */
+        /* 🖨️ إعدادات الطباعة A4 المخصصة للأوفلاين                    */
+        /* ========================================================= */
+        @media print {
+            body {
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            .action-bar, .modal-overlay {
+                display: none !important;
+            }
+
+            .page-container {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                min-height: 0 !important;
+                height: auto !important;
+                display: flex !important;
+                flex-direction: column !important;
+                page-break-after: always;
+                break-after: page;
+            }
+
+            .print-sheets .page-container:last-child {
+                page-break-after: auto;
+                break-after: auto;
+            }
+
+            .page-container + .page-container {
+                margin-top: 0 !important;
+            }
+
+            .header-qr-zone {
+                border: none !important;
+                background: transparent !important;
+            }
+
+            .page-container > div,
+            .report-content {
+                display: block !important;
+            }
+
+            [contenteditable="true"]:hover, 
+            [contenteditable="true"]:focus {
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+
+            @page {
+                size: A4 landscape;
+                margin: 6mm 10mm;
+            }
+        }
+    </style>
+    
+<style>
+    .maintenance-details-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .maintenance-details-table th,
+    .maintenance-details-table td {
+        border: 1px solid #475569;
+        padding: 6px 8px;
+        vertical-align: top;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+    .maintenance-details-table th { width: 15%; background: #e9eff5; text-align: right; }
+    .maintenance-details-table td { width: 35%; }
+    .attachment-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .attachment-card { min-width: 0; border: 1px solid #64748b; padding: 8px; text-align: center; break-inside: avoid; }
+    .attachment-card h3 { margin: 0 0 6px; font-size: 13px; }
+    .attachment-image { height: 115mm; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc; }
+    .attachment-image img { width: 100%; height: 100%; object-fit: contain; }
+    .attachment-image a { overflow-wrap: anywhere; }
+    .maintenance-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    @media print {
+        .maintenance-details-table th, .maintenance-details-table td { padding: 5px 7px; font-size: 11px; }
+        .attachment-image { height: 112mm; }
+    }
+</style>
+
+</head>
+<body class="landscape">
+
+    <!-- شريط الإجراءات العلوي -->
+    <div class="action-bar">
+        <a href="javascript:history.back()" class="btn-action btn-back">← العودة</a>
+
+        
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+            
+            <button onclick="window.print()" class="btn-action btn-print">🖨️ طباعة المستند</button>
+        </div>
+    </div>
+
+    <div class="print-sheets">
+    
+
+    
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | بيانات أمر الصيانة</h2>
+        <div class="report-content">
+
+
+
+    
+
+
+<table class="maintenance-details-table">
+    <tbody>
+    
+        <tr>
+            <th>رقم الأمر</th>
+            <td>SMC-EXC-20261003222639</td>
+            
+            <th>نوع الصيانة</th>
+            <td>الصيانة الاستثنائية</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الحالة</th>
+            <td>مفتوح</td>
+            
+            <th>كود المركبة</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>رقم اللوحة</th>
+            <td>—</td>
+            
+            <th>اسم السائق</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>درجة الخطورة</th>
+            <td>—</td>
+            
+            <th>تاريخ الواقعة</th>
+            <td>2026-10-03T22:26</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الموضوع</th>
+            <td>للائىلتملاى تنبيىلاهبينعىالارلبيىلا ربيلا</td>
+            
+            <th>الوصف</th>
+            <td>ريسبنترلابيملاريبرى{</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الأسباب</th>
+            <td>يؤبس{آ،ـ[]ٍ{لآهيسرملا</td>
+            
+            <th>تفاصيل أخرى</th>
+            <td>ببيترلاىنبلاىربي</td>
+            
+        </tr>
+    
+    </tbody>
+</table>
+</div>
+    </section>
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | مرفقات أمر الصيانة</h2>
+        <div class="attachment-grid">
+            
+
+<div class="attachment-card">
+    <h3>صورة قبل الصيانة</h3>
+    <div class="attachment-image">
+        
+        <span>لا يوجد مرفق</span>
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>صورة بعد الصيانة</h3>
+    <div class="attachment-image">
+        
+        <span>لا يوجد مرفق</span>
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>مرفق آخر</h3>
+    <div class="attachment-image">
+        
+        <span>لا يوجد مرفق</span>
+        
+    </div>
+</div>
+
+        </div>
+    </section>
+    
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | بيانات أمر الصيانة</h2>
+        <div class="report-content">
+
+
+
+    
+
+
+    
+
+<table class="maintenance-details-table">
+    <tbody>
+    
+        <tr>
+            <th>رقم الأمر</th>
+            <td>SMC-EMG-20261004171549</td>
+            
+            <th>نوع الصيانة</th>
+            <td>الصيانة الطارئة</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الحالة</th>
+            <td>مغلق / مؤرشف</td>
+            
+            <th>كود المركبة</th>
+            <td>w-123</td>
+            
+        </tr>
+    
+        <tr>
+            <th>رقم اللوحة</th>
+            <td>ا ل ب 2546</td>
+            
+            <th>اسم السائق</th>
+            <td>احمد علي محمد علوان</td>
+            
+        </tr>
+    
+        <tr>
+            <th>درجة الخطورة</th>
+            <td>خطيرة جداً</td>
+            
+            <th>اسم المُبلغ</th>
+            <td>عمر علي</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الفني المتابع</th>
+            <td>—</td>
+            
+            <th>وصف الحالة</th>
+            <td>حسبي الله ونعم الوكيل</td>
+            
+        </tr>
+    
+        <tr>
+            <th>سبب العطل</th>
+            <td>خيرة الله</td>
+            
+            <th>هل توجد إصابات؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>هل المركبة قابلة للحركة؟</th>
+            <td>true</td>
+            
+            <th>هل تم إبلاغ جهة رسمية؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الواقعة</th>
+            <td>—</td>
+            
+            <th>تاريخ الإقفال</th>
+            <td>2026-10-04</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الاستلام</th>
+            <td>2026-10-04 17:17</td>
+            
+            <th>سبب الإقفال</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الإجراء المتخذ</th>
+            <td>سبان الله</td>
+            
+            <th>هل تم سحب المركبة؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>جهة السحب</th>
+            <td>الحمدلله</td>
+            
+            <th>تفاصيل المعالجة</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>قطع الغيار</th>
+            <td>مكابح +زيت فرامل</td>
+            
+            <th>التكلفة النهائية</th>
+            <td>1000.0</td>
+            
+        </tr>
+    
+        <tr>
+            <th>التوصية</th>
+            <td>لا اله الا الله</td>
+            
+            <th>ملاحظات الإقفال</th>
+            <td>—</td>
+            
+        </tr>
+    
+    </tbody>
+</table>
+</div>
+    </section>
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | مرفقات أمر الصيانة</h2>
+        <div class="attachment-grid">
+            
+
+<div class="attachment-card">
+    <h3>صورة قبل الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/26_1791123435_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM%20(1).jpeg" alt="صورة قبل الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>صورة بعد الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/26_1791123435_WhatsApp%20Image%202026-10-04%20at%209.47.44%20AM%20(1).jpeg" alt="صورة بعد الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>مرفق آخر</h3>
+    <div class="attachment-image">
+        
+        <a href="/static/uploads/maintenance/26_1791123435_SEMACOM_%D8%A7%D9%84%D8%B5%D9%8A%D8%A7%D9%86%D8%A9%20%D8%A7%D9%84%D8%B7%D8%A7%D8%B1%D8%A6%D8%A9%20-%20%D8%A7%D9%84%D8%A3%D8%B1%D8%B4%D9%8A%D9%81%20(%D8%A7%D9%84%D9%85%D8%BA%D9%84%D9%82%D8%A9)_20261004_1414.xlsx" target="_blank" rel="noopener">فتح المرفق</a>
+        
+    </div>
+</div>
+
+        </div>
+    </section>
+    
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | بيانات أمر الصيانة</h2>
+        <div class="report-content">
+
+
+
+    
+
+
+    
+
+<table class="maintenance-details-table">
+    <tbody>
+    
+        <tr>
+            <th>رقم الأمر</th>
+            <td>SMC-EMG-20261004140729</td>
+            
+            <th>نوع الصيانة</th>
+            <td>الصيانة الطارئة</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الحالة</th>
+            <td>مغلق / مؤرشف</td>
+            
+            <th>كود المركبة</th>
+            <td>w-123</td>
+            
+        </tr>
+    
+        <tr>
+            <th>رقم اللوحة</th>
+            <td>ا ل ب 2546</td>
+            
+            <th>اسم السائق</th>
+            <td>احمد علي محمد علوان</td>
+            
+        </tr>
+    
+        <tr>
+            <th>درجة الخطورة</th>
+            <td>خطيرة جداً</td>
+            
+            <th>اسم المُبلغ</th>
+            <td>عمر علي</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الفني المتابع</th>
+            <td>—</td>
+            
+            <th>وصف الحالة</th>
+            <td>حادث</td>
+            
+        </tr>
+    
+        <tr>
+            <th>سبب العطل</th>
+            <td>الفرامل</td>
+            
+            <th>هل توجد إصابات؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>هل المركبة قابلة للحركة؟</th>
+            <td>true</td>
+            
+            <th>هل تم إبلاغ جهة رسمية؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الواقعة</th>
+            <td>—</td>
+            
+            <th>تاريخ الإقفال</th>
+            <td>2026-10-04</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الاستلام</th>
+            <td>2026-10-04 14:11</td>
+            
+            <th>سبب الإقفال</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الإجراء المتخذ</th>
+            <td>المعالجة الاولية</td>
+            
+            <th>هل تم سحب المركبة؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>جهة السحب</th>
+            <td>سطحة الورشة</td>
+            
+            <th>تفاصيل المعالجة</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>قطع الغيار</th>
+            <td>مكابح +زيت فرامل</td>
+            
+            <th>التكلفة النهائية</th>
+            <td>100.0</td>
+            
+        </tr>
+    
+        <tr>
+            <th>التوصية</th>
+            <td>العودة</td>
+            
+            <th>ملاحظات الإقفال</th>
+            <td>—</td>
+            
+        </tr>
+    
+    </tbody>
+</table>
+</div>
+    </section>
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | مرفقات أمر الصيانة</h2>
+        <div class="attachment-grid">
+            
+
+<div class="attachment-card">
+    <h3>صورة قبل الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/22_1791112274_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM%20(1).jpeg" alt="صورة قبل الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>صورة بعد الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/22_1791112274_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM.jpeg" alt="صورة بعد الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>مرفق آخر</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/22_1791112274_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM%20(1).jpeg" alt="مرفق آخر">
+        
+    </div>
+</div>
+
+        </div>
+    </section>
+    
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | بيانات أمر الصيانة</h2>
+        <div class="report-content">
+
+
+
+    
+
+
+    
+
+<table class="maintenance-details-table">
+    <tbody>
+    
+        <tr>
+            <th>رقم الأمر</th>
+            <td>SMC-EMG-20261004133348</td>
+            
+            <th>نوع الصيانة</th>
+            <td>الصيانة الطارئة</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الحالة</th>
+            <td>مغلق / مؤرشف</td>
+            
+            <th>كود المركبة</th>
+            <td>w-123</td>
+            
+        </tr>
+    
+        <tr>
+            <th>رقم اللوحة</th>
+            <td>ا ل ب 2546</td>
+            
+            <th>اسم السائق</th>
+            <td>احمد علي محمد علوان</td>
+            
+        </tr>
+    
+        <tr>
+            <th>درجة الخطورة</th>
+            <td>حرجة</td>
+            
+            <th>اسم المُبلغ</th>
+            <td>عمر علي</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الفني المتابع</th>
+            <td>—</td>
+            
+            <th>وصف الحالة</th>
+            <td>خروج عن المسار</td>
+            
+        </tr>
+    
+        <tr>
+            <th>سبب العطل</th>
+            <td>تعطل مفاجي لنظام الفرامل</td>
+            
+            <th>هل توجد إصابات؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>هل المركبة قابلة للحركة؟</th>
+            <td>true</td>
+            
+            <th>هل تم إبلاغ جهة رسمية؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الواقعة</th>
+            <td>—</td>
+            
+            <th>تاريخ الإقفال</th>
+            <td>2026-10-04</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الاستلام</th>
+            <td>2026-10-04 13:37</td>
+            
+            <th>سبب الإقفال</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الإجراء المتخذ</th>
+            <td>تمت الصيانة الاولية</td>
+            
+            <th>هل تم سحب المركبة؟</th>
+            <td>true</td>
+            
+        </tr>
+    
+        <tr>
+            <th>جهة السحب</th>
+            <td>سطحة الورشة</td>
+            
+            <th>تفاصيل المعالجة</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>قطع الغيار</th>
+            <td>مكابح +زيت فرامل</td>
+            
+            <th>التكلفة النهائية</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>التوصية</th>
+            <td>اكمال الصيانة في الورش</td>
+            
+            <th>ملاحظات الإقفال</th>
+            <td>—</td>
+            
+        </tr>
+    
+    </tbody>
+</table>
+</div>
+    </section>
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | مرفقات أمر الصيانة</h2>
+        <div class="attachment-grid">
+            
+
+<div class="attachment-card">
+    <h3>صورة قبل الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/18_1791110256_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM%20(1).jpeg" alt="صورة قبل الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>صورة بعد الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/18_1791110256_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM.jpeg" alt="صورة بعد الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>مرفق آخر</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/18_1791110256_WhatsApp%20Image%202026-10-04%20at%209.50.51%20AM.jpeg" alt="مرفق آخر">
+        
+    </div>
+</div>
+
+        </div>
+    </section>
+    
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | بيانات أمر الصيانة</h2>
+        <div class="report-content">
+
+
+
+    
+
+
+    
+
+<table class="maintenance-details-table">
+    <tbody>
+    
+        <tr>
+            <th>رقم الأمر</th>
+            <td>SMC-EXC-20261003222432</td>
+            
+            <th>نوع الصيانة</th>
+            <td>الصيانة الاستثنائية</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الحالة</th>
+            <td>مغلق / مؤرشف</td>
+            
+            <th>كود المركبة</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>رقم اللوحة</th>
+            <td>—</td>
+            
+            <th>اسم السائق</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>درجة الخطورة</th>
+            <td>—</td>
+            
+            <th>تاريخ الواقعة</th>
+            <td>2026-10-03T22:24</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الموضوع</th>
+            <td>قشفاثشلقتخهيباللاربهيشثلاقبلالطيبيسبتلىقخهعثبكالهعفكىتلقبللانكثبلشى</td>
+            
+            <th>الوصف</th>
+            <td>قثلشاهبثىهلاشهعقثفالقثفلقثختلنشاىهثبعالقهعغبثثشمليثبتللاىقثبعاللاهعقثغل</td>
+            
+        </tr>
+    
+        <tr>
+            <th>الأسباب</th>
+            <td>القثهبلعلاعبعهشخا8لهعقثافلهعقثللاهعاللا</td>
+            
+            <th>تفاصيل أخرى</th>
+            <td>لخهتاثهقعباىلرلاتنبىلارنتبيلارىنتشىيؤرررررررمتلاا</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تاريخ الإقفال</th>
+            <td>2026-10-03</td>
+            
+            <th>تاريخ الاستلام</th>
+            <td>2026-10-03 22:25</td>
+            
+        </tr>
+    
+        <tr>
+            <th>سبب الإقفال</th>
+            <td>—</td>
+            
+            <th>الإجراء المتخذ</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>هل تم سحب المركبة؟</th>
+            <td>—</td>
+            
+            <th>جهة السحب</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>تفاصيل المعالجة</th>
+            <td>لسىءبلابببسلىتا</td>
+            
+            <th>قطع الغيار</th>
+            <td>—</td>
+            
+        </tr>
+    
+        <tr>
+            <th>التكلفة النهائية</th>
+            <td>—</td>
+            
+            <th>التوصية</th>
+            <td>بلستنبلساغبتل</td>
+            
+        </tr>
+    
+        <tr>
+            <th>ملاحظات الإقفال</th>
+            <td>بسلىتالبستبنلةابس</td>
+            
+            <th></th><td></td>
+            
+        </tr>
+    
+    </tbody>
+</table>
+</div>
+    </section>
+    <section class="page-container landscape">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                <img src="/static/logo.png"
+                     alt="شعار الشركة"
+                     onerror="this.onerror=null; this.src='/static/logo.jpg';">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000002.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ إصدار التقرير: </span>
+            <span contenteditable="true">2026/10/08م</span>
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="true">1448/04/24هـ</span>
+        </div>
+
+        <div class="meta-left ref-number-red">
+            <span class="ref-label">الرقم المرجعي: </span>
+            <span class="doc_ref_display" contenteditable="true">No.000002</span>
+        </div>
+    </div>
+</div>
+        <h2 class="maintenance-report-title">تقرير جميع أنواع الصيانة المفتوحة والمغلقة | مرفقات أمر الصيانة</h2>
+        <div class="attachment-grid">
+            
+
+<div class="attachment-card">
+    <h3>صورة قبل الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/12_1791055536_WhatsApp%20Image%202026-10-02%20at%206.36.43%20PM%20(1).jpeg" alt="صورة قبل الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>صورة بعد الصيانة</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/12_1791055536_WhatsApp%20Image%202026-09-30%20at%202.53.55%20PM%20(2).jpeg" alt="صورة بعد الصيانة">
+        
+    </div>
+</div>
+
+            
+
+<div class="attachment-card">
+    <h3>مرفق آخر</h3>
+    <div class="attachment-image">
+        
+        <img src="/static/uploads/maintenance/12_1791055536_WhatsApp%20Image%202026-10-02%20at%208.11.36%20PM.jpeg" alt="مرفق آخر">
+        
+    </div>
+</div>
+
+        </div>
+    </section>
+    
+
+
+    </div>
+
+    <!-- 1. نافذة التأكيد قبل الاعتماد (Modal 1) -->
+    <div id="approveModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                🛡️ تأكيد اعتماد الوثيقة
+            </div>
+            <div class="modal-desc">
+                هل أنت متأكد من اعتماد هذه الوثيقة؟<br>
+                سيتم توليد الرقم المرجعي المتسلسل الرسمي والـ QR Code الخاص بها، ولا يمكن التراجع بعد إتمام الاعتماد.
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-approve" onclick="confirmApproval()">نعم، اعتمد الوثيقة</button>
+                <button type="button" class="btn-action btn-back" onclick="hideApproveModal()">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. نافذة النجاح المنسقة والمستقلة بالكامل أوفلاين (Modal 2) -->
+    <div id="successApproveModal" class="modal-overlay">
+        <div class="modal-box" style="border-top-color: #28a745;">
+            <div style="font-size: 42px; line-height: 1; margin-bottom: 8px;">✅</div>
+            <div class="modal-title" style="color: #28a745;">تم اعتماد الوثيقة بنجاح!</div>
+            <div class="modal-desc">
+                تم تسجيل الوثيقة رسمياً في قاعدة البيانات.<br>
+                الرقم المرجعي المعتمد:
+                <div id="modal_ref_result" style="font-size: 22px; font-weight: bold; color: #dc3545; margin: 12px 0; background-color: #fff5f5; padding: 10px; border-radius: 6px; border: 1px dashed #feb2b2; direction: ltr; font-family: monospace;">
+                    No.000000
+                </div>
+                تم إنشاء رمز الـ QR المخصص وإضافته تلقائياً للترويسة.
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-approve" onclick="closeSuccessModal()" style="width: 100%; justify-content: center; font-size: 15px; padding: 10px;">
+                    موافق
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function changeOrientation(newOrientation) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('orientation', newOrientation);
+            window.location.href = url.toString();
+        }
+
+        function showApproveModal() {
+            document.getElementById('approveModal').style.display = 'flex';
+        }
+
+        function hideApproveModal() {
+            document.getElementById('approveModal').style.display = 'none';
+        }
+
+        function closeSuccessModal() {
+            document.getElementById('successApproveModal').style.display = 'none';
+        }
+
+        function confirmApproval() {
+            hideApproveModal();
+            
+            const approvalDocType = "maintenance_report";
+            const itemId = "{\"date_from\": \"\", \"date_to\": \"\", \"status\": \"all\", \"type\": \"all\"}";
+            
+            fetch('/reports/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    doc_type: approvalDocType,
+                    item_id: itemId
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // 1. تحديث الرقم المرجعي الموحد باللون الأحمر
+                    document.querySelectorAll('.doc_ref_display').forEach(function(el) {
+                        el.innerText = data.doc_number;
+                    });
+                    
+                    document.querySelectorAll('.header-qr-zone').forEach(function(qrContainer) {
+                        qrContainer.innerHTML = `<img class="qr_img" src="${data.qr_code_url}" alt="QR Code">`;
+                    });
+                    
+                    // 3. إخفاء زر الاعتماد بعد الاعتماد بنجاح
+                    const approveBtn = document.getElementById('btn_approve_doc');
+                    if (approveBtn) approveBtn.style.display = 'none';
+                    
+                    // 4. عرض نافذة النجاح المنسقة الجذابة أوفلاين 100%
+                    document.getElementById('modal_ref_result').innerText = data.doc_number;
+                    document.getElementById('successApproveModal').style.display = 'flex';
+                } else {
+                    alert('تعذر اعتماد الوثيقة، يرجى المحاولة لاحقاً.');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('حدث خطأ أثناء الاتصال بالسيرفر لاعتماد الوثيقة.');
+            });
+        }
+    </script>
+    
+</body>
+</html>

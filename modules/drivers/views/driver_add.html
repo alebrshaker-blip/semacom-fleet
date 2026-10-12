@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}إضافة سائق أو موظف جديد - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container { max-width: 900px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 25px; }
+    .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #dee2e6; padding-bottom: 15px; }
+    h2 { color: #2c3e50; margin: 0; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #2c3e50; font-size: 14px; }
+    .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+    .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn-primary { background-color: #0d6efd; color: white; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #5c636a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-header">
+        <h2>إضافة سجل سائق أو موظف جديد</h2>
+        <a href="{{ url_for('drivers.index') }}" class="btn btn-secondary">العودة للقائمة</a>
+    </div>
+
+    <form action="{{ url_for('drivers.add') }}" method="POST">
+        <div class="form-row">
+            <div class="form-group">
+                <label>اسم الموظف / السائق <span style="color: red;">*</span></label>
+                <input type="text" name="name" class="form-control" required placeholder="الاسم الرباعي">
+            </div>
+            <div class="form-group">
+                <label>رقم الهوية / الإقامة <span style="color: red;">*</span></label>
+                <input type="text" name="national_id" class="form-control" required placeholder="رقم الهوية الوطنية أو الإقامة">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>رقم الجوال</label>
+                <input type="text" name="phone" class="form-control" placeholder="05xxxxxxxx">
+            </div>
+            <div class="form-group">
+                <label>الجنسية</label>
+                <input type="text" name="nationality" class="form-control" placeholder="مثال: سعودي، مصري، ...">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>الصفة الوظيفية</label>
+                <input type="text" name="job_title" class="form-control" placeholder="مثال: سائق معدة، مراقب، فني">
+            </div>
+            <div class="form-group">
+                <label>القسم التابع له</label>
+                <input type="text" name="department" class="form-control" placeholder="مثال: بلدية العمرة، قسم الحركة">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>رقم الرخصة</label>
+                <input type="text" name="license_number" class="form-control" placeholder="رقم رخصة القيادة">
+            </div>
+            <div class="form-group">
+                <label>نوع الرخصة</label>
+                <input type="text" name="license_type" class="form-control" placeholder="مثال: خصوصي، نقل ثقيل">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>عدد القيود</label>
+                <input type="number" name="restrictions_count" class="form-control" value="0" min="0">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>تاريخ إصدار الرخصة</label>
+                <input type="date" name="license_issue_date" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>تاريخ انتهاء الرخصة</label>
+                <input type="date" name="license_expiry_date" class="form-control">
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #dee2e6; padding-top: 15px;">
+            <button type="submit" class="btn btn-primary">حفظ السجل</button>
+            <a href="{{ url_for('drivers.index') }}" class="btn btn-secondary">إلغاء</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

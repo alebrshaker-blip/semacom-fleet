@@ -1,0 +1,80 @@
+/* خلفية النافذة المنبثقة */
+.custom-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.25s ease-in-out;
+}
+
+.custom-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* صندوق النافذة */
+.custom-modal-card {
+    background: #ffffff;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 440px;
+    padding: 24px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    transform: scale(0.9);
+    transition: transform 0.25s ease-in-out;
+    direction: rtl;
+    text-align: center;
+}
+
+.custom-modal-overlay.active .custom-modal-card {
+    transform: scale(1);
+}
+
+/* أيقونات الحالة */
+.modal-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px auto;
+    font-size: 28px;
+}
+
+.modal-icon.warning { background-color: #FEF3C7; color: #D97706; }
+.modal-icon.success { background-color: #D1FAE5; color: #059669; }
+.modal-icon.danger { background-color: #FEE2E2; color: #DC2626; }
+.modal-icon.info { background-color: #E0F2FE; color: #0284C7; }
+
+/* النصوص والأزرار */
+.modal-title { font-size: 1.25rem; font-weight: 700; color: #1E293B; margin-bottom: 8px; }
+.modal-message { font-size: 0.95rem; color: #64748B; margin-bottom: 24px; line-height: 1.5; }
+
+.modal-actions { display: flex; gap: 12px; justify-content: center; }
+.btn-modal {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex: 1;
+}
+
+.btn-modal-confirm { background-color: #2563EB; color: white; }
+.btn-modal-confirm:hover { background-color: #1D4ED8; }
+.btn-modal-danger { background-color: #DC2626; color: white; }
+.btn-modal-danger:hover { background-color: #B91C1C; }
+.btn-modal-cancel { background-color: #F1F5F9; color: #475569; }
+.btn-modal-cancel:hover { background-color: #E2E8F0; }

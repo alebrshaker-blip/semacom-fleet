@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - نظام SEMACOM</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tahoma', 'Segoe UI', sans-serif; }
+        body { background-color: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        
+        .login-card { 
+            background: #ffffff; 
+            padding: 40px 30px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+            width: 100%; 
+            max-width: 400px; 
+            border-top: 4px solid #1b365d;
+        }
+        
+        .brand-header { text-align: center; margin-bottom: 25px; }
+        .brand-header img { width: 65px; height: 65px; object-fit: contain; margin-bottom: 10px; }
+        .brand-header h2 { color: #1b365d; font-size: 22px; margin-bottom: 5px; }
+        .brand-header p { color: #6c757d; font-size: 13px; }
+
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #2c3e50; font-size: 14px; }
+        .form-control { 
+            width: 100%; 
+            padding: 10px 12px; 
+            border: 1px solid #dbe2ea; 
+            border-radius: 6px; 
+            font-size: 0.95rem; 
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-control:focus { border-color: #0d6efd; }
+
+        .btn-login { 
+            width: 100%; 
+            padding: 12px; 
+            background-color: #1b365d; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            font-size: 1rem; 
+            font-weight: bold; 
+            cursor: pointer; 
+            transition: background 0.2s; 
+        }
+        .btn-login:hover { background-color: #0f223d; }
+
+        .alert-error { 
+            background-color: #fde8e8; 
+            color: #dc3545; 
+            padding: 10px 12px; 
+            border-radius: 6px; 
+            margin-bottom: 20px; 
+            text-align: center; 
+            font-size: 0.88rem; 
+            border: 1px solid #f8b4b4;
+        }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app_theme.css') }}">
+</head>
+<body style="{{ appearance.style }}">
+
+    <div class="login-card">
+        <div class="brand-header">
+            <img src="{{ url_for('static', filename='logo.jpg') }}" alt="SEMACOM Logo" onerror="this.style.display='none'">
+            <h2>شركة SEMACOM</h2>
+            <p>نظام إدارة المركبات والمعدات</p>
+        </div>
+
+        <!-- إظهار الأخطاء القادمة من المتغير direct أو Flash messages -->
+        {% if error %}
+            <div class="alert-error">{{ error }}</div>
+        {% endif %}
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert-error">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('settings.login') }}">
+            <div class="form-group">
+                <label for="username">اسم المستخدم</label>
+                <input type="text" id="username" name="username" class="form-control" required autofocus autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">كلمة المرور</label>
+                <input type="password" id="password" name="password" class="form-control" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn-login">تسجيل الدخول</button>
+        </form>
+    </div>
+
+</body>
+</html>

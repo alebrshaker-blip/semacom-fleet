@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة السائقين والموظفين - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<style>
+    .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    h2 { color: #2c3e50; }
+    .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn-primary { background-color: #0d6efd; color: white; }
+    .btn-primary:hover { background-color: #0b5ed7; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #5c636a; }
+    .btn-danger { background-color: #dc3545; color: white; }
+    .btn-danger:hover { background-color: #bb2d3b; }
+    .btn-success { background-color: #198754; color: white; }
+    .btn-success:hover { background-color: #157347; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 20px; }
+    .card-body { padding: 20px; }
+    .table-responsive { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+    th, td { padding: 10px 12px; border: 1px solid #dee2e6; vertical-align: middle; white-space: nowrap; }
+    thead { background-color: #cfe2ff; color: #084298; }
+    tbody tr:nth-child(even) { background-color: #f8f9fa; }
+    tbody tr:hover { background-color: #f1f3f5; }
+    .text-muted { color: #6c757d; padding: 20px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1400px; margin: 0 auto;">
+    <div class="header-flex">
+        <h2>إدارة السائقين والموظفين</h2>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <!-- زر التصدير إلى Excel الأخضر -->
+            <a href="{{ url_for('drivers.export_drivers_excel', q=request.args.get('q', '')) }}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> تصدير إلى Excel
+            </a>
+            <a href="/drivers/add" class="btn btn-primary">إضافة موظف/سائق جديد +</a>
+        </div>
+    </div>
+
+    <!-- نموذج البحث -->
+    <form method="GET" action="/drivers" style="background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+        <div style="flex: 1; min-width: 250px;">
+            <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="بحث بالاسم، رقم الهوية، الجوال، أو رقم الرخصة..." style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;">
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-primary">بحث</button>
+            <a href="/drivers" class="btn btn-secondary">إعادة تعيين</a>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>اسم الموظف</th>
+                            <th>رقم الهوية</th>
+                            <th>رقم الجوال</th>
+                            <th>الجنسية</th>
+                            <th>الصفة الوظيفية</th>
+                            <th>القسم التابع له</th>
+                            <th>رقم الرخصة</th>
+                            <th>نوع الرخصة</th>
+                            <th>عدد القيود</th>
+                            <th>تاريخ اصدار الرخصة</th>
+                            <th>تاريخ انتهاء الرخصة</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for driver in drivers %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td style="font-weight: bold; text-align: right;">{{ driver.name }}</td>
+                            <td>{{ driver.national_id }}</td>
+                            <td>{{ driver.phone }}</td>
+                            <td>{{ driver.nationality }}</td>
+                            <td>{{ driver.job_title }}</td>
+                            <td>{{ driver.department }}</td>
+                            <td>{{ driver.license_number }}</td>
+                            <td>{{ driver.license_type or '—' }}</td>
+                            <td>
+                                <span style="background: {% if driver.restrictions_count|int > 0 %}#f8d7da{% else %}#d1e7dd{% endif %}; color: {% if driver.restrictions_count|int > 0 %}#842029{% else %}#0f5132{% endif %}; padding: 3px 8px; border-radius: 4px; font-weight: bold;">
+                                    {{ driver.restrictions_count or 0 }}
+                                </span>
+                            </td>
+                            <td>{{ driver.license_issue_date }}</td>
+                            <td>{{ driver.license_expiry_date }}</td>
+                            <td>
+                                <a href="{{ url_for('reports.drivers_reports', report_type='single', driver_id=driver.id) }}" class="btn btn-info" style="padding: 3px 8px; font-size: 12px;">
+                                    تقرير السائق
+                                </a>
+                                <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 12px;" onclick="openDeleteModal('{{ driver.id }}', '{{ driver.name }}')">
+                                    حذف
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="13" class="text-muted">لا توجد سجلات مسجلة تطابق بحثك.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- النافذة المنبثقة للحذف -->
+<div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+        <h3 style="margin-bottom: 15px; color: #dc3545;">تأكيد الحذف</h3>
+        <p id="deleteMessage" style="margin-bottom: 20px; color: #333; font-size: 15px;"></p>
+        <form id="deleteForm" method="POST" style="display: flex; justify-content: center; gap: 10px;">
+            <button type="submit" class="btn btn-danger">تأكيد الحذف</button>
+            <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">إلغاء</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openDeleteModal(driverId, driverName) {
+        const modal = document.getElementById('deleteModal');
+        const form = document.getElementById('deleteForm');
+        const msg = document.getElementById('deleteMessage');
+        msg.innerText = `هل أنت متأكد من رغبتك في حذف الموظف: (${driverName})؟`;
+        form.action = `/drivers/delete/${driverId}`;
+        modal.style.display = 'flex';
+    }
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').style.display = 'none';
+    }
+</script>
+{% endblock %}

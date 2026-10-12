@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}تسجيل وثيقة تأمين - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    .form-container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); direction: rtl; text-align: right; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; font-weight: bold; color: #2c3e50; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+    .btn-container { display: flex; gap: 15px; justify-content: flex-start; align-items: center; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+    .drop-zone { border: 2px dashed #0d6efd; padding: 20px; text-align: center; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
+    .drop-zone:hover { background: #e9ecef; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1000px; margin: 0 auto;">
+    <div class="form-container">
+        <h2 style="margin-bottom: 25px; color: #1F4E78; border-bottom: 2px solid #e9ecef; padding-bottom: 10px; font-family: 'Cairo', sans-serif;">
+            <i class="fa-solid fa-file-shield"></i> تسجيل وثيقة تأمين جديدة للمركبة
+        </h2>
+
+        <form method="POST" enctype="multipart/form-data">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>رقم بوليصة التأمين: *</label>
+                    <input type="text" name="policy_number" placeholder="مثال: POL-992834" required>
+                </div>
+
+                <div class="form-group">
+                    <label>رقم لوحة المركبة: *</label>
+                    <select name="vehicle_plate" required>
+                        <option value="">-- اختر المركبة --</option>
+                        {% for v in vehicles %}
+                        <option value="{{ v.plate_number }}">{{ v.plate_number }} {% if v.vehicle_code %}({{ v.vehicle_code }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>شركة التأمين: *</label>
+                    <input type="text" name="insurance_company" placeholder="مثال: شركة التعاونية للتأمين" required>
+                </div>
+
+                <div class="form-group">
+                    <label>نوع التأمين: *</label>
+                    <select name="insurance_type" required>
+                        <option value="شامل">شامل</option>
+                        <option value="ضد الغير">ضد الغير</option>
+                        <option value="أخرى">أخرى</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>تاريخ البدء: *</label>
+                    <input type="date" name="start_date" required>
+                </div>
+
+                <div class="form-group">
+                    <label>تاريخ الانتهاء: *</label>
+                    <input type="date" name="end_date" required>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>تكلفة التأمين (ر.س):</label>
+                    <input type="number" step="0.01" name="policy_cost" value="0.00">
+                </div>
+
+                <div class="form-group">
+                    <label>مرفق بوليصة التأمين (PDF أو صورة):</label>
+                    <div class="drop-zone" onclick="document.getElementById('policyFile').click();">
+                        <i class="fa-solid fa-cloud-arrow-up fa-2x" style="color: #1F4E78; margin-bottom: 5px;"></i>
+                        <p style="margin: 0; font-size: 13px; color: #6c757d;">انقر لاختيار الملف أو الصق صورة مباشرة (Ctrl+V)</p>
+                        <input type="file" id="policyFile" name="policy_attachment" style="display: none;">
+                    </div>
+                    <div id="fileInfo" style="margin-top: 5px; font-size: 12px; color: #198754; font-weight: bold; text-align: center;"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>ملاحظات إضافية:</label>
+                <textarea name="description" rows="3" placeholder="اكتب تفاصيل التغطية أو الشروط..."></textarea>
+            </div>
+
+            <div class="btn-container">
+                <button type="submit" class="btn btn-primary" style="padding: 10px 25px; font-size: 15px; font-family: 'Cairo', sans-serif; display: inline-flex; align-items: center; gap: 8px; background-color: #1F4E78; border: none; border-radius: 6px; color: white; cursor: pointer;">
+                    <i class="fa-solid fa-check"></i> حفظ وتسجيل البوليصة
+                </button>
+                <a href="{{ url_for('insurance_bp.index') }}" class="btn btn-secondary" style="padding: 10px 20px; font-size: 15px; font-family: 'Cairo', sans-serif; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; background-color: #6c757d; border-radius: 6px; color: white; cursor: pointer;">
+                    <i class="fa-solid fa-arrow-right"></i> إلغاء ورجوع
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const policyInput = document.getElementById('policyFile');
+    policyInput.addEventListener('change', function() {
+        if (policyInput.files.length > 0) {
+            document.getElementById('fileInfo').innerText = `تم اختيار الملف: ${policyInput.files[0].name}`;
+        }
+    });
+
+    window.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            let item = items[index];
+            if (item.kind === 'file') {
+                let blob = item.getAsFile();
+                let container = new DataTransfer();
+                container.items.add(blob);
+                policyInput.files = container.files;
+                document.getElementById('fileInfo').innerText = `تم لصق الملف/الصورة بنجاح`;
+            }
+        }
+    });
+</script>
+{% endblock %}

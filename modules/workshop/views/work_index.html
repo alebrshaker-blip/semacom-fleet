@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة الورشة والصيانة - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    .workshop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #e9ecef; padding-bottom: 15px; }
+    .workshop-header h2 { color: #2c3e50; margin: 0; font-weight: bold; }
+    .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .card-option { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); padding: 35px 20px; text-align: center; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; color: inherit; border-top: 5px solid #0d6efd; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .card-option:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    .card-option i { font-size: 45px; color: #0d6efd; margin-bottom: 15px; }
+    .card-option h3 { font-size: 18px; color: #2c3e50; margin-bottom: 10px; font-weight: bold; }
+    .card-option p { font-size: 13px; color: #6c757d; margin: 0; line-height: 1.5; }
+    .btn-main-nav { background-color: #f8f9fa; border: 1px solid #ced4da; color: #495057; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-main-nav:hover { background-color: #e2e8f0; color: #0d6efd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 1200px;">
+    
+    <div class="workshop-header">
+        <h2><i class="fa-solid fa-warehouse me-2"></i> إدارة الورشة والصيانة</h2>
+    </div>
+
+    <!-- شبكة خيارات الورشة -->
+    <div class="grid-cards">
+        
+        <!-- 1. الصيانة -->
+        <a href="{{ url_for('workshop.maintenance.maintenance_index') }}" class="card-option" style="border-top-color: #0d6efd;">
+            <i class="fa-solid fa-screwdriver-wrench text-primary"></i>
+            <h3>الصيانة</h3>
+            <p>متابعة أوامر الشغل، الأعطال، وجداول الصيانة الدورية للمركبات والمعدات.</p>
+        </a>
+
+        <!-- 2. الفحص الشامل -->
+        <a href="{{ url_for('workshop.comp_inspection.list') }}" class="card-option" style="border-top-color: #0dcaf0;">
+            <i class="fa-solid fa-clipboard-check text-info"></i>
+            <h3>الفحص الشامل</h3>
+            <p>سجلات وتقارير الفحص الفني والتشغيلي الشامل، وتتبع عداد المركبة وتغيير الزيت.</p>
+        </a>
+
+        <!-- 3. المستودع -->
+        <a href="{{ url_for('workshop.store_bp.index') }}" class="card-option" style="border-top-color: #198754;">
+            <i class="fa-solid fa-boxes-stacked text-success"></i>
+            <h3>المستودع</h3>
+            <p>إدارة قطع الغيار، أدوات الورشة، حركة الوارد والصادر ومستوى المخزون.</p>
+        </a>
+
+        <!-- 4. فريق العمل -->
+        <a href="{{ url_for('workshop.team.team_index') }}" class="card-option" style="border-top-color: #ffc107;">
+            <i class="fa-solid fa-users-gear text-warning"></i>
+            <h3>فريق العمل</h3>
+            <p>إدارة الفنيين، الميكانيكيين، وتوزيع المهام اليومية داخل الورشة.</p>
+        </a>
+
+        <!-- 5. أصول الورشة -->
+        <a href="{{ url_for('workshop.equ_bp.index') }}" class="card-option" style="border-top-color: #dc3545;">
+            <i class="fa-solid fa-toolbox text-danger"></i>
+            <h3>أصول الورشة</h3>
+            <p>حصر ومتابعة المعدات الكبرى، الأجهزة، والعدد الثابتة الخاصة بالورشة.</p>
+        </a>
+         
+        <!-- كرت متابعة وتغيير الزيوت -->
+        <a href="{{ url_for('workshop.oil_tracking.list') }}" class="card-option" style="border-top-color: #fd7e14;">
+            <i class="fa-solid fa-oil-can" style="color: #fd7e14;"></i>
+            <h3>سجلات وتغيير الزيوت</h3>
+            <p>جدولة ومتابعة فترات تغيير الزيوت (حسب المسافة أو الوقت أو كلاهما).</p>
+        </a>
+    </div>
+
+</div>
+{% endblock %}

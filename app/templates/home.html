@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}الصفحة الرئيسية - نظام SEMACOM{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    
+    <!-- شبكة الأزرار المتجاوبة مع تأثير الـ Hover -->
+    <div class="dashboard-grid">
+        <a href="/drivers" class="dashboard-btn">السائقين والموظفين</a>
+        <a href="/vehicles" class="dashboard-btn">المركبات والمعدات</a>
+        <a href="/workshop" class="dashboard-btn">الورشة والصيانة</a>
+        
+        <a href="/violations" class="dashboard-btn">المخالفات المرورية</a>
+        <a href="/inspection" class="dashboard-btn">الفحص الدوري</a>
+        <a href="/handover" class="dashboard-btn">الاستلام والتسليم</a>
+        
+        <a href="/notifications" class="dashboard-btn">الإشعارات</a>
+        <a href="/insurance" class="dashboard-btn">التأمينات</a>
+        <a href="/accidents" class="dashboard-btn">الحوادث</a>
+        
+        <a href="/settings" class="dashboard-btn">الإعدادات</a>
+        <a href="/reports" class="dashboard-btn">التقارير</a>
+        <a href="/tasks" class="dashboard-btn">سجلات المهام</a>
+    </div>
+
+</div>
+{% endblock %}

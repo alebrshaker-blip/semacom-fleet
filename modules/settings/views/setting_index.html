@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set appearance_settings = settings.appearance|default({}) %}
+<!-- تنسيقات مباشرة داخل الصفحة لضمان عملها أوفلاين ودون الاعتماد على مسارات الـ static المعقدة -->
+<style>
+:root {
+    --primary-color: var(--app-primary, #1b365d);
+    --primary-hover: #0f223d;
+    --accent-color: #008080;
+    --bg-light: #f4f6f9;
+    --card-bg: #ffffff;
+    --border-color: #dbe2ea;
+    --text-dark: #2c3e50;
+    --text-muted: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --radius: 10px;
+    --shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+}
+
+.settings-container {
+    max-width: 1280px;
+    margin: 25px auto;
+    padding: 0 20px;
+    direction: rtl;
+    font-family: Tahoma, Arial, sans-serif;
+    color: var(--text-dark);
+}
+
+.settings-header {
+    background: linear-gradient(135deg, var(--primary-color), #2c4d75);
+    color: #ffffff;
+    padding: 25px 30px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.settings-header h2 {
+    margin: 0 0 8px 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+
+.settings-header p {
+    margin: 0;
+    color: #d1dbe5;
+    font-size: 0.95rem;
+}
+
+.settings-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 25px;
+    align-items: start;
+}
+
+.settings-nav {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nav-tab {
+    width: 100%;
+    padding: 14px 18px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    text-align: right;
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.nav-tab:hover {
+    background-color: #f0f4f8;
+    color: var(--primary-color);
+}
+
+.nav-tab.active {
+    background-color: var(--primary-color);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(27, 54, 93, 0.25);
+}
+
+.settings-content {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    padding: 30px;
+    min-height: 520px;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.tab-pane h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    border-bottom: 2px solid #eef2f6;
+    padding-bottom: 12px;
+    margin-bottom: 22px;
+    font-size: 1.35rem;
+}
+
+.form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 18px;
+}
+
+.form-group {
+    flex: 1;
+    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 15px;
+}
+
+.col-md-4 { flex: 0 0 calc(33.333% - 14px); }
+.col-md-6 { flex: 0 0 calc(50% - 10px); }
+.col-md-8 { flex: 0 0 calc(66.666% - 10px); }
+
+label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-dark);
+    font-size: 0.92rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background-color: #fafbfc;
+    box-sizing: border-box;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background-color: #ffffff;
+    box-shadow: 0 0 0 3px rgba(0, 128, 128, 0.15);
+}
+
+.btn {
+    padding: 10px 24px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-primary { background-color: var(--primary-color); color: #ffffff; }
+.btn-primary:hover { background-color: var(--primary-hover); }
+.btn-success { background-color: var(--success-color); color: #ffffff; }
+.btn-success:hover { background-color: #218838; }
+
+.list-group {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.list-group-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+}
+</style>
+
+<div class="settings-container">
+    <div class="settings-header">
+        <div>
+            <h2>إعدادات نظام المركبات والمعدات (SEMACOM)</h2>
+            <p>إدارة الحسابات، الأمان، الربط السحابي، وقواعد المركبات والمعدات والبريد.</p>
+        </div>
+    </div>
+
+    <div class="settings-layout">
+        <!-- شريط التبويبات الجانبي -->
+        <div class="settings-nav">
+            <button class="nav-tab active" onclick="switchTab(event, 'tab-account')">
+                الحساب والأمان
+            </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-cloud-smtp')">
+                البريد والـ Google Drive
+            </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-general')">
+                البيانات العامة
+            </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-fleet')">
+                قواعد المركبات والمعدات والصيانة
+            </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-prefixes')">
+                ترقيم الأكواد والأوامر
+            </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-dynamic-fields')">
+                الحقول الديناميكية
+            </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-lookups')">
+                القوائم المرجعية
+            </button>
+        </div>
+
+        <!-- محتوى التبويبات -->
+        <div class="settings-content">
+            
+            <!-- تبويب 1: الحساب والأمان -->
+            <div id="tab-account" class="tab-pane active">
+                <h3>إدارة حساب المستخدم والأمان</h3>
+                <form id="accountForm" onsubmit="saveAccountSettings(event)">
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>اسم المستخدم</label>
+                            <input type="text" name="username" class="form-control" value="{{ current_user.username if current_user else 'admin' }}" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>الاسم الكامل</label>
+                            <input type="text" name="full_name" class="form-control" value="{{ current_user.full_name if current_user else 'مدير النظام' }}" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>البريد الإلكتروني الشخصي / الرسمي</label>
+                            <input type="email" name="email" class="form-control" value="{{ current_user.email if current_user else 'admin@semacom.com' }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>بريد Google Drive (للنسخ الاحتياطي)</label>
+                            <input type="email" name="google_drive_email" class="form-control" value="{{ current_user.google_drive_email if current_user else '' }}">
+                        </div>
+                    </div>
+
+                    <!-- قسم تغيير كلمة المرور -->
+                    <div style="border-top: 1px solid var(--border-color); margin-top: 15px; padding-top: 15px;">
+                        <h4 style="color: var(--primary-color); font-size: 1.05rem; margin-bottom: 15px; font-weight: 700;">تغيير كلمة المرور</h4>
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label>كلمة المرور الحالية</label>
+                                <input type="password" name="current_password" class="form-control" placeholder="أدخل كلمة المرور الحالية">
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>كلمة المرور الجديدة</label>
+                                <input type="password" name="new_password" class="form-control" placeholder="كلمة المرور الجديدة">
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>تأكيد كلمة المرور الجديدة</label>
+                                <input type="password" name="confirm_password" class="form-control" placeholder="أعد إدخال كلمة المرور">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success" style="margin-top: 15px;">تحديث بيانات الحساب</button>
+                </form>
+            </div>
+
+            <!-- تبويب 2: البريد و Google Drive -->
+            <div id="tab-cloud-smtp" class="tab-pane">
+                <h3>إعدادات البريد وربط Google Drive API</h3>
+                <form id="cloudSmtpForm">
+                    <div class="form-group">
+                        <label>معرّف مجلد النسخ الاحتياطي (Folder ID)</label>
+                        <input type="text" name="gdrive_folder_id" class="form-control" value="{{ settings.gdrive.gdrive_folder_id if settings.gdrive else '' }}">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Client ID (Google API)</label>
+                            <input type="text" name="gdrive_client_id" class="form-control" value="{{ settings.gdrive.gdrive_client_id if settings.gdrive else '' }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Client Secret (Google API)</label>
+                            <input type="password" name="gdrive_client_secret" class="form-control" value="{{ settings.gdrive.gdrive_client_secret if settings.gdrive else '' }}">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ إعدادات البريد والـ Drive</button>
+                </form>
+            </div>
+
+            <!-- النموذج الرئيسي لباقي التبويبات -->
+            <form id="settingsForm">
+                <!-- تبويب 3: البيانات العامة -->
+                <div id="tab-general" class="tab-pane">
+                    <h3>الإعدادات العامة للشركة</h3>
+                    <div class="form-group">
+                        <label>اسم المنشأة / الشركة</label>
+                        <input type="text" name="company_name" class="form-control" value="{{ settings.general.company_name if settings.general else 'SEMACOM' }}">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>العملة الافتراضية</label>
+                            <input type="text" name="currency" class="form-control" value="{{ settings.general.currency if settings.general else 'ر.س' }}">
+                        </div>
+                    </div>
+                    <h4 class="appearance-title">مظهر النظام</h4>
+                    <p class="appearance-help">تُطبّق هذه الخيارات على جميع صفحات النظام بعد الحفظ.</p>
+                    <div class="form-row appearance-controls">
+                        <div class="form-group col-md-4">
+                            <label for="appearanceTheme">الثيم الموحد</label>
+                            <select id="appearanceTheme" name="appearance_theme" class="form-control">
+                                <option value="semacom" {% if appearance_settings.appearance_theme|default('semacom') == 'semacom' %}selected{% endif %}>كحلي سيماكم</option>
+                                <option value="teal" {% if appearance_settings.appearance_theme|default('semacom') == 'teal' %}selected{% endif %}>أزرق مخضر</option>
+                                <option value="forest" {% if appearance_settings.appearance_theme|default('semacom') == 'forest' %}selected{% endif %}>أخضر داكن</option>
+                                <option value="violet" {% if appearance_settings.appearance_theme|default('semacom') == 'violet' %}selected{% endif %}>بنفسجي</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="appearanceColor">اللون الرئيسي</label>
+                            <input id="appearanceColor" type="color" name="appearance_primary_color" class="appearance-color"
+                                   value="{{ appearance_settings.appearance_primary_color|default(appearance.primary_color) }}">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="appearanceFontSize">حجم خط الصفحات</label>
+                            <select id="appearanceFontSize" name="appearance_font_size" class="form-control">
+                                {% for size in range(15, 22) %}
+                                <option value="{{ size }}" {% if appearance_settings.appearance_font_size|default('17')|int == size %}selected{% endif %}>{{ size }} بكسل</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
+                </div>
+
+                <!-- تبويب 4: قواعد المركبات والمعدات -->
+                <div id="tab-fleet" class="tab-pane">
+                    <h3>حدود التنبيهات وقواعد المركبات والمعدات</h3>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>التنبيه بانتهاء التأمين قبل (يوم)</label>
+                            <input type="number" name="insurance_alert_days" class="form-control" value="{{ settings.fleet.insurance_alert_days if settings.fleet else 30 }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>حد تغيير زيت المحرك (كم)</label>
+                            <input type="number" name="oil_change_interval_km" class="form-control" value="{{ settings.fleet.oil_change_interval_km if settings.fleet else 5000 }}">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
+                </div>
+
+                <!-- تبويب 5: بادئات الأكواد -->
+                <div id="tab-prefixes" class="tab-pane">
+                    <h3>بادئات أرقام الأوامر والأصول</h3>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>بادئة أمر العمل الصيانة</label>
+                            <input type="text" name="prefix_work_order" class="form-control" value="{{ settings.prefixes.prefix_work_order if settings.prefixes else 'WO-2026-' }}">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>بادئة الأصناف بالمخزن</label>
+                            <input type="text" name="prefix_store_item" class="form-control" value="{{ settings.prefixes.prefix_store_item if settings.prefixes else 'STM-' }}">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>بادئة أصول وعدّة الورشة</label>
+                            <input type="text" name="prefix_asset" class="form-control" value="{{ settings.prefixes.prefix_asset if settings.prefixes else 'SEMACOM-EQ-' }}">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
+                </div>
+
+                <!-- تبويب 7: القوائم المرجعية -->
+                <div id="tab-lookups" class="tab-pane">
+                    <h3>إدارة خيارات القوائم المنسدلة</h3>
+                    <div class="form-group">
+                        <label>الورش الخارجية المعتمَدة</label>
+                        <textarea name="external_workshops" class="form-control" rows="3">ورشة المحرك الذهبي, مركز الفحص الشامل</textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
+                </div>
+            </form>
+
+            <!-- تبويب 6: الحقول الديناميكية -->
+            <div id="tab-dynamic-fields" class="tab-pane">
+                <h3>إدارة الحقول المخصصة</h3>
+                <div class="form-row">
+                    <div class="form-group" style="width: 100%;">
+                        <ul class="list-group">
+                            {% for field in vehicle_fields %}
+                            <li class="list-group-item">
+                                <span>{{ field.label }} <code>({{ field.name }})</code></span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- سكريبت التشغيل التفاعلي للتبويبات أوفلاين -->
+<script>
+function switchTab(evt, tabId) {
+    evt.preventDefault();
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    
+    document.getElementById(tabId).classList.add('active');
+    evt.currentTarget.classList.add('active');
+}
+
+function saveAllSettings() {
+    const form = document.getElementById('settingsForm');
+    const data = Object.fromEntries(new FormData(form).entries());
+    fetch('/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'تعذر حفظ الإعدادات');
+        await sysAlert(result.message || 'تم حفظ الإعدادات بنجاح', 'الإعدادات', 'success');
+        window.location.reload();
+    }).catch(error => sysAlert(error.message, 'تعذر الحفظ', 'danger'));
+}
+
+function saveAccountSettings(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(document.getElementById('accountForm')).entries());
+    fetch('/settings/account/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'تعذر تحديث الحساب');
+        sysAlert(result.message || 'تم تحديث الحساب بنجاح', 'الحساب', 'success');
+    }).catch(error => sysAlert(error.message, 'تعذر التحديث', 'danger'));
+}
+
+const appearanceThemeColors = {
+    semacom: '#1b365d',
+    teal: '#087e82',
+    forest: '#356548',
+    violet: '#614b8b'
+};
+const appearanceTheme = document.getElementById('appearanceTheme');
+const appearanceColor = document.getElementById('appearanceColor');
+const appearanceFontSize = document.getElementById('appearanceFontSize');
+
+appearanceTheme.addEventListener('change', () => {
+    appearanceColor.value = appearanceThemeColors[appearanceTheme.value];
+    document.body.style.setProperty('--app-primary', appearanceColor.value);
+});
+appearanceColor.addEventListener('input', () => {
+    document.body.style.setProperty('--app-primary', appearanceColor.value);
+});
+appearanceFontSize.addEventListener('change', () => {
+    document.body.style.setProperty('--app-font-size', `${appearanceFontSize.value}px`);
+});
+</script>
+{% endblock %}

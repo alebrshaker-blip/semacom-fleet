@@ -1,0 +1,612 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* تنسيقات الجدول والواجهة */
+    .table-responsive {
+        max-height: 72vh;
+        overflow-y: auto;
+        border-radius: 10px;
+    }
+    
+    th {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        background-color: #0f172a !important;
+        color: #ffffff !important;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        text-align: center;
+        vertical-align: middle;
+        font-size: 0.9rem;
+    }
+    
+    td {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        vertical-align: middle;
+        text-align: center;
+        font-size: 0.88rem;
+    }
+
+    /* خلفية الحقول المقفلة */
+    .td-closed-bg {
+        background-color: #f1f5f9 !important;
+    }
+
+    /* تنسيق كارت التحكم العلوي */
+    .control-card {
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e2e8f0;
+    }
+
+    /* التوسيط التام لنوافذ الحذف المنبثقة */
+    dialog.offline-modal {
+        border: none;
+        border-radius: 16px;
+        padding: 0;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+        max-width: 440px;
+        width: 90%;
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        margin: 0 !important;
+        background: #ffffff;
+        z-index: 1050;
+    }
+
+    dialog.offline-modal::backdrop {
+        background: rgba(15, 23, 42, 0.65);
+        backdrop-filter: blur(4px);
+    }
+
+    .modal-card {
+        padding: 28px;
+        text-align: center;
+    }
+
+    .btn-action {
+        padding: 4px 12px;
+        font-size: 0.82rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+
+    .attachment-thumb {
+        width: 36px;
+        height: 36px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid #cbd5e1;
+    }
+
+    .btn-header-pro {
+        font-size: 0.92rem !important;
+        padding: 6px 16px !important;
+        font-weight: 600 !important;
+    }
+</style>
+
+<div class="container-fluid py-3" style="direction: rtl;">
+    <!-- الهيدر والتحكم -->
+    <div class="card control-card mb-3 p-3">
+        <div class="d-flex align-items-stretch justify-content-between gap-4" style="direction: rtl;">
+            
+            <!-- عنوان الجدول والحالة -->
+            <div class="d-flex flex-column justify-content-center">
+                <h4 class="fw-bold mb-1 text-primary d-flex align-items-center gap-2">
+                    {% if m_type == 'internal' %}🛠 جدول الصيانة الداخلية
+                    {% elif m_type == 'external' %}🏢 جدول الصيانة الخارجية
+                    {% elif m_type == 'emergency' %}🚨 جدول الصيانة الطارئة
+                    {% elif m_type == 'exceptional' %}⭐ جدول الصيانة الاستثنائية
+                    {% endif %}
+                </h4>
+                <p class="text-muted small mb-0">الحالة الحالية: 
+                    <span class="badge {{ 'bg-success' if current_status == 'open' else 'bg-secondary' }} px-2 py-1">
+                        {{ 'مفتوحة (قيد التنفيذ)' if current_status == 'open' else 'مغلقة' }}
+                    </span>
+                </p>
+            </div>
+
+            <!-- حاوية البحث والأزرار -->
+            <div class="d-flex flex-column align-items-end gap-3">
+                <div class="input-group input-group-sm" style="width: 420px; direction: rtl;">
+                    <input type="text" id="offlineSearch" class="form-control form-control-sm py-2 px-3" placeholder="🔍 بحث سريع بجميع الحقول..." onkeyup="filterTableOffline()" onkeypress="handleEnter(event)" style="border-radius: 0 8px 8px 0; font-size: 0.9rem;">
+                    <button class="btn btn-primary fw-bold text-nowrap px-3" type="button" onclick="filterTableOffline()" style="border-radius: 0; font-size: 0.88rem;">بحث</button>
+                    <button class="btn btn-outline-secondary text-nowrap px-3" type="button" onclick="resetSearch()" style="border-radius: 8px 0 0 8px; font-size: 0.88rem;">إعادة تعيين</button>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <a href="{{ url_for('workshop.maintenance.maintenance_all') }}" class="btn btn-outline-dark btn-header-pro text-nowrap">جميع الأوامر</a>
+                    <a href="{{ url_for('reports.maintenance_reports') }}" class="btn btn-outline-primary btn-header-pro text-nowrap">تقارير الصيانة</a>
+                    <div class="btn-group text-nowrap" role="group">
+                        <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type=m_type, status='open') }}" 
+                           class="btn btn-header-pro {{ 'btn-primary shadow-sm' if current_status == 'open' else 'btn-outline-primary' }}">
+                           🟢 الأوامر المفتوحة
+                        </a>
+                        <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type=m_type, status='closed') }}" 
+                           class="btn btn-header-pro {{ 'btn-secondary shadow-sm' if current_status == 'closed' else 'btn-outline-secondary' }}">
+                           🔴 الأوامر المغلقة
+                        </a>
+                    </div>
+
+                    <a href="{{ url_for('workshop.maintenance.maintenance_export', m_type=m_type, status=current_status) }}" 
+                       class="btn btn-outline-success btn-header-pro text-nowrap d-flex align-items-center gap-1 shadow-sm">
+                        📊 <span>تصدير Excel</span>
+                    </a>
+
+                    <a href="{{ url_for('workshop.maintenance.maintenance_add', m_type=m_type) }}" 
+                       class="btn btn-success btn-header-pro text-nowrap shadow-sm d-flex align-items-center gap-1">
+                        ➕ <span>إضافة أمر صيانة جديد</span>
+                    </a>
+
+                    <a href="/workshop/maintenance/" 
+                       class="btn btn-outline-dark btn-header-pro text-nowrap shadow-sm d-flex align-items-center gap-1">
+                        ↩️ <span>رجوع</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- جدول البيانات -->
+    <div class="table-responsive shadow-sm bg-white border">
+        <table class="table table-hover table-bordered mb-0 align-middle" id="dataTable">
+            <thead>
+                <tr>
+                    <th>رقم الأمر</th>
+                    <th>كود المركبة</th>
+                    <th>رقم اللوحة</th>
+
+                    {% if m_type == 'internal' %}
+                        <th>نوع الصيانة</th>
+                        <th>وصف العطل</th>
+                        <th>سبب العطل</th>
+                        <th>الأهمية</th>
+                        <th>الفني المسؤول</th>
+                        <th>الوقت المتوقع</th>
+                        <th>تاريخ الفتح</th>
+                        {% if current_status == 'closed' %}
+                            <th class="bg-secondary text-white">تاريخ الإقفال</th>
+                            <th class="bg-secondary text-white">سبب الإقفال</th>
+                            <th class="bg-secondary text-white">قطع الغيار</th>
+                            <th class="bg-secondary text-white">التكلفة النهائية</th>
+                            <th class="bg-secondary text-white">التوصية</th>
+                            <th class="bg-secondary text-white">صورة قبل</th>
+                            <th class="bg-secondary text-white">صورة بعد</th>
+                            <th class="bg-secondary text-white">مرفق آخر</th>
+                        {% endif %}
+
+                    {% elif m_type == 'external' %}
+                        <th>نوع الصيانة</th>
+                        <th>وصف العطل</th>
+                        <th>سبب العطل</th>
+                        <th>الأهمية</th>
+                        <th>اسم الورشة</th>
+                        <th>هاتف الورشة</th>
+                        <th>موقع الورشة</th>
+                        <th>سبب الإرسال</th>
+                        <th>تاريخ الإرسال</th>
+                        <th>الشخص المسؤول</th>
+                        <th>التكلفة المتوقعة</th>
+                        <th>الوقت المتوقع</th>
+                        <th>ملاحظات</th>
+                        {% if current_status == 'closed' %}
+                            <th class="bg-secondary text-white">تاريخ الإقفال</th>
+                            <th class="bg-secondary text-white">تاريخ الاستلام</th>
+                            <th class="bg-secondary text-white">سبب الإقفال</th>
+                            <th class="bg-secondary text-white">التوصية</th>
+                            <th class="bg-secondary text-white">قطع الغيار المستخدمة</th>
+                            <th class="bg-secondary text-white">ملاحظات الإقفال</th>
+                            <th class="bg-secondary text-white">صورة قبل</th>
+                            <th class="bg-secondary text-white">صورة بعد</th>
+                            <th class="bg-secondary text-white">مرفق آخر</th>
+                        {% endif %}
+
+                    {% elif m_type == 'emergency' %}
+                        <th>السائق</th>
+                        <th>درجة الخطورة</th>
+                        <th>التاريخ</th>
+                        <th>الموقع</th>
+                        <th>هل يوجد إصابات؟</th>
+                        <th>هل المركبة قابلة للحركة؟</th>
+                        <th>الجهة الحكومية المبلغة</th>
+                        <th>وصف الحالة</th>
+                        <th>سبب العطل</th>
+                        {% if current_status == 'closed' %}
+                            <th class="bg-secondary text-white">الإجراء المتخذ</th>
+                            <th class="bg-secondary text-white">هل تم السحب؟</th>
+                            <th class="bg-secondary text-white">جهة السحب</th>
+                            <th class="bg-secondary text-white">فريق التدخل</th>
+                            <th class="bg-secondary text-white">التكلفة النهائية</th>
+                            <th class="bg-secondary text-white">قطع الغيار</th>
+                            <th class="bg-secondary text-white">التوصية</th>
+                            <th class="bg-secondary text-white">صورة قبل</th>
+                            <th class="bg-secondary text-white">صورة بعد</th>
+                            <th class="bg-secondary text-white">مرفق آخر</th>
+                        {% endif %}
+
+                    {% elif m_type == 'exceptional' %}
+                        <th>تاريخ الحادث/الواقعة</th>
+                        <th>الموضوع</th>
+                        <th>وصف المشكلة</th>
+                        <th>الأسباب</th>
+                        <th>تفاصيل أخرى</th>
+                        {% if current_status == 'closed' %}
+                            <th class="bg-secondary text-white">الإجراءات المتخذة</th>
+                            <th class="bg-secondary text-white">التكلفة</th>
+                            <th class="bg-secondary text-white">التوصية</th>
+                            <th class="bg-secondary text-white">صورة قبل</th>
+                            <th class="bg-secondary text-white">صورة بعد</th>
+                            <th class="bg-secondary text-white">مرفق آخر</th>
+                        {% endif %}
+                    {% endif %}
+
+                    <th class="text-center">الإجراءات</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% if orders %}
+                    {% for order in orders %}
+                    <tr>
+                        <!-- رقم الأمر -->
+                        <td class="fw-bold text-primary" style="direction: ltr;">{{ order.order_no or order.id or '—' }}</td>
+
+                        <!-- كود المركبة -->
+                        <td class="fw-bold text-dark">
+                            {{ order.disp_code or order.vehicle_code or (order.vehicle and (order.vehicle.code or order.vehicle.vehicle_code)) or order.vehicle_id or '—' }}
+                        </td>
+
+                        <!-- رقم اللوحة -->
+                        <td class="fw-bold text-success" style="direction: ltr;">
+                            {{ order.disp_plate or order.plate_number or order.plate_no or (order.vehicle and (order.vehicle.plate_number or order.vehicle.plate_no)) or '—' }}
+                        </td>
+
+                        <!-- 🛠️ 1. بيانات الصيانة الداخلية -->
+                        {% if m_type == 'internal' %}
+                            <td><span class="badge bg-light text-dark border">{{ order.maintenance_type or '—' }}</span></td>
+                            <td class="text-wrap" style="max-width: 200px;">{{ order.fault_description or '—' }}</td>
+                            <td>{{ order.fault_cause or '—' }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-danger' if order.severity in ['عالية', 'حرجة', 'عالي'] else 'bg-warning text-dark' if order.severity in ['متوسطة', 'متوسط'] else 'bg-info text-dark' }}">
+                                    {{ order.severity or '—' }}
+                                </span>
+                            </td>
+                            <td>{{ order.technician_name or '—' }}</td>
+                            <td>{{ order.expected_completion_time or '—' }}</td>
+                            <td>{{ order.order_date or '—' }}</td>
+
+                            {% if current_status == 'closed' %}
+                                <td class="td-closed-bg fw-bold text-success">{{ order.closure_date or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.closure_reason or '—' }}</td>
+                                <td class="td-closed-bg text-wrap" style="max-width: 180px;">{{ order.spare_parts or '—' }}</td>
+                                <td class="td-closed-bg fw-bold text-danger">{{ order.final_cost or '0.0' }} ر.س</td>
+                                <td class="td-closed-bg">{{ order.recommendation or '—' }}</td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_before %}
+                                        <a href="{{ url_for('static', filename=order.photo_before) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_before) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-primary px-2 py-1\'>🖼️ قبل</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_after %}
+                                        <a href="{{ url_for('static', filename=order.photo_after) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_after) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-success px-2 py-1\'>🖼️ بعد</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.other_attachments %}
+                                        <a href="{{ url_for('static', filename=order.other_attachments) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.other_attachments) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-secondary px-2 py-1\'>📎 مرفق</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                            {% endif %}
+
+                        <!-- 🏢 2. بيانات الصيانة الخارجية -->
+                        {% elif m_type == 'external' %}
+                            <td><span class="badge bg-light text-dark border">{{ order.maintenance_type or '—' }}</span></td>
+                            <td class="text-wrap" style="max-width: 200px;">{{ order.fault_description or '—' }}</td>
+                            <td>{{ order.fault_cause or '—' }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-danger' if order.severity in ['عالية', 'حرجة', 'عالي'] else 'bg-warning text-dark' if order.severity in ['متوسطة', 'متوسط'] else 'bg-info text-dark' }}">
+                                    {{ order.severity or '—' }}
+                                </span>
+                            </td>
+                            <td class="fw-bold">{{ order.workshop_name or '—' }}</td>
+                            <td style="direction: ltr;">{{ order.workshop_phone or '—' }}</td>
+                            <td>{{ order.workshop_location or '—' }}</td>
+                            <td>{{ order.send_reason or '—' }}</td>
+                            <td>{{ order.send_datetime or '—' }}</td>
+                            <td>{{ order.responsible_person or '—' }}</td>
+                            <td class="fw-bold text-secondary">{{ order.expected_cost or '0.0' }} ر.س</td>
+                            <td>{{ order.expected_time or '—' }}</td>
+                            <td>{{ order.notes or '—' }}</td>
+
+                            {% if current_status == 'closed' %}
+                                <td class="td-closed-bg fw-bold text-success">{{ order.closure_date or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.receipt_datetime or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.closure_reason or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.recommendation or '—' }}</td>
+                                <td class="td-closed-bg text-wrap" style="max-width: 180px;">{{ order.spare_parts or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.closing_notes or '—' }}</td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_before %}
+                                        <a href="{{ url_for('static', filename=order.photo_before) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_before) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-primary px-2 py-1\'>🖼️ قبل</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_after %}
+                                        <a href="{{ url_for('static', filename=order.photo_after) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_after) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-success px-2 py-1\'>🖼️ بعد</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.other_attachments %}
+                                        <a href="{{ url_for('static', filename=order.other_attachments) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.other_attachments) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-secondary px-2 py-1\'>📎 مرفق</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                            {% endif %}
+
+                        <!-- 🚨 3. بيانات الصيانة الطارئة (EmergencyMaintenance) -->
+                        {% elif m_type == 'emergency' %}
+                            <td>{{ order.disp_driver or order.driver_name or (order.driver and order.driver.name) or order.driver_id or '—' }}</td>
+                            <td>
+                                {% set sev = order.severity|string %}
+                                {% if sev in ['حرجة', 'خطيرة جداً'] %}
+                                    <span class="badge bg-danger">{{ order.severity }}</span>
+                                {% elif sev in ['عالية', 'عالي'] %}
+                                    <span class="badge bg-danger bg-opacity-75">{{ order.severity }}</span>
+                                {% elif sev in ['متوسطة', 'متوسط'] %}
+                                    <span class="badge bg-warning text-dark">{{ order.severity }}</span>
+                                {% elif sev in ['منخفضة', 'ضعيف', 'ضعيفة'] %}
+                                    <span class="badge bg-info text-dark">{{ order.severity }}</span>
+                                {% elif sev in ['لا يوجد', 'منخفض'] %}
+                                    <span class="badge bg-secondary">{{ order.severity }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ order.severity or '—' }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ order.incident_datetime or '—' }}</td>
+                            <td>{{ order.emergency_location or '—' }}</td>
+                            <td>
+                                {% if order.has_injuries in [True, 'True', 'true', 1, '1', 'نعم', 'Yes', 'yes'] %}
+                                    <span class="badge bg-danger">نعم</span>
+                                {% elif order.has_injuries in ['لا', 'False', 'false', 0, '0', 'No', 'no'] %}
+                                    <span class="badge bg-secondary">لا</span>
+                                {% else %}
+                                    {{ order.has_injuries or '—' }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if order.is_drivable in [True, 'True', 'true', 1, '1', 'نعم', 'Yes', 'yes'] %}
+                                    <span class="badge bg-success">نعم</span>
+                                {% elif order.is_drivable in ['لا', 'False', 'false', 0, '0', 'No', 'no'] %}
+                                    <span class="badge bg-danger">لا</span>
+                                {% else %}
+                                    {{ order.is_drivable or '—' }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if order.official_notified in [True, 'True', 'true', 1, '1', 'نعم', 'Yes', 'yes'] %}
+                                    نعم
+                                {% elif order.official_notified in [False, 'False', 'false', 0, '0', 'لا', 'No', 'no'] %}
+                                    لا
+                                {% else %}
+                                    {{ order.official_notified or '—' }}
+                                {% endif %}
+                            </td>
+                            <td class="text-wrap" style="max-width: 200px;">{{ order.case_description or '—' }}</td>
+                            <td>{{ order.fault_cause or '—' }}</td>
+
+                            {% if current_status == 'closed' %}
+                                <td class="td-closed-bg">{{ order.action_taken or '—' }}</td>
+                                <td class="td-closed-bg">
+                                    {% if order.is_towed in [True, 'True', 'true', 1, '1', 'نعم', 'Yes', 'yes'] %}
+                                        <span class="badge bg-warning text-dark">نعم</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">لا</span>
+                                    {% endif %}
+                                </td>
+                                <td class="td-closed-bg">{{ order.towing_party or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.intervention_team or '—' }}</td>
+                                <td class="td-closed-bg fw-bold text-danger">{{ order.final_cost or '0.0' }} ر.س</td>
+                                <td class="td-closed-bg">{{ order.spare_parts or '—' }}</td>
+                                <td class="td-closed-bg">{{ order.recommendation or '—' }}</td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_before %}
+                                        <a href="{{ url_for('static', filename=order.photo_before) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_before) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-primary px-2 py-1\'>🖼️ قبل</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_after %}
+                                        <a href="{{ url_for('static', filename=order.photo_after) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_after) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-success px-2 py-1\'>🖼️ بعد</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.other_attachments %}
+                                        <a href="{{ url_for('static', filename=order.other_attachments) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.other_attachments) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-secondary px-2 py-1\'>📎 مرفق</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                            {% endif %}
+
+                        <!-- ⭐ 4. بيانات الصيانة الاستثنائية -->
+                        {% elif m_type == 'exceptional' %}
+                            <td>{{ order.incident_datetime or order.order_date or '—' }}</td>
+                            <td class="fw-bold">{{ order.subject or '—' }}</td>
+                            <td class="text-wrap" style="max-width: 220px;">{{ order.description or order.fault_description or '—' }}</td>
+                            <td>{{ order.causes or order.fault_cause or '—' }}</td>
+                            <td>{{ order.other_details or order.notes or '—' }}</td>
+
+                            {% if current_status == 'closed' %}
+                                <td class="td-closed-bg">{{ order.action_taken or order.treatment_details or '—' }}</td>
+                                <td class="td-closed-bg fw-bold text-danger">{{ order.final_cost or '0.0' }} ر.س</td>
+                                <td class="td-closed-bg">{{ order.recommendation or '—' }}</td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_before %}
+                                        <a href="{{ url_for('static', filename=order.photo_before) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_before) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-primary px-2 py-1\'>🖼️ قبل</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.photo_after %}
+                                        <a href="{{ url_for('static', filename=order.photo_after) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.photo_after) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-success px-2 py-1\'>🖼️ بعد</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="td-closed-bg">
+                                    {% if order.other_attachments %}
+                                        <a href="{{ url_for('static', filename=order.other_attachments) }}" target="_blank">
+                                            <img src="{{ url_for('static', filename=order.other_attachments) }}" class="attachment-thumb" onerror="this.outerHTML='<span class=\'badge bg-secondary px-2 py-1\'>📎 مرفق</span>'">
+                                        </a>
+                                    {% else %}—{% endif %}
+                                </td>
+                            {% endif %}
+                        {% endif %}
+
+                        <!-- الإجراءات -->
+                        <td class="text-center">
+                            <div class="d-flex justify-content-center gap-2">
+                                {% if current_status == 'open' %}
+                                    <a href="{{ url_for('workshop.maintenance.maintenance_close', order_id=order.id) }}" 
+                                       class="btn btn-outline-success btn-action shadow-sm">
+                                        <span>✅</span> تقفيل
+                                    </a>
+                                {% endif %}
+
+                                <a href="{{ url_for('reports.maintenance_reports', order_id=order.id, view='print') }}"
+                                   class="btn btn-outline-primary btn-action shadow-sm">
+                                    تقرير
+                                </a>
+                                
+                                <button type="button" 
+                                        class="btn btn-outline-danger btn-action shadow-sm" 
+                                        onclick="triggerDeleteDialog('{{ order.order_no or order.id }}', '{{ url_for('workshop.maintenance.maintenance_delete', order_id=order.id) }}', '{{ m_type }}', '{{ current_status }}')">
+                                    <span>🗑️</span> حذف
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% else %}
+                    <tr>
+                        <td colspan="30" class="text-center py-5">
+                            <div class="d-flex flex-column align-items-center opacity-50 py-4">
+                                <span style="font-size: 3.5rem;">📭</span>
+                                <h5 class="text-muted fw-bold mt-3">لا توجد أوامر صيانة مسجلة في هذه القائمة حالياً.</h5>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- نافذة تأكيد الحذف المنبثقة (Modal) -->
+<dialog id="deleteConfirmModal" class="offline-modal">
+    <div class="modal-card">
+        <div style="font-size: 3rem; margin-bottom: 10px;">⚠️</div>
+        <h4 class="fw-bold text-dark mb-2">تأكيد الحذف النهائي</h4>
+        <p class="text-muted mb-4 fs-6">
+            هل أنت متأكد من الحذف النهائي للأمر رقم:<br>
+            <strong id="modalOrderNo" class="text-danger fs-5 d-inline-block mt-1" style="direction: ltr;"></strong>؟
+        </p>
+        
+        <form id="deleteForm" method="POST" action="">
+            <input type="hidden" name="m_type" id="modalMType" value="">
+            <input type="hidden" name="status" id="modalStatus" value="">
+            
+            <div class="d-flex justify-content-center gap-2">
+                <button type="submit" class="btn btn-danger px-4 fw-bold">نعم، احذف</button>
+                <button type="button" class="btn btn-light px-4 fw-bold text-secondary" onclick="closeDeleteDialog()">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- JavaScript المطور للبحث التفاعلي والتحكم بالنافذة -->
+<script>
+    // فتح نافذة الحذف المنبثقة مع تمرير البيانات
+    function triggerDeleteDialog(orderNo, deleteActionUrl, mType, status) {
+        document.getElementById("modalOrderNo").innerText = orderNo;
+        document.getElementById("deleteForm").action = deleteActionUrl;
+        document.getElementById("modalMType").value = mType;
+        document.getElementById("modalStatus").value = status;
+        
+        var modal = document.getElementById("deleteConfirmModal");
+        if (typeof modal.showModal === "function") {
+            modal.showModal();
+        } else {
+            alert("تنبيه: المتصفح لا يدعم خاصية showModal");
+        }
+    }
+
+    // إغلاق نافذة الحذف
+    function closeDeleteDialog() {
+        document.getElementById("deleteConfirmModal").close();
+    }
+
+    // دالة البحث والفلترة السريعة في الجدول
+    function filterTableOffline() {
+        var input = document.getElementById("offlineSearch");
+        var filter = input.value.trim().toUpperCase();
+        var table = document.getElementById("dataTable");
+        var tr = table.getElementsByTagName("tr");
+
+        for (var i = 1; i < tr.length; i++) {
+            var td = tr[i].getElementsByTagName("td");
+            var matchFound = false;
+            
+            for (var j = 0; j < td.length; j++) {
+                if (td[j]) {
+                    var txtValue = td[j].textContent || td[j].innerText;
+                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                        matchFound = true;
+                        break;
+                    }
+                }
+            }
+            if (td.length > 0) {
+                tr[i].style.display = matchFound ? "" : "none";
+            }
+        }
+    }
+
+    function handleEnter(event) {
+        if (event.key === "Enter") {
+            filterTableOffline();
+            event.preventDefault();
+        }
+    }
+
+    function resetSearch() {
+        document.getElementById("offlineSearch").value = "";
+        filterTableOffline();
+    }
+</script>
+{% endblock %}

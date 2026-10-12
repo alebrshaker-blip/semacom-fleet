@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}المعلومات العامة للمركبة{% endblock %}
+
+{% block extra_css %}
+<style>
+    .vehicle-info-layout { display: grid; grid-template-columns: minmax(250px, .8fr) minmax(400px, 1.7fr); gap: 22px; align-items: start; }
+    .info-card { background: #fff; border-radius: 16px; padding: 24px; box-shadow: 0 8px 24px rgba(27, 54, 93, .09); margin-bottom: 20px; }
+    .info-card h2, .info-card h3 { color: #1b365d; margin: 0 0 14px; }
+    .vehicle-subtitle { color: #66758a; margin-bottom: 20px; }
+    .qr-panel { text-align: center; }
+    .qr-image { width: min(100%, 280px); aspect-ratio: 1; object-fit: contain; padding: 12px; border: 1px solid #e5eaf0; border-radius: 12px; }
+    .vehicle-qr-label { color: #1b365d; font-weight: 800; font-size: 21px; line-height: 1.7; margin-top: 12px; }
+    .qr-url { color: #64748b; font-size: 12px; overflow-wrap: anywhere; margin-top: 10px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; justify-content: center; }
+    .settings-table { width: 100%; border-collapse: collapse; }
+    .settings-table th, .settings-table td { padding: 12px 10px; border-bottom: 1px solid #e8edf3; text-align: right; vertical-align: middle; }
+    .settings-table thead { background: #edf3fa; color: #1b365d; }
+    .settings-table td:not(:first-child), .settings-table th:not(:first-child) { text-align: center; width: 105px; }
+    .settings-table input { width: 20px; height: 20px; accent-color: #1b365d; }
+    .field-preview { display: block; color: #718096; font-size: 13px; margin-top: 4px; white-space: pre-line; }
+    .notice { border-radius: 10px; background: #fff8e6; color: #795500; padding: 13px 16px; line-height: 1.8; margin-bottom: 18px; }
+    .table-scroll { overflow-x: auto; }
+    @media (max-width: 850px) { .vehicle-info-layout { grid-template-columns: 1fr; } }
+    @media print {
+        body * { visibility: hidden !important; }
+        .qr-print, .qr-print * { visibility: visible !important; }
+        .qr-print { position: absolute; inset: 0; width: 100%; padding: 40px; box-shadow: none; }
+        .qr-url, .qr-actions { display: none !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1400px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+        <div>
+            <h1 style="color:#1b365d;margin:0 0 6px;">المعلومات العامة للمركبة</h1>
+            <div class="vehicle-subtitle">{{ vehicle.vehicle_code }} — {{ vehicle.plate_number }}</div>
+        </div>
+        <div class="actions" style="margin:0;">
+            <a class="btn btn-secondary" href="{{ url_for('vehicles.vehicles_index') }}">العودة للمركبات</a>
+            <a class="btn btn-primary" href="{{ url_for('vehicles.public_submissions') }}">بلاغات واستفسارات QR</a>
+        </div>
+    </div>
+
+    <div class="vehicle-info-layout">
+        <section class="info-card qr-panel qr-print">
+            <h2>رمز معلومات المركبة</h2>
+            <p>امسح الرمز بكاميرا الجوال لفتح صفحة المركبة مباشرة دون تسجيل دخول.</p>
+            <img class="qr-image" src="{{ qr_path }}" alt="رمز QR للمركبة {{ vehicle.vehicle_code }}">
+            <div class="vehicle-qr-label">
+                {{ vehicle.vehicle_code }}<br>
+                {{ vehicle.plate_number }}
+            </div>
+            <div class="qr-url">{{ public_url }}</div>
+            <div class="actions qr-actions">
+                <button type="button" class="btn btn-primary" onclick="window.print()">طباعة QR</button>
+                <a class="btn btn-success" href="{{ public_url }}" target="_blank" rel="noopener">معاينة صفحة الزائر</a>
+            </div>
+        </section>
+
+        <section class="info-card">
+            <h2>إعداد الحقول الظاهرة للزائر</h2>
+            <div class="notice">
+                التغييرات التي يرسلها الزائر تُسجّل كطلبات للمراجعة ولا تعدّل بيانات المركبة مباشرة. اختر الحقول التي تظهر للزائر، والحقول التي يمكنه إرسال اقتراح تحديث لها.
+            </div>
+            <form method="post">
+                <div class="table-scroll">
+                    <table class="settings-table">
+                        <thead>
+                            <tr>
+                                <th>الحقل</th>
+                                <th>عرض للزائر</th>
+                                <th>السماح بطلب تحديث</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for field in fields %}
+                            {% set setting = settings[field.key] %}
+                            <tr>
+                                <td>
+                                    <strong>{{ field.label }}</strong>
+                                    <span class="field-preview">{{ field.value }}</span>
+                                </td>
+                                <td>
+                                    <input type="checkbox" name="visible:{{ field.key }}" aria-label="عرض {{ field.label }}" {% if setting.visible %}checked{% endif %}>
+                                </td>
+                                <td>
+                                    <input type="checkbox" name="editable:{{ field.key }}" aria-label="السماح بطلب تحديث {{ field.label }}" {% if setting.editable %}checked{% endif %}>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="actions" style="justify-content:flex-start;">
+                    <button class="btn btn-primary" type="submit">حفظ إعدادات العرض</button>
+                </div>
+            </form>
+        </section>
+    </div>
+</div>
+{% endblock %}

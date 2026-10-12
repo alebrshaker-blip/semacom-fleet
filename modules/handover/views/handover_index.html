@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة عهد الاستلام والتسليم - SEMACOM{% endblock %}
+
+{% block extra_head %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+    <div class="container py-4">
+
+        <!-- رأس الصفحة -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3 class="fw-bold text-dark mb-1">إدارة عهد الاستلام والتسليم للسيارات والمعدات</h3>
+                <p class="text-muted mb-0">شركة SEMACOM - نظام إدارة المركبات والمعدات</p>
+            </div>
+            <div>
+                <a href="{{ url_for('handover.add_handover_form') }}" class="btn btn-success shadow-sm">
+                    <i class="fas fa-plus"></i> تسجيل عملية جديدة (تسليم / إرجاع)
+                </a>
+            </div>
+        </div>
+
+        <!-- بطاقة البحث والفلترة المتقدمة -->
+        <div class="card p-4 mb-4 bg-white shadow-sm">
+            <form method="GET" action="{{ url_for('handover.handover_index') }}" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold text-secondary">بحث برقم اللوحة أو السائق:</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-search"></i></span>
+                        <input type="text" name="q" class="form-control" value="{{ search_q or '' }}" placeholder="أدخل رقم اللوحة أو اسم السائق...">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold text-secondary">من تاريخ ووقت:</label>
+                    <input type="datetime-local" name="date_from" class="form-control" value="{{ date_from or '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold text-secondary">إلى تاريخ ووقت:</label>
+                    <input type="datetime-local" name="date_to" class="form-control" value="{{ date_to or '' }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100 shadow-sm"><i class="fas fa-filter"></i> تصفية النتائج</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- جدول الحركات النشطة مع زر التصدير الخاص به -->
+        <div class="card mb-5 shadow-sm">
+            <div class="card-header bg-success text-white fw-bold py-3 d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-car-side"></i> حركات التسليم النشطة حالياً (خارج الورشة)</span>
+                <a href="{{ url_for('handover.export_active_excel') }}" class="btn btn-light btn-sm text-success fw-bold shadow-sm">
+                    <i class="fas fa-file-excel"></i> تصدير النشطة إلى Excel
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>المركبة / المعدة</th>
+                                <th>السائق المسؤول</th>
+                                <th>العداد</th>
+                                <th>الوقود</th>
+                                <th>فني كهرباء</th>
+                                <th>فني ميكانيكا</th>
+                                <th>تاريخ التسليم</th>
+                                <th>الغرض</th>
+                                <th>القسم التابع له</th>
+                                <th>الوصف</th>
+                                <th>الحالة</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if active_records %}
+                                {% for row in active_records %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td class="fw-bold text-primary">{{ row.vehicle_info }}</td>
+                                    <td>{{ row.driver_info }}</td>
+                                    <td>{{ row.odometer }} كم</td>
+                                    <td>{{ row.fuel_level }}</td>
+                                    <td>{{ row.electrical_technician }}</td>
+                                    <td>{{ row.mechanical_technician }}</td>
+                                    <td>{{ row.handover_date }}</td>
+                                    <td>{{ row.purpose or '—' }}</td>
+                                    <td>{{ row.department or '—' }}</td>
+                                    <td>{{ row.description or '—' }}</td>
+                                    <td><span class="badge bg-success px-3 py-2">{{ row.status }}</span></td>
+                                    <td>
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="{{ url_for('reports.handover_reports', view='print', report_type='single', handover_id=row.id) }}"
+                                           target="_blank" title="تقرير الحركة" aria-label="طباعة تقرير الحركة"><i class="fas fa-file-lines" aria-hidden="true"></i> تقرير</a>
+                                        <a class="btn btn-sm btn-outline-success"
+                                           href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
+                                           target="_blank" title="توثيق حركة التسليم" aria-label="توثيق حركة التسليم"><i class="fas fa-clipboard-check" aria-hidden="true"></i> توثيق</a>
+                                        <!-- زر الحذف المحدث للجدول الأول -->
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-confirm-delete="{{ url_for('handover.delete_handover', record_id=row.id) }}" data-target-name="{{ row.vehicle_info }}" aria-label="حذف سجل المركبة">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="13" class="text-muted py-4">لا توجد حركات تسليم نشطة حالياً (جميع المركبات في الورشة).</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول الأرشيف والسجلات السابقة مع زر التصدير الخاص به -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-secondary text-white fw-bold py-3 d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-archive"></i> أرشيف حركات الاستلام والتسليم والإرجاع السابقة</span>
+                <a href="{{ url_for('handover.export_archive_excel') }}" class="btn btn-light btn-sm text-secondary fw-bold shadow-sm">
+                    <i class="fas fa-file-excel"></i> تصدير الأرشيف إلى Excel
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>نوع العملية</th>
+                                <th>المركبة / المعدة</th>
+                                <th>السائق</th>
+                                <th>العداد</th>
+                                <th>تاريخ ووقت الحركة</th>
+                                <th>الغرض</th>
+                                <th>القسم التابع له</th>
+                                <th>الوصف</th>
+                                <th>ملاحظات</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if archived_records %}
+                                {% for row in archived_records %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td>
+                                        <span class="badge {% if row.handover_type == 'تسليم عهدة' %}bg-primary{% else %}bg-warning text-dark{% endif %} px-3 py-2">
+                                            {{ row.handover_type }}
+                                        </span>
+                                    </td>
+                                    <td class="fw-bold">{{ row.vehicle_info }}</td>
+                                    <td>{{ row.driver_info }}</td>
+                                    <td>{{ row.odometer }} كم</td>
+                                    <td>{{ row.handover_date }}</td>
+                                    <td>{{ row.purpose or '—' }}</td>
+                                    <td>{{ row.department or '—' }}</td>
+                                    <td>{{ row.description or '—' }}</td>
+                                    <td>{{ row.notes or '-' }}</td>
+                                    <td>
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="{{ url_for('reports.handover_reports', view='print', report_type='single', handover_id=row.id) }}"
+                                           target="_blank" title="تقرير الحركة" aria-label="طباعة تقرير الحركة"><i class="fas fa-file-lines" aria-hidden="true"></i> تقرير</a>
+                                        {% if row.handover_type == 'تسليم عهدة' %}
+                                        <a class="btn btn-sm btn-outline-success"
+                                           href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
+                                           target="_blank" title="توثيق حركة التسليم" aria-label="توثيق حركة التسليم"><i class="fas fa-clipboard-check" aria-hidden="true"></i> توثيق</a>
+                                        {% endif %}
+                                        <!-- زر الحذف المحدث للجدول الثاني (الأرشيف) -->
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-confirm-delete="{{ url_for('handover.delete_handover', record_id=row.id) }}" data-target-name="{{ row.vehicle_info }}" aria-label="حذف سجل المركبة">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="11" class="text-muted py-4">لا توجد سجلات مطابقة في الأرشيف.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+{% endblock %}

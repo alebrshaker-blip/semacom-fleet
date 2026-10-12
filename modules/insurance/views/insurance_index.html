@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة التأمينات - SEMACOM{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    .container-custom { max-width: 1200px; margin: 0 auto; direction: rtl; text-align: right; padding: 20px; font-family: 'Cairo', sans-serif; }
+    .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid #e9ecef; padding-bottom: 15px; }
+    .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #dee2e6; padding-bottom: 10px; }
+    .nav-link { padding: 8px 20px; border-radius: 4px; text-decoration: none; font-weight: bold; background: #f8f9fa; color: #495057; transition: all 0.3s; }
+    .nav-link.active { background: #1F4E78; color: white; }
+    .table-container { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; text-align: right; }
+    th, td { padding: 12px 15px; border-bottom: 1px solid #e5e7eb; font-size: 14px; vertical-align: middle; }
+    th { background-color: #f1f5f9; color: #1F4E78; font-weight: bold; }
+    tr:hover { background-color: #f8f9fa; }
+    .badge { padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; display: inline-block; }
+    .badge-active { background: #d1e7dd; color: #0f5132; }
+    .badge-expired { background: #f8d7da; color: #842029; }
+    .badge-warning { background: #fff3cd; color: #856404; }
+    
+    /* تصميم أزرار الإجراءات مع التسمية الواضحة */
+    .action-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .btn-action { padding: 6px 10px; border-radius: 4px; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; border: none; font-weight: 600; transition: opacity 0.2s; }
+    .btn-action:hover { opacity: 0.85; }
+    .btn-primary-custom { background: #1F4E78; color: white; }
+    .btn-success-custom { background: #198754; color: white; }
+    .btn-danger-custom { background: #dc3545; color: white; }
+    .btn-warning-custom { background: #ffc107; color: #000; }
+    .btn-info-custom { background: #0dcaf0; color: #000; }
+
+    /* تصميم نافذة التأكيد (Modal) المنسقة */
+    .custom-modal { display: none; position: fixed; z-index: 1050; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+    .custom-modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); direction: rtl; }
+    .custom-modal-content h3 { margin-top: 0; color: #1F4E78; font-size: 18px; margin-bottom: 15px; }
+    .custom-modal-content p { color: #495057; font-size: 14px; margin-bottom: 20px; }
+    .modal-actions { display: flex; justify-content: center; gap: 10px; }
+    .modal-btn { padding: 8px 20px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; }
+    .modal-btn-confirm { background: #dc3545; color: white; }
+    .modal-btn-archive { background: #ffc107; color: #000; }
+    .modal-btn-cancel { background: #6c757d; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-custom">
+    <div class="header-section">
+        <h2 style="color: #1F4E78; margin: 0;">
+            <i class="fa-solid fa-shield-halved"></i> إدارة وثائق تأمين المركبات والمعدات
+        </h2>
+        <div style="display: flex; gap: 10px;">
+            <a href="{{ url_for('insurance_bp.add_get') }}" class="btn-action btn-primary-custom" style="padding: 10px 15px; font-size: 14px;">
+                <i class="fa-solid fa-plus"></i> إضافة بوليصة تأمين
+            </a>
+            <a href="{{ url_for('insurance_bp.export_excel', tab=active_tab) }}" class="btn-action btn-success-custom" style="padding: 10px 15px; font-size: 14px;">
+                <i class="fa-solid fa-file-excel"></i> تصدير إكسل
+            </a>
+            <a href="{{ url_for('reports.data_reports', report_key='insurance') }}" class="btn-action btn-info-custom" style="padding: 10px 15px; font-size: 14px;">
+                <i class="fa-solid fa-file-lines"></i> التقارير
+            </a>
+        </div>
+    </div>
+
+    <!-- التبويبات -->
+    <div class="nav-tabs">
+        <a href="{{ url_for('insurance_bp.index', tab='active') }}" class="nav-link {% if active_tab == 'active' %}active{% endif %}">
+            <i class="fa-solid fa-circle-check"></i> التأمينات السارية
+        </a>
+        <a href="{{ url_for('insurance_bp.index', tab='expired') }}" class="nav-link {% if active_tab == 'expired' %}active{% endif %}">
+            <i class="fa-solid fa-clock-rotate-left"></i> التأمينات المنتهية والأرشيف
+        </a>
+    </div>
+
+    <!-- جدول البيانات -->
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>م</th>
+                    <th>رقم البوليصة</th>
+                    <th>رقم اللوحة</th>
+                    <th>شركة التأمين</th>
+                    <th>نوع التأمين</th>
+                    <th>تاريخ البدء</th>
+                    <th>تاريخ الانتهاء</th>
+                    <th>التكلفة (ر.س)</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in policies %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ p.policy_number }}</strong></td>
+                    <td>{{ p.vehicle_plate }}</td>
+                    <td>{{ p.insurance_company }}</td>
+                    <td>{{ p.insurance_type }}</td>
+                    <td>{{ p.start_date }}</td>
+                    <td>{{ p.end_date }}</td>
+                    <td>{{ "%.2f"|format(p.policy_cost) }}</td>
+                    <td>
+                        <span class="badge {% if p.status_type == 'ساري' %}badge-active{% elif p.status_type == 'قارب على الانتهاء' %}badge-warning{% else %}badge-expired{% endif %}">
+                            {{ p.status_type }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-group">
+                            <a href="{{ url_for('reports.data_reports', report_key='insurance', report_type='single', policy_id=p.id, view='print') }}" target="_blank" class="btn-action btn-info-custom" title="تقرير وثيقة التأمين">
+                                <i class="fa-solid fa-print"></i> تقرير
+                            </a>
+                            <!-- زر عرض المرفق الآمن الجديد الذي يتحقق من وجود الملف والمجلد تلقائياً -->
+                            {% if p.policy_attachment %}
+                            <a href="{{ url_for('insurance_bp.view_attachment', filename=p.policy_attachment) }}" target="_blank" class="btn-action btn-info-custom" title="عرض الملف المرفق">
+                                <i class="fa-solid fa-file-arrow-down"></i> عرض المرفق
+                            </a>
+                            {% endif %}
+                            
+                            <!-- زر الأرشفة -->
+                            {% if p.status == 'active' %}
+                            <button type="button" class="btn-action btn-warning-custom" onclick="openModal('archive', '{{ url_for('insurance_bp.expire_policy', policy_id=p.id) }}')" title="أرشفة الوثيقة">
+                                <i class="fa-solid fa-box-archive"></i> أرشفة
+                            </button>
+                            {% endif %}
+
+                            <!-- زر الحذف -->
+                            <button type="button" class="btn-action btn-danger-custom" onclick="openModal('delete', '{{ url_for('insurance_bp.delete_policy', policy_id=p.id) }}')" title="حذف السجل نهائياً">
+                                <i class="fa-solid fa-trash"></i> حذف
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 30px; color: #6c757d;">
+                        لا توجد وثائق تأمين مسجلة حالياً في هذا القسم.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- نافذة التأكيد (Modal) المنسقة -->
+<div id="customModal" class="custom-modal">
+    <div class="custom-modal-content">
+        <h3 id="modalTitle">تأكيد الإجراء</h3>
+        <p id="modalMessage">هل أنت متأكد من تنفيذ هذا الإجراء؟</p>
+        <form id="modalForm" method="POST">
+            <div class="modal-actions">
+                <button type="button" class="modal-btn modal-btn-cancel" onclick="closeModal()">إلغاء الأمر</button>
+                <button type="submit" id="modalConfirmBtn" class="modal-btn modal-btn-confirm">موافق</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openModal(actionType, actionUrl) {
+        const modal = document.getElementById('customModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const modalForm = document.getElementById('modalForm');
+        const confirmBtn = document.getElementById('modalConfirmBtn');
+
+        modalForm.action = actionUrl;
+
+        if (actionType === 'archive') {
+            modalTitle.textContent = 'تأكيد الأرشفة';
+            modalMessage.textContent = 'هل أنت متأكد من تحويل هذه الوثيقة إلى الأرشيف؟';
+            confirmBtn.textContent = 'نعم، أرشِف';
+            confirmBtn.className = 'modal-btn modal-btn-archive';
+        } else if (actionType === 'delete') {
+            modalTitle.textContent = 'تأكيد الحذف النهائي';
+            modalMessage.textContent = 'هل أنت متأكد من حذف هذا السجل نهائياً؟ لا يمكن التراجع عن هذا الإجراء.';
+            confirmBtn.textContent = 'نعم، احذف';
+            confirmBtn.className = 'modal-btn modal-btn-confirm';
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('customModal').style.display = 'none';
+    }
+
+    // إغلاق النافذة عند النقر خارجها
+    window.onclick = function(event) {
+        const modal = document.getElementById('customModal');
+        if (event.target === modal) {
+            closeModal();
+        }
+    }
+</script>
+{% endblock %}

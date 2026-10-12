@@ -1,0 +1,170 @@
+{% extends "print_base.html" %}
+
+{% block title %}{{ report_title_text }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .handover-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    .handover-report-table { width: 100%; border-collapse: collapse; table-layout: fixed; direction: rtl; }
+    .handover-report-table th, .handover-report-table td {
+        border: 1px solid #475569;
+        padding: 5px 7px;
+        text-align: right;
+        vertical-align: top;
+        overflow-wrap: anywhere;
+        font-size: 10px;
+    }
+    .handover-report-table th { background: #e9eff5; width: 16%; }
+    .handover-report-table td { width: 34%; }
+    .handover-report-record { margin-bottom: 10px; break-inside: avoid; }
+    .handover-report-record h3, .document-section-title {
+        margin: 8px 0 4px;
+        font-size: 12px;
+        color: #1b365d;
+    }
+    .handover-document-page {
+        height: 276mm !important;
+        min-height: 0 !important;
+        padding: 4mm 8mm !important;
+        justify-content: flex-start !important;
+        overflow: hidden;
+    }
+    .handover-document-page .official-header { padding-bottom: 2px; }
+    .handover-document-page .header-logo-zone img { max-height: 55px; }
+    .handover-document-page .header-qr-zone { width: 58px; height: 58px; }
+    .handover-document-page .header-double-line { margin: 3px 0 5px; }
+    .handover-document-page .document-meta-bar { margin-bottom: 5px; font-size: 10px; }
+    .handover-document-page .handover-report-title { margin-bottom: 4px; font-size: 15px; }
+    .handover-document-page .document-section-title { margin: 5px 0 2px; }
+    .document-table th, .document-table td { padding: 3px 5px; font-size: 9px; }
+    .document-table th { width: 24%; }
+    .document-table td { width: 26%; }
+    .document-notes { border: 1px solid #475569; padding: 4px 6px; }
+    .document-notes h3 { margin: 0 0 2px; font-size: 10px; }
+    .editable-lines { min-height: 13mm; line-height: 6mm; }
+    .manager-notes .editable-lines { min-height: 15mm; }
+    .declaration-box { border: 1.5px solid #1b365d; padding: 5px 7px; margin-top: 5px; }
+    .declaration-text { line-height: 1.65; font-size: 10px; }
+    .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 5px; }
+    .signature-field { border-bottom: 1px solid #475569; min-height: 11mm; padding: 2px 0; font-size: 9px; }
+    .driver-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+    .thumb-box { border: 1px solid #475569; min-height: 15mm; text-align: center; padding: 4px; }
+    @media print {
+        .handover-report-table th, .handover-report-table td { padding: 4px; }
+        .handover-report-record { break-inside: avoid; page-break-inside: avoid; }
+        .handover-document-page {
+            height: 276mm !important;
+            min-height: 0 !important;
+            break-after: auto !important;
+            page-break-after: auto !important;
+        }
+        .editable-lines, [contenteditable="true"] { background: transparent !important; box-shadow: none !important; }
+    }
+</style>
+{% endblock %}
+
+{% block pages %}
+{% if is_document %}
+{% set record = records[0] %}
+<section class="page-container portrait handover-document-page">
+    {% include '_print_header.html' %}
+    <h2 class="handover-report-title" contenteditable="true">وثيقة تسليم مركبة / معدة</h2>
+
+    <h3 class="document-section-title">بيانات المركبة</h3>
+    <table class="handover-report-table document-table">
+        <tbody>
+            <tr><th>المركبة / المعدة</th><td contenteditable="true">{{ record.vehicle_info or '—' }}</td>
+                <th>رقم المركبة</th><td contenteditable="true">{{ record.vehicle_id or '—' }}</td></tr>
+            <tr><th>الغرض</th><td contenteditable="true">{{ record.purpose or '—' }}</td>
+                <th>القسم التابع له</th><td contenteditable="true">{{ record.department or '—' }}</td></tr>
+            <tr><th>الوصف</th><td colspan="3" contenteditable="true">{{ record.description or '—' }}</td></tr>
+            <tr><th>تاريخ ووقت التسليم</th><td contenteditable="true">{{ record.handover_date or '—' }}</td>
+                <th>قراءة العداد</th><td contenteditable="true">{{ record.odometer or '—' }} كم</td></tr>
+        </tbody>
+    </table>
+
+    <h3 class="document-section-title">بيانات السائق المستلم</h3>
+    <table class="handover-report-table document-table">
+        <tbody>
+            <tr><th>اسم السائق</th><td contenteditable="true">{{ record.driver_info or '—' }}</td>
+                <th>الغرض من الاستخدام</th><td contenteditable="true">{{ record.purpose or '—' }}</td></tr>
+        </tbody>
+    </table>
+
+    <h3 class="document-section-title">حالة المركبة عند الاستلام</h3>
+    <table class="handover-report-table document-table">
+        <tbody>
+            <tr><th>مستوى الوقود</th><td contenteditable="true">{{ record.fuel_level or '—' }}</td>
+                <th>حالة الهيكل</th><td contenteditable="true">{{ record.body_condition or '—' }}</td></tr>
+            <tr><th>حالة الداخلية</th><td contenteditable="true">{{ record.interior_condition or '—' }}</td>
+                <th>حالة الإطارات</th><td contenteditable="true">{{ record.tires_condition or '—' }}</td></tr>
+            <tr><th>الحالة الميكانيكية</th><td contenteditable="true">{{ record.mechanical_condition or '—' }}</td>
+                <th>الحالة الكهربائية</th><td contenteditable="true">{{ record.electrical_condition or '—' }}</td></tr>
+        </tbody>
+    </table>
+
+    <div class="document-notes">
+        <h3>ملاحظات الفني الكهربائي — {{ record.electrical_technician or 'الاسم: ........................' }}</h3>
+        <div class="editable-lines" contenteditable="true"><br><br></div>
+    </div>
+    <div class="document-notes">
+        <h3>ملاحظات الفني الميكانيكي — {{ record.mechanical_technician or 'الاسم: ........................' }}</h3>
+        <div class="editable-lines" contenteditable="true"><br><br></div>
+    </div>
+    <div class="document-notes manager-notes">
+        <h3>ملاحظات مدير المعدات</h3>
+        <div class="editable-lines" contenteditable="true"><br><br></div>
+    </div>
+
+    <div class="declaration-box">
+        <h3 class="document-section-title" style="margin-top:0">إقرار وتعهد</h3>
+        <div class="declaration-text" contenteditable="true">
+            أنا السائق <span class="signature-field" style="display:inline-block;min-width:45mm"></span>
+            أقر بأني استلمت المركبة الموصوفة أعلاه بالحالة الموضحة، وأتعهد بالمحافظة عليها
+            وأتحمل المسؤولية عنها، وأتعهد بتسليمها متى ما طلب مني ذلك.
+        </div>
+        <div class="driver-signatures">
+            <div class="signature-field" contenteditable="true">توقيع السائق: ....................................</div>
+            <div class="thumb-box" contenteditable="true">بصمة الإبهام</div>
+        </div>
+        <div class="signature-grid">
+            <div class="signature-field" contenteditable="true">اسم وتوقيع الفني الكهربائي: ....................................</div>
+            <div class="signature-field" contenteditable="true">اسم وتوقيع الفني الميكانيكي: ....................................</div>
+            <div class="signature-field" contenteditable="true">اسم وتوقيع مدير المعدات: ....................................</div>
+        </div>
+    </div>
+</section>
+{% else %}
+<section class="page-container landscape">
+    {% include '_print_header.html' %}
+    <h2 class="handover-report-title">{{ report_title_text }}</h2>
+    {% if records %}
+    <div class="report-content">
+        {% for record in records %}
+        <div class="handover-report-record">
+            <h3>حركة رقم {{ record.id }} — {{ record.handover_type or '—' }}</h3>
+            <table class="handover-report-table">
+                <tbody>
+                    {% for index in range(0, columns|length, 2) %}
+                    <tr>
+                        <th>{{ columns[index].label }}</th>
+                        <td>{{ record.get(columns[index].key, '—') or '—' }}</td>
+                        {% if index + 1 < columns|length %}
+                        <th>{{ columns[index + 1].label }}</th>
+                        <td>{{ record.get(columns[index + 1].key, '—') or '—' }}</td>
+                        {% else %}
+                        <th></th><td></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="report-content text-center text-muted py-5">لا توجد حركات مطابقة للفلاتر المحددة.</div>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}
