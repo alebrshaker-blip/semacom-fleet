@@ -1,404 +1,284 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نموذج مذكرة صرف - طلب مواد أو عمل (MR)</title>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <style>
-        * {
-            box-sizing: border-box;
-            font-family: 'Tajawal', sans-serif;
-            margin: 0;
-            padding: 0;
-        }
+{% extends "print_base.html" %}
 
-        body {
-            background-color: #525659;
-            padding: 20px;
-            color: #000;
-        }
+{% block title %}مذكرة طلب مواد لزوم صيانة المعدات والمركبات{% endblock %}
+{% block report_title %}
+{% if is_finalized %}
+{{ memo.get('subject') or 'مذكرة طلب مواد لزوم صيانة المعدات والمركبات' }}
+{% else %}
+    <input form="workshopMemoForm" name="subject" class="editable-report-title" maxlength="180" required
+    value="{{ memo.get('subject', 'مذكرة طلب مواد لزوم صيانة المعدات والمركبات') if memo else 'مذكرة طلب مواد لزوم صيانة المعدات والمركبات' }}">
+{% endif %}
+{% endblock %}
 
-        .page-container {
-            width: 297mm; /* A4 Landscape width */
-            min-height: 210mm;
-            background: #fff;
-            margin: 0 auto;
-            padding: 10mm;
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
-            position: relative;
-        }
+{% block content %}
+{% if not is_finalized %}
+<div class="memo-controls no-print">
+    <a class="memo-button secondary" href="{{ url_for('reports.workshop_request_form') }}">كل المذكرات</a>
+    <a class="memo-button" href="{{ url_for('reports.workshop_request_form', new=1) }}">مذكرة جديدة</a>
+</div>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="memo-messages no-print">
+    {% for category, message in messages %}
+    <div class="memo-message {{ category }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+{% endif %}
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-
-        th, td {
-            border: 1.5px solid #000;
-            padding: 4px 6px;
-            font-size: 11px;
-            text-align: center;
-            vertical-align: middle;
-            word-wrap: break-word;
-        }
-
-        .bg-blue {
-            background-color: #d9e1f2;
-        }
-
-        .bg-gray {
-            background-color: #f2f2f2;
-        }
-
-        .bg-yellow {
-            background-color: #fff2cc;
-        }
-
-        .bg-green {
-            background-color: #e2efda;
-        }
-
-        input[type="text"], input[type="number"], input[type="date"], select, textarea {
-            width: 100%;
-            border: none;
-            background: transparent;
-            text-align: center;
-            font-family: 'Tajawal', sans-serif;
-            font-size: 11px;
-            outline: none;
-            padding: 2px;
-        }
-
-        input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
-            background-color: #ffffcc;
-        }
-
-        .text-start {
-            text-align: right !important;
-            padding-right: 5px;
-        }
-
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2px;
-            font-size: 9px;
-            text-align: right;
-            padding: 2px 4px;
-        }
-
-        .checkbox-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .logo-cell {
-            width: 80px;
-            height: 60px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 10px;
-        }
-
-        .header-title {
-            font-weight: 700;
-            font-size: 12px;
-        }
-
-        /* Action buttons for UI */
-        .no-print {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .btn {
-            background-color: #1f4e78;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            font-size: 14px;
-            font-family: 'Tajawal', sans-serif;
-            cursor: pointer;
-            border-radius: 4px;
-            margin: 0 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .btn:hover {
-            background-color: #12324f;
-        }
-
-        .btn-danger {
-            background-color: #c00000;
-        }
-        .btn-danger:hover {
-            background-color: #900000;
-        }
-
-        @media screen and (max-width: 760px) {
-            body { padding: 8px; }
-            .no-print {
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: center;
-                gap: 8px;
-            }
-            .btn { min-height: 46px; margin: 0; }
-            .page-container {
-                width: 100%;
-                min-height: 0;
-                padding: 12px;
-                overflow-x: auto;
-            }
-            .page-container table { min-width: 900px; }
-        }
-
-        @media print {
-            body {
-                background: none;
-                padding: 0;
-            }
-            .page-container {
-                box-shadow: none;
-                width: 100%;
-                margin: 0;
-                padding: 5mm;
-            }
-            .no-print {
-                display: none;
-            }
-            input, select, textarea {
-                border: none !important;
-                background: transparent !important;
-            }
-        }
-    </style>
-</head>
-<body>
-
-    <!-- أزرار التحكم والطباعة (تختفي عند الطباعة) -->
-    <div class="no-print">
-        <button class="btn" onclick="addRow()">➕ إضافة صف جديد</button>
-        <button class="btn" onclick="window.print()">🖨️ طباعة النموذج</button>
+<div class="workshop-memo">
+    <div class="memo-parties">
+        <div><strong>إلى:</strong> إدارة المستودع</div>
+        <div>
+            <strong>من:</strong>
+            {% if is_finalized %}
+            {{ memo.get('department') or 'مدير المعدات' }}
+            {% else %}
+            <input form="workshopMemoForm" name="department" class="sender-input" maxlength="120" required
+                   value="{{ memo.get('department', 'مدير المعدات') if memo else 'مدير المعدات' }}">
+            {% endif %}
+        </div>
     </div>
 
-    <form id="materialForm" class="page-container">
-        <!-- الجدول الأول: ترويسة النموذج -->
-        <table>
-            <tr>
-                <td rowspan="2" class="logo-cell bg-blue">
-                    <div style="font-size: 8px; line-height: 1.2;">شعار الشركة / البلدية</div>
-                </td>
-                <td class="bg-blue header-title" style="width: 100px;">MR NO. رقم الطلب</td>
-                <td><input type="text" name="mr_no" placeholder="أدخل رقم الطلب"></td>
-                <td class="bg-blue header-title" style="width: 110px;">تؤمن عن طريق</td>
-                <td><input type="text" name="supplied_by" placeholder="جهة التأمين"></td>
-                <td class="bg-blue header-title" style="width: 100px;">PAGE No رقم الصفحة</td>
-                <td style="width: 60px;"><input type="text" name="page_no" value="1/1"></td>
-                <td class="bg-blue header-title" style="width: 70px;">DATE التاريخ</td>
-                <td style="width: 110px;"><input type="date" name="date"></td>
-            </tr>
-            <tr>
-                <td class="bg-blue header-title">مستخلص رقم<br>PAYMENT CERTIFICATE</td>
-                <td><input type="text" name="payment_cert_no"></td>
-                <td colspan="3" class="bg-gray"></td>
-                <td colspan="2" class="bg-gray"></td>
-            </tr>
-        </table>
+    <div class="memo-opening">
+        <p>السلام عليكم ورحمة الله وبركاته، وبعد:</p>
+        <p>نأمل من إدارة المستودع التكرم بالموافقة على صرف المواد الموضحة أدناه من المستودع، نظراً لحاجة العمل ..<br>دون تأخير...<br>وذلك لاستخدامها في:</p>
+        {% if is_finalized %}
+        <div class="purpose-text">{{ memo.get('purpose') or memo.get('background') }}</div>
+        {% else %}
+        <div class="purpose-input-wrap">
+            <textarea form="workshopMemoForm" name="purpose" class="purpose-input" maxlength="500" rows="4" required
+                      placeholder="اكتب أسباب استخدام المواد بالتفصيل">{{ memo.get('purpose', memo.get('background', '')) if memo else '' }}</textarea>
+        </div>
+        {% endif %}
+    </div>
 
-        <!-- الجدول الثاني: المشروع وتوضيح الطلب -->
-        <table style="border-top: none;">
-            <tr>
-                <td class="bg-blue header-title" style="width: 120px;">PROJECT المشروع</td>
-                <td class="text-start bg-blue" style="font-weight: bold; font-size: 12px;" colspan="4">
-                    مشروع تشغيل وصيانة شبكات الانارة بشمال مكة المكرمة
-                </td>
-                <td class="bg-blue header-title" style="width: 160px;">JOB ORDER NO / MONTH<br>رقم امر العمل/ عن شهر</td>
-                <td colspan="2"><input type="text" name="job_order"></td>
-                <td class="bg-blue header-title" style="width: 130px;" rowspan="2">JUSTIFICATION / توضيح</td>
-            </tr>
-            <tr>
-                <td colspan="5" style="border-top: none; border-bottom: none;"></td>
-                <td colspan="2" style="border-top: none; border-bottom: none;"></td>
-                <td rowspan="2"><textarea name="justification" rows="2" placeholder="اكتب المبررات أو التوضيح هنا..."></textarea></td>
-            </tr>
-            <tr>
-                <td colspan="5" class="bg-blue header-title text-start" style="padding: 5px;">
-                    MATERIAL PURPOSE ORDER / الهدف من طلب صرف إضافة المواد أو عمل
-                </td>
-                <td colspan="2" class="bg-gray"></td>
-            </tr>
-            <tr>
-                <td colspan="9" style="padding: 2px;">
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="dispatch"> DISPATCH MARITIME / مؤونه صيانة</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="maintenance"> MAINTENANCE / صيانة</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="municipality"> MUNICIPALITY REQ / طلب البلدية للخارج</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="office"> OFFICE / مكتبين</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="other"> OTHER / أخرى</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="purchase"> PURCHASE / مشتريات</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="stock"> STOCK / تخزين</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="return"> RETURN TO MUNICIPALITY / رد إلى البلدية</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="services"> SERVICES / خدمات</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="quotations"> QUOTATIONS / تسعيرات</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="transfer"> TRANSFER TO STORE / ترحيل للمستودع</div>
-                        <div class="checkbox-item"><input type="checkbox" name="purpose[]" value="manufacturing"> MANUFACTURING / تصنيع</div>
-                        <div class="checkbox-item bg-yellow"><input type="checkbox" name="purpose[]" value="emergency"> احتياجات المشروع</div>
-                        <div class="checkbox-item bg-green"><input type="checkbox" name="purpose[]" value="schedule"> اعتماد جدول العمل</div>
-                        <div class="checkbox-item bg-green"><input type="checkbox" name="purpose[]" value="start_work"> اعتماد العمل</div>
-                    </div>
-                </td>
-            </tr>
-        </table>
-
-        <!-- الجدول الرئيسي: بنود المواد أو الأعمال -->
-        <table style="border-top: none;" id="itemsTable">
+    <div class="materials-table-wrap">
+        <table class="materials-table">
             <thead>
-                <tr class="bg-blue">
-                    <td rowspan="2" style="width: 35px;">م</td>
-                    <td rowspan="2" class="text-start">MATERIAL OR JOB DESCRIPTION AND ITEM CODE / وصف المواد او العمل كود السلعة</td>
-                    <td rowspan="2" style="width: 70px;">CATEGORY<br>تصنيف</td>
-                    <td rowspan="2" style="width: 60px;">UNIT<br>الوحدة</td>
-                    <td rowspan="2" style="width: 55px;">QTY<br>الكمية</td>
-                    <td rowspan="2" style="width: 75px;">UNIT PRICE<br>السعر الافرادي</td>
-                    <td rowspan="2" style="width: 80px;">TOTAL AMOUNT<br>المجموع</td>
-                    <td colspan="2" class="bg-gray" style="font-size: 9px; font-weight: bold;">بعد الشراء يتم التعبئة من المشتريات او مسؤول المستودع</td>
-                    <td rowspan="2" style="width: 35px;" class="no-print">حذف</td>
-                </tr>
-                <tr class="bg-blue">
-                    <td style="width: 75px; font-size: 9px;">Purchased<br>تم شراء عدد</td>
-                    <td style="width: 75px; font-size: 9px;">Remaining<br>متبقي عدد</td>
+                <tr>
+                    <th class="sequence">م</th>
+                    <th>بيان المواد المطلوبة</th>
+                    <th class="quantity">الكمية</th>
+                    <th class="unit">الوحدة</th>
+                    <th>ملاحظات</th>
+                    {% if not is_finalized %}<th class="no-print remove-col">حذف</th>{% endif %}
                 </tr>
             </thead>
-            <tbody id="itemsBody">
-                <!-- صف افتراضي أول -->
-                <tr>
-                    <td>1</td>
-                    <td class="text-start"><input type="text" name="item_desc[]" placeholder="وصف المادة أو العمل وكود السلعة"></td>
-                    <td><input type="text" name="item_cat[]"></td>
-                    <td><input type="text" name="item_unit[]"></td>
-                    <td><input type="number" name="item_qty[]" step="any" oninput="calculateRow(this)"></td>
-                    <td><input type="number" name="item_price[]" step="any" oninput="calculateRow(this)"></td>
-                    <td><input type="text" name="item_total[]" readonly style="font-weight: bold;"></td>
-                    <td><input type="number" name="item_purchased[]" step="any"></td>
-                    <td><input type="number" name="item_remaining[]" step="any"></td>
-                    <td class="no-print"><button type="button" class="btn-danger" style="padding:2px 6px; font-size:10px;" onclick="deleteRow(this)">X</button></td>
+            <tbody id="materialRows">
+                {% for item in (items if is_finalized else (memo.get('items', []) if memo else [])) %}
+                <tr class="material-row">
+                    <td class="row-number">{{ loop.index }}</td>
+                    <td>
+                        {% if is_finalized %}
+                        <div class="description-text">{{ item.get('description', '') }}</div>
+                        {% else %}
+                        <textarea form="workshopMemoForm" class="description-input" name="item_description[]" maxlength="180" rows="1" required>{{ item.get('description', '') }}</textarea>
+                        {% endif %}
+                    </td>
+                    <td><input form="workshopMemoForm" name="item_quantity[]" type="number" min="0.001" step="0.001" required value="{{ item.get('quantity', '') }}" {% if is_finalized %}readonly{% endif %}></td>
+                    <td><input form="workshopMemoForm" name="item_unit[]" maxlength="40" required value="{{ item.get('unit', '') }}" {% if is_finalized %}readonly{% endif %}></td>
+                    <td><input form="workshopMemoForm" name="item_notes[]" maxlength="180" value="{{ item.get('notes', '') }}" {% if is_finalized %}readonly{% endif %}></td>
+                    {% if not is_finalized %}<td class="no-print"><button type="button" class="remove-row" onclick="removeMaterialRow(this)" aria-label="حذف المادة">×</button></td>{% endif %}
                 </tr>
+                {% else %}
+                {% if not is_finalized %}
+                <tr class="material-row">
+                    <td class="row-number">1</td>
+                    <td><textarea form="workshopMemoForm" class="description-input" name="item_description[]" maxlength="180" rows="1" required placeholder="اسم المادة أو وصفها"></textarea></td>
+                    <td><input form="workshopMemoForm" name="item_quantity[]" type="number" min="0.001" step="0.001" required placeholder="0"></td>
+                    <td><input form="workshopMemoForm" name="item_unit[]" maxlength="40" required placeholder="مثال: قطعة"></td>
+                    <td><input form="workshopMemoForm" name="item_notes[]" maxlength="180" placeholder="اختياري"></td>
+                    <td class="no-print"><button type="button" class="remove-row" onclick="removeMaterialRow(this)" aria-label="حذف المادة">×</button></td>
+                </tr>
+                {% endif %}
+                {% endfor %}
             </tbody>
-            <!-- صف الإجمالي -->
-            <tfoot>
-                <tr>
-                    <td colspan="6" class="bg-gray" style="text-align: left; font-weight: bold; padding-right: 10px;">الإجمالي / TOTAL</td>
-                    <td><input type="text" id="grandTotal" readonly style="font-weight: bold; background-color: #f2f2f2;"></td>
-                    <td colspan="3" class="bg-gray"></td>
-                </tr>
-            </tfoot>
         </table>
+    </div>
 
-        <!-- جدول التوقيعات والاعتمادات -->
-        <table style="border-top: none;">
-            <tr class="bg-gray" style="font-weight: bold; font-size: 10px;">
-                <td>Maintenance Engineer</td>
-                <td>Lighting Manger</td>
-                <td>project Manager</td>
-                <td>STORE RESPONSIBLE</td>
-                <td>COST CONTROL CENTER</td>
-                <td>FINANCIAL MANAGER</td>
-                <td>CEO / VICE PRISEDINT</td>
-            </tr>
-            <tr style="font-weight: bold;">
-                <td>مهندس الصيانة</td>
-                <td>مدير الانارة</td>
-                <td>مدير المشاريع</td>
-                <td>نائب المدير</td>
-                <td>إدارة المشتريات</td>
-                <td>الادارة المالية</td>
-                <td>المدير التنفيذي<br><span style="font-size: 9px; font-weight: normal;">م/ معتوق احمد عجيب</span></td>
-            </tr>
-            <tr style="height: 45px; vertical-align: bottom;">
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-                <td><input type="text" placeholder="التوقيع والتاريخ"></td>
-            </tr>
-            <tr class="bg-gray" style="font-size: 9px; font-weight: bold;">
-                <td>SIGNATURE & DATE</td>
-                <td>SIGNATURE & DATE</td>
-                <td>SIGNATURE & DATE</td>
-                <td>SIGNATURE & DATE</td>
-                <td>SIGNATURE & DATE</td>
-                <td>SIGNATURE & DATE</td>
-                <td>SIGNATURE & DATE</td>
-            </tr>
-        </table>
+    {% if not is_finalized %}
+    <div class="no-print material-controls">
+        <button type="button" class="memo-button secondary" onclick="addMaterialRow()">إضافة مادة</button>
+    </div>
+    {% endif %}
+
+    <div class="recipient-details">
+        <div class="recipient-detail">
+            <strong>تفويض المستلم:</strong>
+            {% if is_finalized %}
+            <span>{{ memo.get('receiver_authorization') or '—' }}</span>
+            {% else %}
+            <input form="workshopMemoForm" name="receiver_authorization" maxlength="180"
+                   value="{{ memo.get('receiver_authorization', '') if memo else '' }}">
+            {% endif %}
+        </div>
+        <div class="recipient-detail">
+            <strong>الوظيفة:</strong>
+            {% if is_finalized %}
+            <span>{{ memo.get('receiver_job') or '—' }}</span>
+            {% else %}
+            <input form="workshopMemoForm" name="receiver_job" maxlength="180"
+                   value="{{ memo.get('receiver_job', '') if memo else '' }}">
+            {% endif %}
+        </div>
+    </div>
+
+    <p class="memo-closing">شاكرين لكم تعاونكم . وتفضلوا بقبول فائق الاحترام والتقدير .</p>
+
+    <div class="equipment-manager-signature">
+        <strong>مدير المعدات</strong>
+        {% if is_finalized %}
+        <span class="manager-name">{{ memo.get('manager_name') or memo.get('approved_by_name', '') }}</span>
+        {% else %}
+        <input form="workshopMemoForm" name="manager_name" class="manager-name-input" maxlength="120"
+               value="{{ memo.get('manager_name', '') if memo else '' }}" placeholder="اكتب اسم مدير المعدات">
+        {% endif %}
+        <span class="signature-line"></span>
+        {% if is_finalized and memo.get('approved_at') %}
+        <small>تاريخ الاعتماد: {{ memo.get('approved_at')[:10] }}</small>
+        {% endif %}
+    </div>
+
+    {% if memo and memo.get('memo_number') %}
+    <div class="memo-state no-print">
+        <span>الحالة: {{ memo.get('status', 'مسودة') }}</span>
+        <span>رقم الحفظ: {{ memo.get('reference_number') or memo.get('memo_number') }}</span>
+        {% if is_finalized and memo.get('reference_number') %}
+        <a href="{{ url_for('reports.final_report_pdf', doc_number=memo.get('reference_number'), download=1) }}">تحميل نسخة PDF</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if not is_finalized and memo and memo.get('status') == 'مسودة' %}
+    <form id="workshopMemoForm" method="post" class="no-print">
+        <input type="hidden" name="memo_id" value="{{ memo.get('id') }}">
+        <div class="memo-form-actions">
+            <button type="submit" class="memo-button" name="action" value="save">حفظ المسودة</button>
+            <span>بعد الحفظ، استخدم زر «اعتماد التقرير» أعلى الصفحة لإصدار الرقم المرجعي ورمز QR وحفظ نسخة PDF.</span>
+        </div>
     </form>
+    {% elif not is_finalized %}
+    <form id="workshopMemoForm" method="post" class="no-print">
+        <div class="memo-form-actions">
+            <button type="submit" class="memo-button" name="action" value="save">حفظ المسودة</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
 
-    <script>
-        // دالة لإضافة صف جديد للبنود
-        function addRow() {
-            const tbody = document.getElementById('itemsBody');
-            const rowCount = tbody.rows.length + 1;
-            const row = tbody.insertRow();
-            
-            row.innerHTML = `
-                <td>${rowCount}</td>
-                <td class="text-start"><input type="text" name="item_desc[]" placeholder="وصف المادة أو العمل وكود السلعة"></td>
-                <td><input type="text" name="item_cat[]"></td>
-                <td><input type="text" name="item_unit[]"></td>
-                <td><input type="number" name="item_qty[]" step="any" oninput="calculateRow(this)"></td>
-                <td><input type="number" name="item_price[]" step="any" oninput="calculateRow(this)"></td>
-                <td><input type="text" name="item_total[]" readonly style="font-weight: bold;"></td>
-                <td><input type="number" name="item_purchased[]" step="any"></td>
-                <td><input type="number" name="item_remaining[]" step="any"></td>
-                <td class="no-print"><button type="button" class="btn-danger" style="padding:2px 6px; font-size:10px;" onclick="deleteRow(this)">X</button></td>
-            `;
-            updateRowNumbers();
-        }
+<style>
+    .workshop-memo { color: #172033; font-size: 13px; line-height: 1.55; }
+    .memo-controls { display: flex; justify-content: flex-end; margin: 0 0 10px; }
+    .memo-button { display: inline-block; border: 0; border-radius: 4px; padding: 8px 14px; color: #fff; background: #1b365d; text-decoration: none; font-weight: 700; cursor: pointer; }
+    .memo-button.secondary { background: #64748b; }
+    .editable-report-title { width: 100%; border: 0; background: transparent; color: inherit; text-align: center; font: inherit; font-weight: 700; }
+    .memo-messages { margin-bottom: 10px; }
+    .memo-message { padding: 7px 10px; border-radius: 4px; background: #e8f5ee; color: #155c38; }
+    .memo-message.danger { background: #fdecec; color: #8a2020; }
+    .memo-parties { display: flex; justify-content: space-between; margin-bottom: 13px; }
+    .sender-input { width: 180px; max-width: 55vw; border: 0; border-bottom: 1px dotted #64748b; padding: 2px 4px; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+    .memo-opening { margin: 0 0 10px; text-align: justify; line-height: 1.7; }
+    .memo-opening p { margin: 0 0 5px; }
+    .purpose-text { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 700; }
+    .purpose-input-wrap { width: 100%; margin-top: 4px; }
+    .purpose-input { display: block; width: 100%; min-height: 100px; border: 1px solid #94a3b8; border-radius: 3px; padding: 7px 9px; font: inherit; line-height: 1.6; resize: vertical; }
+    .materials-table-wrap { width: 100%; }
+    .materials-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px !important; }
+    .materials-table th, .materials-table td { padding: 4px 5px; border: 1px solid #64748b; text-align: center; vertical-align: middle; }
+    .materials-table th { background: #e7edf4 !important; color: #17324f; }
+    .materials-table .sequence { width: 7%; }
+    .materials-table .quantity { width: 13%; }
+    .materials-table .unit { width: 15%; }
+    .materials-table .remove-col { width: 9%; }
+    .materials-table input, .materials-table textarea { width: 100%; min-width: 0; border: 0; padding: 3px; background: transparent; text-align: center; font: inherit; font-weight: 600; }
+    .purpose-input, .manager-name-input { font-weight: 600; }
+    .materials-table input[readonly] { color: #172033; }
+    .materials-table textarea { display: block; min-height: 24px; resize: none; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; line-height: 1.35; }
+    .description-text { overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; text-align: right; }
+    .remove-row { border: 0; border-radius: 3px; width: 25px; height: 25px; color: #fff; background: #a12727; font-size: 19px; line-height: 20px; cursor: pointer; }
+    .material-controls { margin: 8px 0; }
+    .recipient-details { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 8px; }
+    .recipient-detail { display: flex; align-items: baseline; gap: 6px; min-width: 42%; }
+    .recipient-detail input { min-width: 120px; flex: 1; border: 0; border-bottom: 1px dotted #64748b; padding: 3px 4px; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+    .memo-closing { margin: 13px 0 0; }
+    .equipment-manager-signature { width: 34%; min-width: 180px; margin: 10px auto 0 0; text-align: center; display: flex; flex-direction: column; gap: 3px; }
+    .manager-name-input { width: 100%; border: 0; border-bottom: 1px dotted #64748b; padding: 3px; text-align: center; font: inherit; }
+    .manager-name { min-height: 20px; font-weight: 700; }
+    .signature-line { height: 28px; border-bottom: 1px dotted #64748b; }
+    .memo-state { display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; margin-top: 18px; padding-top: 8px; font-size: 11px; color: #475569; }
+    .memo-state a { color: #1b365d; font-weight: 700; }
+    .memo-form-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+    .memo-form-actions span { color: #64748b; font-size: 11px; }
+    .memo-archive { margin: 18px auto; padding: 12px; max-width: 1000px; background: #fff; border: 1px solid #dbe2ea; }
+    .memo-archive h2 { margin: 0 0 10px; color: #1b365d; font-size: 16px; }
+    .archive-wrap { overflow-x: auto; }
+    .archive-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .archive-table th, .archive-table td { border: 1px solid #dbe2ea; padding: 6px; text-align: right; }
+    .archive-table th { background: #f1f5f9; }
+    .archive-actions { display: flex; align-items: center; gap: 8px; }
+    .archive-actions a { color: #1b365d; font-weight: 700; }
+    .delete-memo { border: 0; background: transparent; color: #a12727; text-decoration: underline; cursor: pointer; }
+    @media print {
+        .memo-archive, .no-print, .action-bar,
+        #approveModal, #successApproveModal, #existingReportModal { display: none !important; }
+        .workshop-memo { font-size: 10px; line-height: 1.35; }
+        .memo-parties { margin-bottom: 5px; }
+        .memo-opening { margin-bottom: 5px; line-height: 1.4; }
+        .memo-opening p { margin-bottom: 2px; }
+        .materials-table { font-size: 10px !important; }
+        .materials-table th, .materials-table td { padding: 2px 3px; }
+        .equipment-manager-signature { margin-top: 6px; }
+        .memo-closing { margin-top: 6px; }
+        .recipient-details { gap: 4px 20px; margin-top: 4px; }
+        .report-title-box { margin-bottom: 10px !important; padding: 5px 10px !important; }
+        .report-title-box h2 { font-size: 16px !important; }
+        .page-container.portrait { min-height: 297mm !important; height: 297mm; padding: 7mm 10mm !important; }
+        .page-container { break-inside: avoid !important; page-break-inside: avoid !important; }
+    }
+</style>
 
-        // دالة لحذف الصف وإعادة ترتيب الأرقام
-        function deleteRow(btn) {
-            const row = btn.parentNode.parentNode;
-            row.parentNode.removeChild(row);
-            updateRowNumbers();
-            calculateGrandTotal();
-        }
+{% if not is_finalized %}
+<script>
+function updateMaterialNumbers() {
+    document.querySelectorAll('#materialRows .material-row').forEach((row, index) => {
+        row.querySelector('.row-number').textContent = String(index + 1);
+    });
+}
 
-        // تحديث أرقام التسلسل
-        function updateRowNumbers() {
-            const tbody = document.getElementById('itemsBody');
-            for (let i = 0; i < tbody.rows.length; i++) {
-                tbody.rows[i].cells[0].innerText = i + 1;
-            }
-        }
+function resizeDescription(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+}
 
-        // حساب إجمالي الصف والـ Grand Total تلقائياً
-        function calculateRow(input) {
-            const row = input.closest('tr');
-            const qty = parseFloat(row.querySelector('input[name="item_qty[]"]').value) || 0;
-            const price = parseFloat(row.querySelector('input[name="item_price[]"]').value) || 0;
-            const totalField = row.querySelector('input[name="item_total[]"]');
-            
-            const total = qty * price;
-            totalField.value = total > 0 ? total.toFixed(2) : '';
-            
-            calculateGrandTotal();
-        }
+function addMaterialRow() {
+    const row = document.createElement('tr');
+    row.className = 'material-row';
+    row.innerHTML = '<td class="row-number"></td><td><textarea form="workshopMemoForm" class="description-input" name="item_description[]" maxlength="180" rows="1" required placeholder="اسم المادة أو وصفها"></textarea></td><td><input form="workshopMemoForm" name="item_quantity[]" type="number" min="0.001" step="0.001" required placeholder="0"></td><td><input form="workshopMemoForm" name="item_unit[]" maxlength="40" required placeholder="مثال: قطعة"></td><td><input form="workshopMemoForm" name="item_notes[]" maxlength="180" placeholder="اختياري"></td><td class="no-print"><button type="button" class="remove-row" onclick="removeMaterialRow(this)" aria-label="حذف المادة">×</button></td>';
+    document.getElementById('materialRows').appendChild(row);
+    row.querySelector('.description-input').addEventListener('input', event => resizeDescription(event.target));
+    updateMaterialNumbers();
+}
 
-        // حساب المجموع الكلي لكل البنود
-        function calculateGrandTotal() {
-            const totals = document.querySelectorAll('input[name="item_total[]"]');
-            let grandTotal = 0;
-            totals.forEach(t => {
-                grandTotal += parseFloat(t.value) || 0;
-            });
-            document.getElementById('grandTotal').value = grandTotal > 0 ? grandTotal.toFixed(2) : '';
-        }
-    </script>
-</body>
-</html>
+function removeMaterialRow(button) {
+    const rows = document.querySelectorAll('#materialRows .material-row');
+    if (rows.length <= 1) {
+        rows[0].querySelectorAll('input, textarea').forEach(input => input.value = '');
+        return;
+    }
+    button.closest('tr').remove();
+    updateMaterialNumbers();
+}
+
+document.querySelectorAll('.description-input').forEach(textarea => {
+    resizeDescription(textarea);
+    textarea.addEventListener('input', () => resizeDescription(textarea));
+});
+</script>
+{% endif %}
+{% endblock %}
+
+{% block footer %}{% endblock %}
+
+{% block extra_js %}{% endblock %}

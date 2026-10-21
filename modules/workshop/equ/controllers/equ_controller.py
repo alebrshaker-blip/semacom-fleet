@@ -1,5 +1,6 @@
 from flask import render_template, request, redirect, url_for, flash
 from modules.workshop.equ.services.equ_service import EquService
+from utils.excel_export import generate_semacom_excel
 
 class EquController:
 
@@ -50,3 +51,26 @@ class EquController:
                 return render_template('equ_add.html')
 
         return render_template('equ_add.html')
+
+    @staticmethod
+    def delete_item(asset_id):
+        success, message = EquService.delete_asset(asset_id)
+        flash(message, 'success' if success else 'danger')
+        return redirect(url_for('workshop.equ_bp.index'))
+
+    @staticmethod
+    def export_excel():
+        assets = EquService.get_all_assets()
+        headers = [
+            'كود الأصل', 'اسم المعدة / العدة', 'التصنيف', 'الحالة التشغيلية',
+            'الموقع داخل الورشة', 'تاريخ الشراء', 'الحالة الفنية', 'ملاحظات',
+        ]
+        data = [
+            [
+                asset.asset_code, asset.name, asset.category, asset.status,
+                asset.location or '-', asset.purchase_date or '-',
+                asset.condition_status or '-', asset.notes or '-',
+            ]
+            for asset in assets
+        ]
+        return generate_semacom_excel('أصول ومعدات الورشة', headers, data)

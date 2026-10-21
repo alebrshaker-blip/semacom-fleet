@@ -1,234 +1,101 @@
-import sqlite3
 import json
-from werkzeug.security import generate_password_hash, check_password_hash
-from core.database import DB_PATH
 
-def get_db_connection():
-    """إنشاء اتصال مباشر بقاعدة بيانات النظام semacom.db"""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row  # لإرجاع النتائج على شكل قواميس
-    return conn
+from sqlalchemy.exc import IntegrityError
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from core.database import init_orm_schema
+from modules.settings import repository
+from modules.settings.reference_lists import REFERENCE_LISTS
 
 
 class SettingsService:
 
     @staticmethod
     def init_security_and_users():
-        """إنشاء جدول المستخدمين، الإعدادات، الحقول الديناميكية وإدخال حساب المدير الافتراضي"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # 1. إنشاء جدول المستخدمين users
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT,
-                email TEXT,
-                google_drive_email TEXT,
-                role TEXT DEFAULT 'admin',
-                is_active INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # 2. إنشاء جدول إعدادات النظام system_settings
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS system_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                setting_type TEXT DEFAULT 'string',
-                group_name TEXT DEFAULT 'general',
-                description TEXT,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # 3. إنشاء جداول الحقول الديناميكية للمركبات والسائقين
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS vehicle_fields (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                label TEXT NOT NULL,
-                required INTEGER DEFAULT 0
-            )
-        """)
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS driver_fields (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                label TEXT NOT NULL,
-                required INTEGER DEFAULT 0
-            )
-        """)
-
-        # 4. إنشاء حساب أدمن افتراضي إذا لم يكن موجوداً (admin / admin123)
-        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
-        admin_exists = cursor.fetchone()
-
-        if not admin_exists:
-            default_password_hash = generate_password_hash('admin123')
-            cursor.execute("""
-                INSERT INTO users (username, password_hash, full_name, email, role, is_active)
-                VALUES (?, ?, ?, ?, ?, 1)
-            """, ('admin', default_password_hash, 'مدير النظام', 'admin@semacom.com', 'admin'))
-
-        conn.commit()
-        conn.close()
+        """إنشاء جداول المستخدمين والإعدادات والحقول الديناميكية وحساب المدير الافتراضي"""
+        init_orm_schema()
+        repository.ensure_default_admin(generate_password_hash('admin123'))
 
     @staticmethod
     def get_user_by_id(user_id=1):
         """جلب بيانات مستخدم معين"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username, full_name, email, google_drive_email, role, is_active FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        conn.close()
-        return dict(row) if row else None
+        user = repository.get_user(user_id)
+        if not user:
+            return None
+        return {key: user[key] for key in (
+            'id', 'username', 'full_name', 'email', 'google_drive_email', 'role', 'is_active'
+        )}
 
     @staticmethod
     def update_user_account(user_id, full_name, email, google_drive_email, current_password=None, new_password=None):
         """تحديث بيانات الحساب وكلمة المرور"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
-        user = cursor.fetchone()
-
+        user = repository.get_user(user_id)
         if not user:
-            conn.close()
             return False, "المستخدم غير موجود"
 
-        # إذا طلب تغيير كلمة المرور
+        values = {
+            'full_name': full_name, 'email': email, 'google_drive_email': google_drive_email,
+        }
         if new_password:
             if not current_password or not check_password_hash(user['password_hash'], current_password):
-                conn.close()
                 return False, "كلمة المرور الحالية غير صحيحة"
-            
-            new_hash = generate_password_hash(new_password)
-            cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+            values['password_hash'] = generate_password_hash(new_password)
 
-        # تحديث باقي البيانات الشخصية وبريد Google Drive
-        cursor.execute("""
-            UPDATE users 
-            SET full_name = ?, email = ?, google_drive_email = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (full_name, email, google_drive_email, user_id))
-
-        conn.commit()
-        conn.close()
+        repository.update_user_fields(user_id, **values)
         return True, "تم تحديث بيانات الحساب بنجاح"
 
     @staticmethod
     def get_all_grouped():
         """جلب كافة الإعدادات مقسمة حسب مجموعاتها"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("SELECT key, value, group_name FROM system_settings")
-            rows = cursor.fetchall()
-        except sqlite3.OperationalError:
-            conn.close()
-            return {}
-            
-        conn.close()
-
-        grouped = {}
-        for row in rows:
-            group = row['group_name'] if row['group_name'] else 'general'
-            key = row['key']
-            val = row['value']
-            
-            try:
-                val = json.loads(val)
-            except (ValueError, TypeError):
-                pass
-                
-            if group not in grouped:
-                grouped[group] = {}
-            grouped[group][key] = val
-            
-        return grouped
+        return repository.get_grouped_settings(raw=False)
 
     @staticmethod
     def set_batch(data):
         """حفظ أو تحديث مجموعة من الإعدادات دفعة واحدة مع التوجيه للمجموعة المناسبة"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # ربط المفاتيح بمجموعاتها لضمان التنسيق
         group_mapping = {
-            'smtp_server': 'smtp', 'smtp_port': 'smtp', 'smtp_email': 'smtp', 'smtp_password': 'smtp', 'smtp_use_tls': 'smtp',
+            'smtp_server': 'smtp', 'smtp_port': 'smtp', 'smtp_email': 'smtp',
+            'smtp_username': 'smtp',
+            'smtp_password': 'smtp', 'smtp_use_tls': 'smtp',
+            'smtp_from_name': 'smtp', 'smtp_security': 'smtp',
+            'smtp_enabled': 'smtp', 'email_reports_enabled': 'smtp',
+            'email_password_reset_enabled': 'smtp',
+            'email_fleet_digest_enabled': 'smtp',
+            'email_fleet_digest_day': 'smtp', 'email_fleet_digest_hour': 'smtp',
             'gdrive_enabled': 'gdrive', 'gdrive_folder_id': 'gdrive', 'gdrive_client_id': 'gdrive', 'gdrive_client_secret': 'gdrive',
             'prefix_work_order': 'prefixes', 'prefix_store_item': 'prefixes', 'prefix_asset': 'prefixes',
             'appearance_theme': 'appearance', 'appearance_font_size': 'appearance', 'appearance_primary_color': 'appearance'
         }
-
+        items = []
         for key, value in data.items():
             if isinstance(value, (dict, list)):
                 value_str = json.dumps(value, ensure_ascii=False)
             else:
                 value_str = str(value)
-
-            group_name = group_mapping.get(key, 'general')
-                
-            cursor.execute("""
-                INSERT INTO system_settings (key, value, group_name)
-                VALUES (?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    group_name = excluded.group_name,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (key, value_str, group_name))
-            
-        conn.commit()
-        conn.close()
+            items.append((key, value_str, group_mapping.get(key, 'general')))
+        repository.upsert_settings(items)
 
     @staticmethod
     def get_dynamic_fields(entity_type):
         """جلب الحقول الديناميكية الخاصة بالمركبات أو السائقين"""
-        table_name = "vehicle_fields" if entity_type == 'vehicle' else "driver_fields"
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute(f"SELECT name, label, required FROM {table_name}")
-            rows = cursor.fetchall()
-            conn.close()
-            return [dict(row) for row in rows]
-        except sqlite3.OperationalError:
-            conn.close()
-            return []
+        return [
+            {'name': f['name'], 'label': f['label'], 'required': f['required']}
+            for f in repository.list_dynamic_fields(entity_type)
+        ]
 
     @staticmethod
     def add_dynamic_field(entity_type, name, label, required=False):
         """إضافة حقل ديناميكي جديد"""
-        table_name = "vehicle_fields" if entity_type == 'vehicle' else "driver_fields"
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         try:
-            cursor.execute(f"""
-                INSERT INTO {table_name} (name, label, required)
-                VALUES (?, ?, ?)
-            """, (name, label, 1 if required else 0))
-            conn.commit()
-            conn.close()
+            repository.add_dynamic_field(entity_type, name, label, required)
             return True, "تم إضافة الحقل بنجاح"
-        except sqlite3.IntegrityError:
-            conn.close()
+        except IntegrityError:
             return False, "اسم الحقل موجود بالفعل"
         except Exception as e:
-            conn.close()
             return False, f"حدث خطأ: {str(e)}"
 
 
 def seed_fleet_initial_settings():
-    """بذر البيانات والإعدادات الافتراضية لنظام أسطول سيماكم وتأكيد الجداول الأمنية"""
+    """بذر البيانات والإعدادات الافتراضية لنظام المركبات والمعدات وتأكيد الجداول الأمنية"""
     # تهيئة جدول المستخدمين والأمان والجداول الأساسية أولاً
     SettingsService.init_security_and_users()
 
@@ -237,9 +104,15 @@ def seed_fleet_initial_settings():
         ('company_name', 'الشركة السعودية للكهرباء والتبريد للاستثمار (سيماكم)', 'string', 'general', 'اسم المنشأة الرئيسي'),
         ('currency', 'ر.س', 'string', 'general', 'العملة الافتراضية'),
 
-        # قواعد الأسطول والصيانة
+        # قواعد المركبات والمعدات والصيانة
+        ('license_alert_enabled', '1', 'boolean', 'fleet', 'تفعيل تنبيه انتهاء رخص القيادة'),
+        ('license_alert_days', '30', 'number', 'fleet', 'التنبيه بانتهاء الرخص قبل (يوم)'),
+        ('inspection_alert_enabled', '1', 'boolean', 'fleet', 'تفعيل تنبيه انتهاء الفحص الدوري'),
+        ('inspection_alert_days', '30', 'number', 'fleet', 'التنبيه بانتهاء الفحص الدوري قبل (يوم)'),
+        ('insurance_alert_enabled', '1', 'boolean', 'fleet', 'تفعيل تنبيه انتهاء التأمين'),
         ('insurance_alert_days', '30', 'number', 'fleet', 'تنبيه انتهاء التأمين (يوم)'),
-        ('oil_change_interval_km', '5000', 'number', 'maintenance', 'فترة تغيير زيت المحرك (كم)'),
+        ('oil_alert_enabled', '1', 'boolean', 'fleet', 'تفعيل تنبيهات تغيير الزيوت'),
+        ('oil_change_interval_km', '5000', 'number', 'fleet', 'فترة تغيير زيت المحرك (كم)'),
         ('default_min_stock_limit', '5', 'number', 'store', 'حد المخزون الأدنى الافتراضي'),
 
         # بادئات الترقيم
@@ -256,8 +129,17 @@ def seed_fleet_initial_settings():
         ('smtp_server', 'smtp.gmail.com', 'string', 'smtp', 'خادم إرسال البريد'),
         ('smtp_port', '587', 'number', 'smtp', 'منفذ البريد'),
         ('smtp_email', '', 'string', 'smtp', 'بريد إرسال التقارير والإنذارات'),
+        ('smtp_username', '', 'string', 'smtp', 'اسم المستخدم لتسجيل الدخول إلى خادم SMTP'),
         ('smtp_password', '', 'string', 'smtp', 'كلمة مرور التطبيق لـ SMTP'),
         ('smtp_use_tls', '1', 'boolean', 'smtp', 'تفعيل تشفير TLS'),
+        ('smtp_from_name', 'SEMACOM', 'string', 'smtp', 'اسم مرسل البريد'),
+        ('smtp_security', 'starttls', 'string', 'smtp', 'نوع تشفير اتصال SMTP'),
+        ('smtp_enabled', '0', 'boolean', 'smtp', 'تفعيل إرسال البريد من النظام'),
+        ('email_reports_enabled', '1', 'boolean', 'smtp', 'السماح بإرسال التقارير المعتمدة بالبريد'),
+        ('email_password_reset_enabled', '1', 'boolean', 'smtp', 'السماح باستعادة كلمة المرور عبر البريد'),
+        ('email_fleet_digest_enabled', '1', 'boolean', 'smtp', 'تفعيل ملخص تنبيهات المركبات والمعدات الأسبوعي'),
+        ('email_fleet_digest_day', '0', 'number', 'smtp', 'يوم إرسال ملخص المركبات والمعدات (0 الإثنين إلى 6 الأحد)'),
+        ('email_fleet_digest_hour', '9', 'number', 'smtp', 'ساعة إرسال ملخص المركبات والمعدات حسب توقيت الخادم'),
 
         # إعدادات Google Drive
         ('gdrive_enabled', '0', 'boolean', 'gdrive', 'تفعيل مزامنة Google Drive'),
@@ -266,19 +148,36 @@ def seed_fleet_initial_settings():
         ('gdrive_client_secret', '', 'string', 'gdrive', 'Client Secret لـ Google Cloud'),
 
         # القوائم المرجعية
-        ('external_workshops', json.dumps(["ورشة المحرك الذهبي", "مركز الفحص الشامل", "ورشة الهيدروليك الوطنية"], ensure_ascii=False), 'json', 'lookups', 'قائمة الورش الخارجية'),
-        ('store_categories', json.dumps(["قطع غيار محركات", "زيوت وفلاتر", "إطارات وبطاريات", "مستلزمات كهربائية"], ensure_ascii=False), 'json', 'lookups', 'تصنيفات الأصناف بالمخزن')
     ]
+    defaults.extend(
+        (
+            definition['setting_key'],
+            json.dumps(definition['defaults'], ensure_ascii=False),
+            'json',
+            'lookups',
+            definition['label'],
+        )
+        for definition in REFERENCE_LISTS.values()
+    )
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    repository.seed_defaults(defaults)
 
-    for key, value, setting_type, group_name, description in defaults:
-        cursor.execute("""
-            INSERT INTO system_settings (key, value, setting_type, group_name, description)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(key) DO NOTHING
-        """, (key, value, setting_type, group_name, description))
+    for key, description in (
+        ('email_fleet_digest_enabled', 'تفعيل ملخص تنبيهات المركبات والمعدات الأسبوعي'),
+        ('email_fleet_digest_day', 'يوم إرسال ملخص المركبات والمعدات (0 الإثنين إلى 6 الأحد)'),
+        ('email_fleet_digest_hour', 'ساعة إرسال ملخص المركبات والمعدات حسب توقيت الخادم'),
+    ):
+        repository.update_setting_description(key, description)
 
-    conn.commit()
-    conn.close()
+    legacy_categories = json.dumps(
+        ["قطع غيار محركات", "زيوت وفلاتر", "إطارات وبطاريات", "مستلزمات كهربائية"],
+        ensure_ascii=False,
+    )
+    repository.replace_setting_value(
+        'store_categories',
+        legacy_categories,
+        json.dumps(REFERENCE_LISTS['store_categories']['defaults'], ensure_ascii=False),
+    )
+
+    repository.normalize_user_roles()
+    repository.set_setting_group('oil_change_interval_km', 'fleet')

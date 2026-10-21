@@ -49,9 +49,9 @@
                 <div class="form-group">
                     <label>نوع التأمين: *</label>
                     <select name="insurance_type" required>
-                        <option value="شامل">شامل</option>
-                        <option value="ضد الغير">ضد الغير</option>
-                        <option value="أخرى">أخرى</option>
+                        {% for insurance_type in reference_lists.insurance_types %}
+                        <option value="{{ insurance_type }}">{{ insurance_type }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>

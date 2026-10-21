@@ -15,7 +15,10 @@
                 <h3 class="fw-bold text-dark mb-1">إدارة عهد الاستلام والتسليم للسيارات والمعدات</h3>
                 <p class="text-muted mb-0">شركة SEMACOM - نظام إدارة المركبات والمعدات</p>
             </div>
-            <div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('reports.handover_reports') }}" class="btn btn-primary shadow-sm">
+                    <i class="fas fa-chart-bar"></i> التقارير
+                </a>
                 <a href="{{ url_for('handover.add_handover_form') }}" class="btn btn-success shadow-sm">
                     <i class="fas fa-plus"></i> تسجيل عملية جديدة (تسليم / إرجاع)
                 </a>
@@ -96,17 +99,59 @@
                                            target="_blank" title="تقرير الحركة" aria-label="طباعة تقرير الحركة"><i class="fas fa-file-lines" aria-hidden="true"></i> تقرير</a>
                                         <a class="btn btn-sm btn-outline-success"
                                            href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
-                                           target="_blank" title="توثيق حركة التسليم" aria-label="توثيق حركة التسليم"><i class="fas fa-clipboard-check" aria-hidden="true"></i> توثيق</a>
-                                        <!-- زر الحذف المحدث للجدول الأول -->
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-confirm-delete="{{ url_for('handover.delete_handover', record_id=row.id) }}" data-target-name="{{ row.vehicle_info }}" aria-label="حذف سجل المركبة">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
+                                           target="_blank" title="{% if row.is_certified %}عرض التوثيق المعتمد{% else %}توثيق حركة التسليم{% endif %}" aria-label="{% if row.is_certified %}عرض التوثيق المعتمد{% else %}توثيق حركة التسليم{% endif %}"><i class="fas fa-clipboard-check" aria-hidden="true"></i> {% if row.is_certified %}عرض التوثيق{% else %}توثيق{% endif %}</a>
                                     </td>
                                 </tr>
                                 {% endfor %}
                             {% else %}
                                 <tr>
                                     <td colspan="13" class="text-muted py-4">لا توجد حركات تسليم نشطة حالياً (جميع المركبات في الورشة).</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-warning text-dark fw-bold py-3">
+                <i class="fas fa-clipboard-check"></i> حركات الإرجاع بانتظار التوثيق والأرشفة
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>المركبة / المعدة</th>
+                                <th>السائق</th>
+                                <th>العداد</th>
+                                <th>تاريخ ووقت الإرجاع</th>
+                                <th>إجراء</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if pending_records %}
+                                {% for row in pending_records %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td class="fw-bold">{{ row.vehicle_info }}</td>
+                                    <td>{{ row.driver_info or '—' }}</td>
+                                    <td>{{ row.odometer or '—' }} كم</td>
+                                    <td>{{ row.handover_date or '—' }}</td>
+                                    <td>
+                                        <a class="btn btn-sm btn-outline-success"
+                                           href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
+                                           target="_blank" title="توثيق الإرجاع ثم أرشفته" aria-label="توثيق الإرجاع ثم أرشفته">
+                                            <i class="fas fa-clipboard-check" aria-hidden="true"></i> توثيق الإرجاع
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-muted py-4">لا توجد حركات إرجاع بانتظار التوثيق.</td>
                                 </tr>
                             {% endif %}
                         </tbody>
@@ -160,18 +205,26 @@
                                     <td>{{ row.description or '—' }}</td>
                                     <td>{{ row.notes or '-' }}</td>
                                     <td>
-                                        <a class="btn btn-sm btn-outline-primary"
-                                           href="{{ url_for('reports.handover_reports', view='print', report_type='single', handover_id=row.id) }}"
-                                           target="_blank" title="تقرير الحركة" aria-label="طباعة تقرير الحركة"><i class="fas fa-file-lines" aria-hidden="true"></i> تقرير</a>
-                                        {% if row.handover_type == 'تسليم عهدة' %}
+                                        {% if row.is_certified %}
                                         <a class="btn btn-sm btn-outline-success"
                                            href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
-                                           target="_blank" title="توثيق حركة التسليم" aria-label="توثيق حركة التسليم"><i class="fas fa-clipboard-check" aria-hidden="true"></i> توثيق</a>
+                                           target="_blank" title="عرض التوثيق المعتمد" aria-label="عرض التوثيق المعتمد"><i class="fas fa-clipboard-check" aria-hidden="true"></i> عرض التوثيق</a>
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="{{ url_for('reports.handover_reports', view='print', report_type='single', handover_id=row.id) }}"
+                                           target="_blank" title="طباعة التقرير السابق" aria-label="طباعة التقرير السابق"><i class="fas fa-file-lines" aria-hidden="true"></i> طباعة التقرير السابق</a>
+                                        {% else %}
+                                        <span class="text-muted small">غير موثقة — لا يمكن إصدار تقرير بعد الأرشفة</span>
                                         {% endif %}
-                                        <!-- زر الحذف المحدث للجدول الثاني (الأرشيف) -->
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-confirm-delete="{{ url_for('handover.delete_handover', record_id=row.id) }}" data-target-name="{{ row.vehicle_info }}" aria-label="حذف سجل المركبة">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
+                                        <form method="POST"
+                                              action="{{ url_for('handover.delete_archived_handover', record_id=row.id) }}"
+                                              class="d-inline">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    data-confirm-delete="{{ url_for('handover.delete_archived_handover', record_id=row.id) }}"
+                                                    data-target-name="{{ row.vehicle_info }}"
+                                                    aria-label="حذف الحركة المؤرشفة">
+                                                <i class="fas fa-trash" aria-hidden="true"></i>
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                                 {% endfor %}

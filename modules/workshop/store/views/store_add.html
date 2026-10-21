@@ -39,21 +39,17 @@
                     <label for="category">التصنيف *</label>
                     <select id="category" name="category" required>
                         <option value="">اختر التصنيف...</option>
-                        <option value="قطع غيار محركات">قطع غيار محركات</option>
-                        <option value="نظام الفرامل">نظام الفرامل</option>
-                        <option value="زيوت ومحروقات">زيوت ومحروقات</option>
-                        <option value="عُدد وأدوات ورشة">عُدد وأدوات ورشة</option>
-                        <option value="فلترات وسيور">فلترات وسيور</option>
+                        {% for category in reference_lists.store_categories %}
+                        <option value="{{ category }}">{{ category }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="form-group">
                     <label for="unit">وحدة القياس</label>
                     <select id="unit" name="unit">
-                        <option value="قطعة">قطعة</option>
-                        <option value="لتر">لتر</option>
-                        <option value="طقم">طقم</option>
-                        <option value="علبة">علبة</option>
-                        <option value="متر">متر</option>
+                        {% for unit in reference_lists.store_units %}
+                        <option value="{{ unit }}">{{ unit }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>

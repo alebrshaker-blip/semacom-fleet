@@ -11,6 +11,10 @@ def list():
 def add():
     return OilTrackingController.add_record()
 
+@oil_tracking_bp.route('/delete/<int:id>', methods=['POST'])
+def delete(id):
+    return OilTrackingController.delete_record(id)
+
 @oil_tracking_bp.route('/print/<int:id>', methods=['GET'])
 def print_report(id):
     return OilTrackingController.print_report(id)

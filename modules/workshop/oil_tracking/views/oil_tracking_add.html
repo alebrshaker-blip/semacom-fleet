@@ -47,11 +47,11 @@
                 <div id="distanceInputs" style="grid-column: span 2; display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
                     <div>
                         <label style="display: block; font-weight: bold; margin-bottom: 5px;">عداد آخر تغيير زيت (كم): *</label>
-                        <input type="number" name="last_oil_mileage" placeholder="مثال: 70000" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                        <input type="number" name="last_oil_mileage" min="0" step="1" placeholder="مثال: 70000" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
                     </div>
                     <div>
                         <label style="display: block; font-weight: bold; margin-bottom: 5px;">الفاصل المسموح بالمسافة (كم): *</label>
-                        <input type="number" name="distance_interval" value="5000" placeholder="مثال: 5000" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                        <input type="number" name="distance_interval" min="1" step="1" value="5000" placeholder="مثال: 5000" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
                     </div>
                 </div>
 
@@ -62,7 +62,7 @@
 
                 <div style="grid-column: span 2;">
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">قراءة عداد المركبة الحالي (كم):</label>
-                    <input type="number" name="current_mileage" placeholder="مثال: 72000" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                    <input type="number" name="current_mileage" min="0" step="1" placeholder="مثال: 72000" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
                 </div>
 
                 <!-- قسم تحديد حدود الإنذار والإنذارات المبكرة المخصصة -->
@@ -73,12 +73,12 @@
                     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
                         <div id="distAlertDiv">
                             <label style="display: block; font-weight: bold; margin-bottom: 5px; font-size: 12px;">حد الإنذار المبكر بالمسافة (كم قبل الموعد):</label>
-                            <input type="number" name="distance_alert_threshold" value="1000" placeholder="مثال: 1000" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
+                            <input type="number" name="distance_alert_threshold" min="0" step="1" value="1000" placeholder="مثال: 1000" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
                             <small style="color: #6c757d; font-size: 11px;">سيظهر تنبيه صفحة الجدول فور تبقي هذه المسافة.</small>
                         </div>
                         <div id="timeAlertDiv" style="display: none;">
                             <label style="display: block; font-weight: bold; margin-bottom: 5px; font-size: 12px;">حد الإنذار المبكر بالوقت (أيام قبل الموعد):</label>
-                            <input type="number" name="time_alert_threshold" value="15" placeholder="مثال: 15" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
+                            <input type="number" name="time_alert_threshold" min="0" step="1" value="15" placeholder="مثال: 15" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px;">
                             <small style="color: #6c757d; font-size: 11px;">سيظهر تنبيه صفحة الجدول قبل انقضاء المدة.</small>
                         </div>
                     </div>

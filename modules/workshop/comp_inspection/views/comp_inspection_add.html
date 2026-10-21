@@ -13,7 +13,7 @@
                 <!-- ربط رقم اللوحة بجدول المركبات -->
                 <div>
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">رقم لوحة المركبة: *</label>
-                    <select name="vehicle_plate" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                    <select name="vehicle_plate" id="vehiclePlate" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;" onchange="fillLatestOilMileage()">
                         <option value="">-- اختر المركبة--</option>
                         {% for plate in vehicles %}
                         <option value="{{ plate }}">{{ plate }}</option>
@@ -21,15 +21,32 @@
                     </select>
                 </div>
 
-                <!-- ربط اسم الفاحص بفريق العمل -->
                 <div>
-                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">اسم الفاحص الفني: *</label>
-                    <select name="inspector_name" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
-                        <option value="">-- اختر الفاحص من فريق العمل --</option>
-                        {% for member in team_members %}
-                        <option value="{{ member }}">{{ member }}</option>
-                        {% endfor %}
-                    </select>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">الفنيون الفاحصون: *</label>
+                    <details id="inspectorPicker" style="position: relative;">
+                        <summary id="inspectorPickerSummary" style="list-style: none; cursor: pointer; width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 6px; background: #fff;">
+                            اختر فنيين اثنين على الأقل
+                        </summary>
+                        <div style="position: absolute; z-index: 5; top: calc(100% + 4px); right: 0; left: 0; max-height: 260px; overflow-y: auto; padding: 10px; border: 1px solid #ced4da; border-radius: 6px; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.12);">
+                            <input type="search" id="inspectorSearch" placeholder="ابحث عن فني..." aria-label="البحث عن فني" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                            <div id="inspectorOptions">
+                                {% for member in team_members %}
+                                <label class="inspector-option" style="display: flex; align-items: flex-start; gap: 8px; padding: 7px 4px; cursor: pointer;">
+                                    <input type="checkbox" name="inspector_ids" value="{{ member.id }}" style="margin-top: 3px;">
+                                    <span>
+                                        <strong>{{ member.full_name }}</strong>
+                                        {% if member.specialization or member.job_title %}
+                                        <small style="display: block; color: #6c757d;">{{ member.specialization or member.job_title }}</small>
+                                        {% endif %}
+                                    </span>
+                                </label>
+                                {% else %}
+                                <p style="margin: 4px; color: #6c757d;">لا يوجد فنيون مسجلون في فريق العمل.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </details>
+                    <small id="inspectorSelectionHelp" style="display: block; margin-top: 5px;">المحدد: 0 (الحد الأدنى فنيان).</small>
                 </div>
 
                 <div>
@@ -38,11 +55,11 @@
                 </div>
                 <div>
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">آخر قراءة لعداد السيارة (كم): *</label>
-                    <input type="text" name="current_mileage" required placeholder="مثال: 75000" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                    <input type="number" name="current_mileage" min="0" step="1" required placeholder="مثال: 75000" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
                 </div>
                 <div style="grid-column: span 2;">
                     <label style="display: block; font-weight: bold; margin-bottom: 5px; color: #084298;">قراءة عداد الكيلومترات عند آخر تغيير زيت (كم):</label>
-                    <input type="text" name="oil_change_mileage" placeholder="مثال: 70000 (لتتبع جدول تغيير الزيت القادم)" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; background: #f8fafc;">
+                    <input type="number" name="oil_change_mileage" id="oilChangeMileage" min="0" step="1" placeholder="مثال: 70000 (لتتبع جدول تغيير الزيت القادم)" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; background: #f8fafc;">
                 </div>
             </div>
 
@@ -111,4 +128,39 @@
         </form>
     </div>
 </div>
+<script>
+const latestOilMileages = {{ latest_oil_mileages|tojson }};
+function fillLatestOilMileage() {
+    const plate = document.getElementById('vehiclePlate').value;
+    document.getElementById('oilChangeMileage').value = latestOilMileages[plate] || '';
+}
+
+const inspectorPicker = document.getElementById('inspectorPicker');
+const inspectorCheckboxes = Array.from(document.querySelectorAll('input[name="inspector_ids"]'));
+const inspectorSummary = document.getElementById('inspectorPickerSummary');
+const inspectorSelectionHelp = document.getElementById('inspectorSelectionHelp');
+
+function updateInspectorSelection() {
+    const selected = inspectorCheckboxes.filter(checkbox => checkbox.checked);
+    inspectorSelectionHelp.textContent = `المحدد: ${selected.length} (الحد الأدنى فنيان).`;
+    inspectorSummary.textContent = selected.length
+        ? selected.map(checkbox => checkbox.closest('label').querySelector('strong').textContent).join('، ')
+        : 'اختر فنيين اثنين على الأقل';
+}
+
+inspectorCheckboxes.forEach(checkbox => checkbox.addEventListener('change', updateInspectorSelection));
+document.getElementById('inspectorSearch').addEventListener('input', function () {
+    const query = this.value.trim().toLocaleLowerCase();
+    document.querySelectorAll('.inspector-option').forEach(option => {
+        option.hidden = !option.textContent.toLocaleLowerCase().includes(query);
+    });
+});
+
+document.querySelector('form').addEventListener('submit', function (event) {
+    if (inspectorCheckboxes.filter(checkbox => checkbox.checked).length < 2) {
+        event.preventDefault();
+        alert('يرجى اختيار فنيين اثنين على الأقل لإجراء الفحص.');
+    }
+});
+</script>
 {% endblock %}

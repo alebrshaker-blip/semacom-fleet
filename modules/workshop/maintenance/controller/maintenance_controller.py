@@ -337,7 +337,7 @@ class MaintenanceController:
                 ("نوع الصيانة", "maintenance_type"),
                 ("وصف العطل", "fault_description"),
                 ("سبب العطل", "fault_cause"),
-                ("درجة الخطورة", "severity"),
+                ("الأولوية", "severity"),
                 ("الفني المستلم", "technician_name"),
                 ("الوقت المتوقع للإنجاز", "expected_completion_time"),
                 ("تاريخ أمر العمل", "order_date")

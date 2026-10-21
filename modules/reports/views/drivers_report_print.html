@@ -16,13 +16,91 @@
     .driver-report-table td { font-size: 10px; }
     .driver-report-table thead { display: table-header-group; }
     .driver-report-table tr { break-inside: avoid; }
+    .assigned-driver-page {
+        justify-content: flex-start !important;
+        padding: 6mm 10mm;
+    }
+    .assigned-driver-page .driver-report-title { margin-bottom: 5px; font-size: 15px; }
+    .assigned-driver-page .header-logo-zone img { max-height: 65px; }
+    .assigned-driver-page .header-qr-zone { width: 65px; height: 65px; }
+    .assigned-driver-page .header-double-line { margin: 4px 0 6px; }
+    .assigned-driver-page .document-meta-bar { margin-bottom: 8px; font-size: 12px; }
+    .assigned-driver-page .meta-left.ref-number-red { font-size: 12px; }
+    .assigned-driver-tables {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6mm;
+        align-items: start;
+    }
+    .assigned-driver-section { min-width: 0; }
+    .assigned-driver-section h3 {
+        margin: 0 0 2mm;
+        color: #1b365d;
+        font-size: 13px;
+        border-bottom: 2px solid #1b365d;
+        padding-bottom: 1mm;
+    }
+    .assigned-driver-fields { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .assigned-driver-fields th, .assigned-driver-fields td {
+        border: 1px solid #475569;
+        padding: 1mm 2mm;
+        line-height: 1.2;
+        text-align: right;
+        overflow-wrap: anywhere;
+    }
+    .assigned-driver-fields th { width: 38%; background: #e9eff5; font-size: 10px; }
+    .assigned-driver-fields td { font-size: 11px; }
+    .assigned-driver-fields tr { break-inside: avoid; }
+    .report-record-page { break-after: page; page-break-after: always; }
     @media print {
-        .driver-report-table th, .driver-report-table td { padding: 4px; }
+        .assigned-driver-fields th { font-size: 10px !important; }
+        .assigned-driver-fields td { font-size: 11px !important; }
+        .report-record-page:last-child { break-after: auto; page-break-after: auto; }
     }
 </style>
 {% endblock %}
 
 {% block pages %}
+{% if rows and report_type == 'assigned' %}
+{% for row in rows %}
+<section class="page-container landscape assigned-driver-page report-record-page">
+    {% include '_print_header.html' %}
+    <h2 class="driver-report-title">{{ report_title_text }}</h2>
+    <div class="assigned-driver-tables">
+        <section class="assigned-driver-section">
+            <h3>بيانات السائق المستلم</h3>
+            <table class="assigned-driver-fields">
+                <tbody>
+                    {% for column in columns if column.key.startswith('driver:') %}
+                    <tr>
+                        <th>{{ column.label }}</th>
+                        <td>{{ row.get(column.key, '—') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2">لم يتم اختيار حقول للسائق.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        <section class="assigned-driver-section">
+            <h3>بيانات المركبة المستلمة</h3>
+            <table class="assigned-driver-fields">
+                <tbody>
+                    {% for column in columns if column.key.startswith('vehicle:') %}
+                    <tr>
+                        <th>{{ column.label }}</th>
+                        <td>{{ row.get(column.key, '—') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2">لم يتم اختيار حقول للمركبة.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </div>
+</section>
+{% endfor %}
+{% else %}
 <section class="page-container landscape">
     {% include '_print_header.html' %}
     <h2 class="driver-report-title">{{ report_title_text }}</h2>
@@ -53,4 +131,5 @@
     <div class="report-content text-center text-muted py-5">لا توجد سجلات مطابقة لهذا التقرير.</div>
     {% endif %}
 </section>
+{% endif %}
 {% endblock %}

@@ -15,6 +15,8 @@
     .btn-danger:hover { background-color: #bb2d3b; }
     .btn-success { background-color: #198754; color: white; }
     .btn-success:hover { background-color: #157347; }
+    .btn-info { background-color: #0dcaf0; color: #102a43; }
+    .btn-info:hover { background-color: #31d2f2; }
     .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 20px; }
     .card-body { padding: 20px; }
     .table-responsive { width: 100%; overflow-x: auto; }
@@ -32,6 +34,9 @@
     <div class="header-flex">
         <h2>إدارة السائقين والموظفين</h2>
         <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="{{ url_for('reports.drivers_reports') }}" class="btn btn-info">
+                <i class="fas fa-chart-bar"></i> تقارير السائقين
+            </a>
             <!-- زر التصدير إلى Excel الأخضر -->
             <a href="{{ url_for('drivers.export_drivers_excel', q=request.args.get('q', '')) }}" class="btn btn-success">
                 <i class="fas fa-file-excel"></i> تصدير إلى Excel

@@ -1,121 +1,102 @@
-import os
-import sqlite3
-import time
 import datetime
+import os
+import time
 from pathlib import Path
+
+from sqlalchemy import func, select, text
+
+from core import storage
+from core.database import get_session
+from core.orm_utils import to_float
+from modules.drivers.models.driver_orm import Driver
+from modules.vehicles import repository as vehicles_repository
+from modules.workshop.maintenance.models.maintenance_orm import MaintenanceOrder
 from utils.generators import generate_work_order_no
-from core.database import DB_PATH
+
+VALID_TYPES = {'internal', 'external', 'emergency', 'exceptional'}
+
+# Form fields copied as-is onto a new order.
+_OPEN_FIELDS = (
+    'maintenance_type', 'fault_description', 'fault_cause', 'severity',
+    'technician_name', 'expected_completion_time',
+    'workshop_name', 'workshop_phone', 'workshop_location', 'send_reason',
+    'send_datetime', 'responsible_person', 'expected_time', 'notes',
+    'driver_id', 'reporter_name', 'case_description', 'has_injuries',
+    'is_drivable', 'official_notified', 'emergency_location',
+    'incident_datetime', 'subject', 'description', 'causes', 'other_details',
+)
+
+_CLOSE_FIELDS = (
+    'closure_reason', 'spare_parts', 'recommendation', 'closing_notes',
+    'action_taken', 'is_towed', 'towing_party', 'intervention_team', 'treatment_details',
+)
+
+
+UPLOAD_FOLDER = 'maintenance'
 
 
 class MaintenanceService:
 
-    @staticmethod
-    def get_db_connection():
-        """جلب اتصال موثوق بقاعدة البيانات"""
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        return conn
-
     @classmethod
     def get_all_vehicles(cls):
         """جلب بيانات المركبات للنموذج"""
-        vehicles = []
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM vehicles")
-            rows = cur.fetchall()
-
-            for r in rows:
-                row_dict = dict(r)
-                code = row_dict.get('vehicle_code') or row_dict.get('code') or ''
-                plate = row_dict.get('plate_number') or row_dict.get('plate') or ''
-                
+            vehicles = []
+            for row in vehicles_repository.list_active():
+                code = row.get('vehicle_code') or row.get('code') or ''
+                plate = row.get('plate_number') or row.get('plate') or ''
                 vehicles.append({
-                    'id': row_dict.get('id'),
+                    'id': row.get('id'),
                     'vehicle_code': str(code).strip(),
-                    'plate_number': str(plate).strip()
+                    'plate_number': str(plate).strip(),
                 })
+            return vehicles
         except Exception as e:
             print(f"[ERROR - get_all_vehicles]: {e}")
-        finally:
-            if conn:
-                conn.close()
-        return vehicles
+            return []
 
     @classmethod
     def get_all_drivers(cls):
         """جلب قائمة السائقين"""
-        drivers = []
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM drivers")
-            rows = cur.fetchall()
-
-            for r in rows:
-                row_dict = dict(r)
-                name = row_dict.get('name') or row_dict.get('full_name') or ''
-                drivers.append({
-                    'id': row_dict.get('id'),
-                    'name': str(name).strip()
-                })
+            with get_session() as session:
+                drivers = session.scalars(select(Driver).order_by(Driver.id)).all()
+                return [{'id': d.id, 'name': str(d.name or '').strip()} for d in drivers]
         except Exception as e:
             print(f"[ERROR - get_all_drivers]: {e}")
-        finally:
-            if conn:
-                conn.close()
-        return drivers
+            return []
 
     @classmethod
     def get_all_team_members(cls):
         """جلب قائمة الفنيين وأعضاء الفريق"""
         members = []
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='team_members'")
-            
-            if cur.fetchone():
-                cur.execute("SELECT * FROM team_members")
-                rows = cur.fetchall()
-                for r in rows:
-                    rd = dict(r)
-                    m_name = rd.get('full_name') or rd.get('name') or ''
-                    if m_name:
-                        members.append({
-                            'id': rd.get('id'),
-                            'name': str(m_name).strip(),
-                            'job_title': rd.get('job_title', '')
-                        })
-            if not members:
-                cur.execute("SELECT * FROM drivers")
-                rows = cur.fetchall()
-                for r in rows:
-                    rd = dict(r)
-                    d_name = rd.get('name') or rd.get('full_name') or ''
-                    if d_name:
-                        members.append({
-                            'id': rd.get('id'),
-                            'name': str(d_name).strip(),
-                            'job_title': rd.get('job_title', 'فني')
-                        })
+            with get_session() as session:
+                if session.execute(text("SELECT to_regclass('team_members')")).scalar():
+                    rows = session.execute(text("SELECT * FROM team_members ORDER BY id")).mappings()
+                    for rd in rows:
+                        m_name = rd.get('full_name') or rd.get('name') or ''
+                        if m_name:
+                            members.append({
+                                'id': rd.get('id'),
+                                'name': str(m_name).strip(),
+                                'job_title': rd.get('job_title') or '',
+                            })
+                if not members:
+                    for d in session.scalars(select(Driver).order_by(Driver.id)):
+                        if d.name:
+                            members.append({
+                                'id': d.id,
+                                'name': str(d.name).strip(),
+                                'job_title': d.job_title or 'فني',
+                            })
         except Exception as e:
             print(f"[ERROR - get_all_team_members]: {e}")
-        finally:
-            if conn:
-                conn.close()
         return members
 
     @classmethod
     def create_order(cls, data):
         """إنشاء أمر الصيانة وحفظ بيانات الفتح بحقولها المعتمدة"""
-        conn = cls.get_db_connection()
-        cur = conn.cursor()
-        
         try:
             m_type = data.get('type', 'internal')
             order_no = generate_work_order_no(m_type)
@@ -123,260 +104,130 @@ class MaintenanceService:
             vehicle = None
             vehicle_id = data.get('vehicle_id')
             if vehicle_id:
-                vehicle = cur.execute(
-                    "SELECT vehicle_code, plate_number FROM vehicles WHERE id = ?",
-                    (vehicle_id,)
-                ).fetchone()
+                vehicle = next(
+                    (v for v in vehicles_repository.list_active() if str(v['id']) == str(vehicle_id)),
+                    None,
+                )
+                if not vehicle:
+                    raise ValueError("لا يمكن إنشاء أمر صيانة لمركبة مؤرشفة أو خارج الخدمة.")
 
-            query = """
-                INSERT INTO maintenance_orders (
-                    order_no, type, status,
-                    vehicle_id, vehicle_code, plate_number,
-                    maintenance_type, fault_description, fault_cause, severity,
-                    technician_name, expected_completion_time, order_date,
-                    workshop_name, workshop_phone, workshop_location, send_reason,
-                    send_datetime, responsible_person, expected_cost, expected_time, notes,
-                    driver_id, reporter_name, case_description, has_injuries,
-                    is_drivable, official_notified, emergency_location,
-                    incident_datetime, subject, description, causes, other_details
-                ) VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-
-            cur.execute(query, (
-                order_no,
-                m_type,
-                vehicle_id,
-                vehicle['vehicle_code'] if vehicle else data.get('vehicle_code'),
-                vehicle['plate_number'] if vehicle else data.get('plate_number'),
-                data.get('maintenance_type'),
-                data.get('fault_description'),
-                data.get('fault_cause'),
-                data.get('severity'),
-                data.get('technician_name'),
-                data.get('expected_completion_time'),
-                data.get('order_date') or datetime.date.today().strftime('%Y-%m-%d'),
-                data.get('workshop_name'),
-                data.get('workshop_phone'),
-                data.get('workshop_location'),
-                data.get('send_reason'),
-                data.get('send_datetime'),
-                data.get('responsible_person'),
-                float(data.get('expected_cost') or 0.0),
-                data.get('expected_time'),
-                data.get('notes'),
-                data.get('driver_id'),
-                data.get('reporter_name'),
-                data.get('case_description'),
-                data.get('has_injuries'),
-                data.get('is_drivable'),
-                data.get('official_notified'),
-                data.get('emergency_location'),
-                data.get('incident_datetime'),
-                data.get('subject'),
-                data.get('description'),
-                data.get('causes'),
-                data.get('other_details')
-            ))
-            conn.commit()
+            order = MaintenanceOrder(
+                order_no=order_no,
+                type=m_type,
+                status='open',
+                vehicle_id=int(vehicle_id) if vehicle_id else None,
+                vehicle_code=vehicle['vehicle_code'] if vehicle else data.get('vehicle_code'),
+                plate_number=vehicle['plate_number'] if vehicle else data.get('plate_number'),
+                order_date=data.get('order_date') or datetime.date.today().strftime('%Y-%m-%d'),
+                expected_cost=to_float(data.get('expected_cost'), 0.0),
+                **{field: data.get(field) for field in _OPEN_FIELDS},
+            )
+            with get_session() as session:
+                session.add(order)
             return order_no
-            
         except Exception as e:
             print(f"[ERROR - create_order]: {e}")
-            conn.rollback()
-            raise e
-        finally:
-            conn.close()
+            raise
 
     @classmethod
     def get_orders(cls, m_type, status='open'):
         """جلب أوامر الصيانة حسب النوع والحالة"""
-        rows = []
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM maintenance_orders WHERE type = ? AND status = ? ORDER BY id DESC", 
-                (m_type, status)
-            )
-            rows = [dict(r) for r in cur.fetchall()]
+            with get_session() as session:
+                rows = session.scalars(
+                    select(MaintenanceOrder)
+                    .where(MaintenanceOrder.type == m_type, MaintenanceOrder.status == status)
+                    .order_by(MaintenanceOrder.id.desc())
+                ).all()
+                return [r.to_dict() for r in rows]
         except Exception as e:
             print(f"[ERROR - get_orders]: {e}")
-        finally:
-            if conn:
-                conn.close()
-        return rows
+            return []
 
     @classmethod
     def get_all_orders(cls, m_type='all', status='all', date_from=None, date_to=None):
         """جلب جميع أوامر الصيانة مع فلاتر النوع والحالة والفترة الزمنية"""
-        conditions = []
-        params = []
-        valid_types = {'internal', 'external', 'emergency', 'exceptional'}
-
-        if m_type in valid_types:
-            conditions.append('type = ?')
-            params.append(m_type)
+        M = MaintenanceOrder
+        stmt = select(M)
+        if m_type in VALID_TYPES:
+            stmt = stmt.where(M.type == m_type)
         if status in {'open', 'closed'}:
-            conditions.append('status = ?')
-            params.append(status)
+            stmt = stmt.where(M.status == status)
 
-        order_date = "COALESCE(NULLIF(order_date, ''), NULLIF(send_datetime, ''), NULLIF(incident_datetime, ''), NULLIF(closure_date, ''), NULLIF(closure_datetime, ''), '')"
+        order_date = func.coalesce(
+            func.nullif(M.order_date, ''), func.nullif(M.send_datetime, ''),
+            func.nullif(M.incident_datetime, ''), func.nullif(M.closure_date, ''),
+            func.nullif(M.closure_datetime, ''), '',
+        )
         if date_from:
-            conditions.append(f"substr({order_date}, 1, 10) >= ?")
-            params.append(date_from)
+            stmt = stmt.where(func.substr(order_date, 1, 10) >= date_from)
         if date_to:
-            conditions.append(f"substr({order_date}, 1, 10) <= ?")
-            params.append(date_to)
+            stmt = stmt.where(func.substr(order_date, 1, 10) <= date_to)
+        stmt = stmt.order_by(text("CASE status WHEN 'open' THEN 0 ELSE 1 END"), M.id.desc())
 
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ''
-        query = f"""
-            SELECT * FROM maintenance_orders
-            {where_clause}
-            ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, id DESC
-        """
-
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            rows = conn.execute(query, tuple(params)).fetchall()
-            return [dict(row) for row in rows]
+            with get_session() as session:
+                return [r.to_dict() for r in session.scalars(stmt).all()]
         except Exception as e:
             print(f"[ERROR - get_all_orders]: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
 
     @classmethod
     def get_order_by_id(cls, order_id):
         """جلب أمر صيانة محدد برقم ID"""
-        order = None
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM maintenance_orders WHERE id = ?", (order_id,))
-            row = cur.fetchone()
-            if row:
-                order = dict(row)
+            with get_session() as session:
+                order = session.get(MaintenanceOrder, int(order_id))
+                return order.to_dict() if order else None
         except Exception as e:
             print(f"[ERROR - get_order_by_id]: {e}")
-        finally:
-            if conn:
-                conn.close()
-        return order
+            return None
 
     @classmethod
     def delete_order(cls, order_id):
         """حذف أمر الصيانة"""
-        conn = None
         try:
-            conn = cls.get_db_connection()
-            cur = conn.cursor()
-            cur.execute("DELETE FROM maintenance_orders WHERE id = ?", (order_id,))
-            conn.commit()
+            attachments = []
+            with get_session() as session:
+                order = session.get(MaintenanceOrder, int(order_id))
+                if order:
+                    attachments = [order.photo_before, order.photo_after, order.other_attachments]
+                    session.delete(order)
+            storage.delete_files(*attachments)
         except Exception as e:
             print(f"[ERROR - delete_order]: {e}")
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     @classmethod
     def close_order(cls, order_id, close_data, files=None):
         """إقفال أمر الصيانة وحفظ بيانات الإقفال والملفات المرفقة"""
-        conn = cls.get_db_connection()
-        cur = conn.cursor()
-
+        uploaded = []
         try:
-            current_file = Path(__file__).resolve()
-            base_dir = current_file.parent
-            while base_dir != base_dir.parent:
-                if (base_dir / "static").exists() or (base_dir.name == "app" and (base_dir / "static").exists()):
-                    break
-                if (base_dir / "app" / "static").exists():
-                    base_dir = base_dir / "app"
-                    break
-                base_dir = base_dir.parent
-
-            upload_dir = base_dir / "static" / "uploads" / "maintenance"
-            if not upload_dir.exists() and (Path(os.getcwd()) / "app" / "static").exists():
-                upload_dir = Path(os.getcwd()) / "app" / "static" / "uploads" / "maintenance"
-            elif not upload_dir.exists():
-                upload_dir = Path(os.getcwd()) / "static" / "uploads" / "maintenance"
-
-            upload_dir.mkdir(parents=True, exist_ok=True)
-
             file_paths = {}
             if files:
-                file_keys = ['photo_before', 'photo_after', 'other_attachments']
-                for f_key in file_keys:
+                for f_key in ('photo_before', 'photo_after', 'other_attachments'):
                     file_item = files.get(f_key)
-                    if file_item and file_item.filename:
-                        file_name = f"{order_id}_{int(time.time())}_{file_item.filename}"
-                        save_path = upload_dir / file_name
-                        file_item.save(str(save_path))
-                        file_paths[f_key] = f"uploads/maintenance/{file_name}"
-                    else:
-                        file_paths[f_key] = None
+                    url = storage.upload_file(file_item, UPLOAD_FOLDER)
+                    if url:
+                        uploaded.append(url)
+                        file_paths[f_key] = url
 
             current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-            closure_date = close_data.get('closure_date') or datetime.date.today().strftime('%Y-%m-%d')
-            receipt_datetime = close_data.get('receipt_datetime') or current_time
-            closure_datetime = close_data.get('closure_datetime') or current_time
-
-            final_cost = float(close_data.get('final_cost') or 0.0)
-
-            query = """
-                UPDATE maintenance_orders 
-                SET status = 'closed',
-                    closure_date = ?,
-                    receipt_datetime = ?,
-                    closure_datetime = ?,
-                    closure_reason = ?,
-                    spare_parts = ?,
-                    final_cost = ?,
-                    recommendation = ?,
-                    closing_notes = ?,
-                    action_taken = ?,
-                    is_towed = ?,
-                    towing_party = ?,
-                    intervention_team = ?,
-                    treatment_details = ?,
-                    photo_before = COALESCE(?, photo_before),
-                    photo_after = COALESCE(?, photo_after),
-                    other_attachments = COALESCE(?, other_attachments)
-                WHERE id = ?
-            """
-
-            cur.execute(query, (
-                closure_date,
-                receipt_datetime,
-                closure_datetime,
-                close_data.get('closure_reason'),
-                close_data.get('spare_parts'),
-                final_cost,
-                close_data.get('recommendation'),
-                close_data.get('closing_notes'),
-                close_data.get('action_taken'),
-                close_data.get('is_towed'),
-                close_data.get('towing_party'),
-                close_data.get('intervention_team'),
-                close_data.get('treatment_details'),
-                file_paths.get('photo_before'),
-                file_paths.get('photo_after'),
-                file_paths.get('other_attachments'),
-                order_id
-            ))
-
-            conn.commit()
-            
+            with get_session() as session:
+                order = session.get(MaintenanceOrder, int(order_id))
+                if order is None:
+                    return
+                order.status = 'closed'
+                order.closure_date = close_data.get('closure_date') or datetime.date.today().strftime('%Y-%m-%d')
+                order.receipt_datetime = close_data.get('receipt_datetime') or current_time
+                order.closure_datetime = close_data.get('closure_datetime') or current_time
+                order.final_cost = to_float(close_data.get('final_cost'), 0.0)
+                for field in _CLOSE_FIELDS:
+                    setattr(order, field, close_data.get(field))
+                # Keep existing attachments when no new file was uploaded (COALESCE semantics).
+                for field, path in file_paths.items():
+                    setattr(order, field, path)
         except Exception as e:
+            storage.delete_files(*uploaded)
             print(f"[ERROR - close_order]: {e}")
-            conn.rollback()
-            raise e
-        finally:
-            conn.close()
+            raise

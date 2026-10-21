@@ -65,6 +65,9 @@
             <div class="notice">
                 التغييرات التي يرسلها الزائر تُسجّل كطلبات للمراجعة ولا تعدّل بيانات المركبة مباشرة. اختر الحقول التي تظهر للزائر، والحقول التي يمكنه إرسال اقتراح تحديث لها.
             </div>
+            <div class="notice">
+                حقول كود المركبة ورقم اللوحة ونوع المركبة والموديل والشركة المصنعة واللون ونوع الوقود ثابتة ولا يمكن للزائر اقتراح تعديلها.
+            </div>
             <form method="post">
                 <div class="table-scroll">
                     <table class="settings-table">
@@ -87,13 +90,21 @@
                                     <input type="checkbox" name="visible:{{ field.key }}" aria-label="عرض {{ field.label }}" {% if setting.visible %}checked{% endif %}>
                                 </td>
                                 <td>
+                                    {% if field.key in ['vehicle_code', 'plate_number', 'vehicle_type', 'model', 'manufacturer', 'color', 'fuel_type'] %}
+                                    <span>ثابت</span>
+                                    {% else %}
                                     <input type="checkbox" name="editable:{{ field.key }}" aria-label="السماح بطلب تحديث {{ field.label }}" {% if setting.editable %}checked{% endif %}>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                <label class="notice" style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer;">
+                    <input type="checkbox" name="inquiries_enabled" style="width:20px;height:20px;" {% if inquiries_enabled %}checked{% endif %}>
+                    السماح للزائر بإرسال الاستفسارات والبلاغات عن المشكلات
+                </label>
                 <div class="actions" style="justify-content:flex-start;">
                     <button class="btn btn-primary" type="submit">حفظ إعدادات العرض</button>
                 </div>

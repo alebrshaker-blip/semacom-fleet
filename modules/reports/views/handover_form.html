@@ -1,0 +1,214 @@
+{% extends "print_base.html" %}
+
+{% block title %}نموذج إخلاء العهدة{% endblock %}
+
+{% block content %}
+<div class="doc-container">
+    
+    <!-- ورقة إخلاء العهدة -->
+    <div class="official-paper">
+        
+        <div class="paper-header clearance-header">
+            <div class="company-brand">
+                <h2>شركة سيماكم</h2>
+                <p>قسم المستودعات والعهد الشخصية</p>
+            </div>
+            <div class="doc-meta">
+                <p><strong>رقم النموذج:</strong> CLR-2026-089</p>
+                <p><strong>التاريخ:</strong> 2026/10/19</p>
+            </div>
+        </div>
+
+        <h1 class="doc-title clearance-title">نموذج إخلاء عهدة وتسليم معدات ورشة</h1>
+
+        <!-- بيانات الموظف -->
+        <div class="employee-grid">
+            <div class="grid-item"><strong>اسم الموظف:</strong> خالد عبدالله القحطاني</div>
+            <div class="grid-item"><strong>الرقم الوظيفي:</strong> EMP-4052</div>
+            <div class="grid-item"><strong>القسم:</strong> ورشة الإصلاح الميكانيكي</div>
+            <div class="grid-item"><strong>سبب الإخلاء:</strong> انتهاء فترة عمل / نقل</div>
+        </div>
+
+        <!-- جدول العهد -->
+        <div class="table-responsive">
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>م</th>
+                        <th>وصف العهدة (معدات / مفاتيح / أدوات)</th>
+                        <th>الكمية</th>
+                        <th>حالة العهدة</th>
+                        <th>ملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>صندوق عدّة ميكانيكية متكامل (Toolbox 150 PCS)</td>
+                        <td>1</td>
+                        <td>سليم</td>
+                        <td>تم التسليم بالكامل</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>جهاز فحص الأعطال المحمول (OBD Scanner)</td>
+                        <td>1</td>
+                        <td>سليم</td>
+                        <td>بحالة ممتازة</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>مفاتيح ورشة رئيسية ومستودع فرعي</td>
+                        <td>مجموعة</td>
+                        <td>مكتملة</td>
+                        <td>لا توجد نواقص</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- إقرار التسليم -->
+        <div class="declaration-box">
+            أقر أنا الموقع أدناه بأنني قد قمت بتسليم كافة العهد والمعدات المذكورة أعلاه بحالة سليمة ومقبولة، وأنه ليس لدي أي عهدة معلقة تابعة للشركة.
+        </div>
+
+        <!-- التواقيع -->
+        <div class="signatures-section">
+            <div class="sig-box">
+                <p>توقيع المُسلم (الموظف)</p>
+                <div class="sig-line"></div>
+            </div>
+            <div class="sig-box">
+                <p>توقيع المُستلم (مسؤول العهد)</p>
+                <div class="sig-line"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+    .doc-container {
+        max-width: 900px;
+        margin: 20px auto;
+        padding: 0 15px;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .doc-actions { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    .btn-print { background: #0f766e; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    .btn-back { background: #64748b; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; }
+    
+    .official-paper {
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+    }
+    .clearance-header { border-bottom: 2px solid #0f766e !important; }
+    .clearance-title { color: #0f766e !important; background: #f0fdf4 !important; }
+    
+    .paper-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+        margin-bottom: 25px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    .company-brand h2 { margin: 0; color: #0f766e; font-size: 20px; }
+    .company-brand p { margin: 5px 0 0; color: #64748b; font-size: 13px; }
+    .doc-meta { font-size: 13px; color: #334155; }
+    
+    .doc-title {
+        text-align: center;
+        font-size: 20px;
+        margin: 20px 0 30px;
+        padding: 10px;
+        border-radius: 6px;
+    }
+    
+    .employee-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+    .grid-item {
+        background: #f8fafc;
+        padding: 12px 15px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #334155;
+    }
+    
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        margin-bottom: 25px;
+    }
+    .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 600px;
+    }
+    .items-table th, .items-table td {
+        padding: 12px 15px;
+        border: 1px solid #cbd5e1;
+        text-align: center;
+        font-size: 14px;
+    }
+    .items-table th {
+        background-color: #0f766e;
+        color: white;
+    }
+    
+    .declaration-box {
+        background: #fffbeb;
+        border-right: 4px solid #f59e0b;
+        padding: 15px;
+        font-size: 14px;
+        line-height: 1.8;
+        color: #78350f;
+        margin-bottom: 30px;
+        border-radius: 4px;
+    }
+    
+    .signatures-section {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 40px;
+        text-align: center;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+    .sig-box {
+        flex: 1;
+        min-width: 250px;
+        font-weight: bold;
+        color: #334155;
+    }
+    .sig-line {
+        margin-top: 40px;
+        border-bottom: 1px dashed #94a3b8;
+        width: 80%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    @media (max-width: 768px) {
+        .official-paper { padding: 20px; }
+        .paper-header { flex-direction: column; text-align: center; }
+        .signatures-section { flex-direction: column; align-items: center; }
+    }
+
+    @media print {
+        .no-print { display: none !important; }
+        .official-paper { border: none; box-shadow: none; padding: 0; }
+    }
+</style>
+{% endblock %}

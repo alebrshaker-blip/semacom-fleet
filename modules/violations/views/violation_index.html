@@ -172,10 +172,9 @@
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">حالة / سبب التقفيل: *</label>
                 <select name="closure_reason" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
-                    <option value="مسددة">تم السداد</option>
-                    <option value="مسحوبة">مسحوبة من المرور</option>
-                    <option value="معفية">معفية</option>
-                    <option value="قيد الاعتراض">قيد الاعتراض</option>
+                    {% for reason in reference_lists.violation_closure_reasons %}
+                    <option value="{{ reason }}">{{ reason }}</option>
+                    {% endfor %}
                 </select>
             </div>
 

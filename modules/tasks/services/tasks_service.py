@@ -1,12 +1,23 @@
-import sqlite3
-from contextlib import closing
 from datetime import date
 
+from sqlalchemy import case, delete, func, select, update
+from sqlalchemy.exc import IntegrityError
+
+from core.database import get_session, now_text
 from modules.tasks.models.tasks_model import TasksModel
+from modules.tasks.models.tasks_orm import TaskRecord
 
 
 PRIORITIES = ("عاجلة", "عالية", "متوسطة", "منخفضة")
 STATUSES = ("مجدولة", "قيد التنفيذ", "مكتملة")
+
+
+def _validate_due_date(due_date):
+    if due_date:
+        try:
+            date.fromisoformat(due_date)
+        except ValueError as error:
+            raise ValueError("تاريخ الاستحقاق غير صحيح.") from error
 
 
 class TasksService:
@@ -16,54 +27,55 @@ class TasksService:
 
     @staticmethod
     def get_all_tasks(user_id, archived=False, status="all", priority="all"):
-        TasksModel.create_table()
-        conditions = ["user_id = ?", "is_archived = ?"]
-        params = [str(user_id), int(archived)]
+        conditions = [
+            TaskRecord.user_id == str(user_id),
+            TaskRecord.is_archived == int(archived),
+        ]
         if status in STATUSES:
-            conditions.append("status = ?")
-            params.append(status)
+            conditions.append(TaskRecord.status == status)
         if priority in PRIORITIES:
-            conditions.append("priority = ?")
-            params.append(priority)
+            conditions.append(TaskRecord.priority == priority)
 
-        with closing(TasksModel.get_connection()) as connection:
-            rows = connection.execute(
-                f"""SELECT * FROM task_records
-                    WHERE {' AND '.join(conditions)}
-                    ORDER BY
-                        CASE priority
-                            WHEN 'عاجلة' THEN 0
-                            WHEN 'عالية' THEN 1
-                            WHEN 'متوسطة' THEN 2
-                            ELSE 3
-                        END,
-                        CASE WHEN due_date IS NULL OR due_date = '' THEN 1 ELSE 0 END,
-                        due_date ASC,
-                        created_at DESC""",
-                params,
-            ).fetchall()
-            return [dict(row) for row in rows]
+        priority_rank = case(
+            (TaskRecord.priority == "عاجلة", 0),
+            (TaskRecord.priority == "عالية", 1),
+            (TaskRecord.priority == "متوسطة", 2),
+            else_=3,
+        )
+        no_due_date = case(
+            (TaskRecord.due_date.is_(None), 1),
+            (TaskRecord.due_date == "", 1),
+            else_=0,
+        )
+        with get_session() as session:
+            rows = session.scalars(
+                select(TaskRecord).where(*conditions).order_by(
+                    priority_rank, no_due_date, TaskRecord.due_date.asc(),
+                    TaskRecord.created_at.desc(),
+                )
+            ).all()
+            return [row.to_dict() for row in rows]
 
     @staticmethod
     def get_task(user_id, task_id):
-        TasksModel.create_table()
-        with closing(TasksModel.get_connection()) as connection:
-            row = connection.execute(
-                "SELECT * FROM task_records WHERE id = ? AND user_id = ?",
-                (task_id, str(user_id)),
-            ).fetchone()
-            return dict(row) if row else None
+        with get_session() as session:
+            row = session.scalar(
+                select(TaskRecord).where(
+                    TaskRecord.id == int(task_id), TaskRecord.user_id == str(user_id)
+                )
+            )
+            return row.to_dict() if row else None
 
     @staticmethod
     def get_task_by_source(user_id, source_notification_id):
-        TasksModel.create_table()
-        with closing(TasksModel.get_connection()) as connection:
-            row = connection.execute(
-                """SELECT * FROM task_records
-                   WHERE user_id = ? AND source_notification_id = ?""",
-                (str(user_id), source_notification_id),
-            ).fetchone()
-            return dict(row) if row else None
+        with get_session() as session:
+            row = session.scalar(
+                select(TaskRecord).where(
+                    TaskRecord.user_id == str(user_id),
+                    TaskRecord.source_notification_id == source_notification_id,
+                )
+            )
+            return row.to_dict() if row else None
 
     @staticmethod
     def create_task(user_id, data, source_notification_id=None):
@@ -75,28 +87,19 @@ class TasksService:
             raise ValueError("عنوان المهمة مطلوب.")
         if priority not in PRIORITIES:
             raise ValueError("درجة الأولوية غير صحيحة.")
-        if due_date:
-            try:
-                date.fromisoformat(due_date)
-            except ValueError as error:
-                raise ValueError("تاريخ الاستحقاق غير صحيح.") from error
+        _validate_due_date(due_date)
 
-        TasksModel.create_table()
         try:
-            with closing(TasksModel.get_connection()) as connection:
-                cursor = connection.execute(
-                    """INSERT INTO task_records
-                       (user_id, title, description, due_date, priority, status,
-                        source_notification_id)
-                       VALUES (?, ?, ?, ?, ?, 'مجدولة', ?)""",
-                    (
-                        str(user_id), title, description, due_date, priority,
-                        source_notification_id,
-                    ),
+            with get_session() as session:
+                task = TaskRecord(
+                    user_id=str(user_id), title=title, description=description,
+                    due_date=due_date, priority=priority, status="مجدولة",
+                    source_notification_id=source_notification_id,
                 )
-                connection.commit()
-                return cursor.lastrowid
-        except sqlite3.IntegrityError as error:
+                session.add(task)
+                session.flush()
+                return task.id
+        except IntegrityError as error:
             if source_notification_id:
                 raise ValueError("سبق إنشاء مهمة من هذا الإشعار.") from error
             raise
@@ -115,62 +118,53 @@ class TasksService:
             raise ValueError("عنوان المهمة مطلوب.")
         if priority not in PRIORITIES or status not in STATUSES:
             raise ValueError("قيمة الأولوية أو الحالة غير صحيحة.")
-        if due_date:
-            try:
-                date.fromisoformat(due_date)
-            except ValueError as error:
-                raise ValueError("تاريخ الاستحقاق غير صحيح.") from error
+        _validate_due_date(due_date)
 
         completed_at = task["completed_at"]
         if status == "مكتملة" and task["status"] != "مكتملة":
             completed_at = date.today().isoformat()
         elif status != "مكتملة":
             completed_at = None
-        with closing(TasksModel.get_connection()) as connection:
-            connection.execute(
-                """UPDATE task_records
-                   SET title = ?, description = ?, due_date = ?, priority = ?,
-                       status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
-                   WHERE id = ? AND user_id = ?""",
-                (
-                    title, description, due_date, priority, status, completed_at,
-                    task_id, str(user_id),
-                ),
+        with get_session() as session:
+            session.execute(
+                update(TaskRecord)
+                .where(TaskRecord.id == int(task_id), TaskRecord.user_id == str(user_id))
+                .values(
+                    title=title, description=description, due_date=due_date,
+                    priority=priority, status=status, completed_at=completed_at,
+                    updated_at=now_text(),
+                )
             )
-            connection.commit()
 
     @staticmethod
     def set_archived(user_id, task_id, archived):
-        TasksModel.create_table()
-        with closing(TasksModel.get_connection()) as connection:
-            cursor = connection.execute(
-                """UPDATE task_records SET is_archived = ?, updated_at = CURRENT_TIMESTAMP
-                   WHERE id = ? AND user_id = ?""",
-                (int(archived), task_id, str(user_id)),
+        with get_session() as session:
+            result = session.execute(
+                update(TaskRecord)
+                .where(TaskRecord.id == int(task_id), TaskRecord.user_id == str(user_id))
+                .values(is_archived=int(archived), updated_at=now_text())
             )
-            connection.commit()
-            if cursor.rowcount == 0:
+            if result.rowcount == 0:
                 raise ValueError("المهمة غير موجودة.")
 
     @staticmethod
     def delete_task(user_id, task_id):
-        TasksModel.create_table()
-        with closing(TasksModel.get_connection()) as connection:
-            cursor = connection.execute(
-                "DELETE FROM task_records WHERE id = ? AND user_id = ?",
-                (task_id, str(user_id)),
+        with get_session() as session:
+            result = session.execute(
+                delete(TaskRecord).where(
+                    TaskRecord.id == int(task_id), TaskRecord.user_id == str(user_id)
+                )
             )
-            connection.commit()
-            if cursor.rowcount == 0:
+            if result.rowcount == 0:
                 raise ValueError("المهمة غير موجودة.")
 
     @staticmethod
     def count_tasks(user_id, archived=False):
-        TasksModel.create_table()
-        with closing(TasksModel.get_connection()) as connection:
-            rows = connection.execute(
-                """SELECT status, COUNT(*) AS count FROM task_records
-                   WHERE user_id = ? AND is_archived = ? GROUP BY status""",
-                (str(user_id), int(archived)),
-            ).fetchall()
-            return {row["status"]: row["count"] for row in rows}
+        with get_session() as session:
+            rows = session.execute(
+                select(TaskRecord.status, func.count())
+                .where(TaskRecord.user_id == str(user_id),
+                       TaskRecord.is_archived == int(archived))
+                .group_by(TaskRecord.status)
+            ).all()
+            return {status: count for status, count in rows}

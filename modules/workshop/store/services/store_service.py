@@ -1,53 +1,51 @@
-import sqlite3
-from modules.workshop.store.models.store_model import StoreItem
-from core.database import DB_PATH as DATABASE_PATH
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+
+from core.database import get_session, now_text
+from modules.workshop.store.models.store_model import StoreItem, StoreTransaction
+
 
 class StoreService:
-    DB_PATH = DATABASE_PATH
-
-    @classmethod
-    def get_db_connection(cls):
-        """إنشاء اتصال بقاعدة البيانات مع إرجاع الصفوف كقواميس لتسهيل التعامل"""
-        conn = sqlite3.connect(str(cls.DB_PATH))
-        conn.row_factory = sqlite3.Row
-        return conn
 
     @classmethod
     def get_all_items(cls):
         """جلب جميع أصناف المستودع المسجلة"""
-        conn = cls.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM store_items ORDER BY id DESC")
-        rows = cursor.fetchall()
-        conn.close()
-        return [StoreItem.from_row(row) for row in rows]
+        with get_session() as session:
+            return list(session.scalars(select(StoreItem).order_by(StoreItem.id.desc())))
 
     @classmethod
     def add_item(cls, item_code, name, category, unit, quantity, min_limit, location, unit_price, notes):
         """إضافة صنف جديد إلى المستودع مع تسجيل حركة توريد أولية"""
-        conn = cls.get_db_connection()
-        cursor = conn.cursor()
         try:
-            # 1. إدخال الصنف الجديد
-            cursor.execute("""
-                INSERT INTO store_items (item_code, name, category, unit, quantity, min_limit, location, unit_price, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (item_code, name, category, unit, quantity, min_limit, location, unit_price, notes))
-            
-            # 2. تسجيل حركة مخزنية أولية (توريد رصيد افتتاحي) إذا كانت الكمية أكبر من الصفر
-            if quantity > 0:
-                cursor.execute("""
-                    INSERT INTO store_transactions (item_code, transaction_type, quantity, reference_number, recipient_or_supplier, transaction_date, notes)
-                    VALUES (?, 'in', ?, 'INIT', 'رصيد افتتاحي', datetime('now'), 'إضافة أولية عند إنشاء الصنف')
-                """, (item_code, quantity))
-
-            conn.commit()
+            with get_session() as session:
+                session.add(StoreItem(
+                    item_code=item_code, name=name, category=category, unit=unit,
+                    quantity=quantity, min_limit=min_limit, location=location,
+                    unit_price=unit_price, notes=notes,
+                ))
+                session.flush()
+                if quantity > 0:
+                    session.add(StoreTransaction(
+                        item_code=item_code, transaction_type='in', quantity=quantity,
+                        reference_number='INIT', recipient_or_supplier='رصيد افتتاحي',
+                        transaction_date=now_text(), notes='إضافة أولية عند إنشاء الصنف',
+                    ))
             return True, "تم إضافة الصنف بنجاح وتوثيق الرصيد."
-        except sqlite3.IntegrityError:
-            conn.rollback()
+        except IntegrityError:
             return False, "خطأ: كود الصنف (الباركود) مسجل مسبقاً، يرجى استخدام كود فريد."
         except Exception as e:
-            conn.rollback()
             return False, f"حدث خطأ غير متوقع: {str(e)}"
-        finally:
-            conn.close()
+
+    @classmethod
+    def delete_item(cls, item_id):
+        """حذف صنف المستودع وحركاته المرتبطة كوحدة واحدة."""
+        try:
+            with get_session() as session:
+                item = session.get(StoreItem, item_id, with_for_update=True)
+                if item is None:
+                    return False, 'الصنف غير موجود أو سبق حذفه.'
+                session.execute(delete(StoreTransaction).where(StoreTransaction.item_code == item.item_code))
+                session.delete(item)
+            return True, 'تم حذف الصنف وحركاته المخزنية المرتبطة.'
+        except Exception as error:
+            return False, f'تعذر حذف الصنف: {error}'

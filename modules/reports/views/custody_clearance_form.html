@@ -1,0 +1,169 @@
+{% extends "print_base.html" %}
+{% set form_data = clearance_data or {} %}
+
+{% block title %}نموذج إخلاء طرف عهدة المركبات والمعدات{% endblock %}
+
+{% macro field(name, label, finalized=false) -%}
+<label class="form-field"><strong>{{ label }}</strong>
+    {% if is_finalized %}<span class="field-value">{{ form_data.get(name) or '—' }}</span>
+    {% else %}<input name="{{ name }}" value="{{ form_data.get(name, '') }}" maxlength="180">
+    {% endif %}
+</label>
+{%- endmacro %}
+
+{% block pages %}
+<div class="page-container portrait clearance-page">
+    {% include '_print_header.html' %}
+    {% if not is_finalized %}
+    <div id="clearancePageActions" class="form-actions no-print">
+        <a href="{{ url_for('reports.custody_clearance_form') }}">قائمة النماذج</a>
+        <button type="submit" form="clearanceForm" name="action" value="save">حفظ المسودة</button>
+        {% if clearance_id %}<span>بعد الحفظ، استخدم «اعتماد التقرير» من الشريط العلوي لإصدار الرقم المرجعي وPDF.</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <form id="clearanceForm" method="post" class="clearance-sheet">
+        {% if clearance_id %}<input type="hidden" name="clearance_id" value="{{ clearance_id }}">{% endif %}
+        <header class="clearance-title">
+            <h1>نموذج إخلاء طرف عهدة المركبات والمعدات</h1>
+        </header>
+
+        <section class="clearance-section">
+            <h2>بيانات الشخص</h2>
+            <div class="person-grid">
+                {{ field('person_name', 'الاسم') }}
+                <label class="form-field"><strong>الوظيفة (سائق / موظف / عامل)</strong>
+                    {% if is_finalized %}<span class="field-value">{{ form_data.get('job_title') or '—' }}</span>
+                    {% else %}<select name="job_title"><option value="">اختر</option>{% for job in ['سائق', 'موظف', 'عامل'] %}<option value="{{ job }}" {% if form_data.get('job_title') == job %}selected{% endif %}>{{ job }}</option>{% endfor %}</select>{% endif %}
+                </label>
+                {{ field('national_id', 'رقم الهوية / الإقامة') }}
+                {{ field('department', 'القسم') }}
+                <label class="form-field"><strong>تاريخ الإخلاء</strong>
+                    {% if is_finalized %}<span class="field-value">{{ form_data.get('clearance_date') or '—' }}</span>
+                    {% else %}<input type="date" name="clearance_date" value="{{ form_data.get('clearance_date', current_date) }}">{% endif %}
+                </label>
+            </div>
+        </section>
+
+        <section class="clearance-section">
+            <h2>المركبات والمعدات المعادة</h2>
+            <table class="clearance-table">
+                <thead><tr><th>نوع المركبة/المعدة</th><th>الرقم/الكود</th><th>الحالة عند الإعادة</th><th>ملاحظات</th></tr></thead>
+                <tbody>
+                    {% for index in range(2) %}{% set row = form_data.get('vehicles', [])[index] if index < form_data.get('vehicles', [])|length else {} %}
+                    <tr>
+                        {% for key in ['type', 'code', 'condition', 'notes'] %}<td>{% if is_finalized %}<span>{{ row.get(key, '') or '—' }}</span>{% else %}<input name="vehicle_{{ key }}[]" value="{{ row.get(key, '') }}" maxlength="100">{% endif %}</td>{% endfor %}
+                    </tr>{% endfor %}
+                </tbody>
+            </table>
+            <p class="explanatory">يُثبت أعلاه ما تمت معاينته وإعادته، وتدوّن الملاحظات أو النواقص إن وجدت.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>الأدوات والمستلزمات</h2>
+            <table class="clearance-table">
+                <thead><tr><th>اسم الأداة</th><th>الكمية</th><th>الحالة</th><th>ملاحظات</th></tr></thead>
+                <tbody>
+                    {% for index in range(2) %}{% set row = form_data.get('supplies', [])[index] if index < form_data.get('supplies', [])|length else {} %}
+                    <tr>
+                        {% for key in ['name', 'quantity', 'condition', 'notes'] %}<td>{% if is_finalized %}<span>{{ row.get(key, '') or '—' }}</span>{% else %}<input name="supply_{{ key }}[]" value="{{ row.get(key, '') }}" maxlength="100">{% endif %}</td>{% endfor %}
+                    </tr>{% endfor %}
+                </tbody>
+            </table>
+            <p class="explanatory">تسجل الأدوات والمستلزمات المسلّمة، مع بيان حالتها والكمية المعادة.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>الغرامات والمخالفات المرورية</h2>
+            <div class="compact-grid">
+                {{ field('fines_count', 'عدد المخالفات') }}{{ field('fines_amount', 'قيمة المخالفات غير المسددة') }}
+            </div>
+            <p class="declaration">أقر بصحة بيان المخالفات أعلاه، وأتحمل ما يترتب على المخالفات غير المسددة وفق الأنظمة والإجراءات المعتمدة.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>غرامات الحوادث</h2>
+            <div class="compact-grid">
+                {{ field('accidents_count', 'عدد الحوادث') }}{{ field('fault_percentage', 'نسبة الخطأ') }}{{ field('repair_amount', 'قيمة الإصلاحات غير المسددة') }}
+            </div>
+            <p class="declaration">أقر بصحة بيانات الحوادث والإصلاحات الموضحة أعلاه، وتسوى أي مبالغ مستحقة وفق الإجراءات المعتمدة.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>التزامات أخرى</h2>
+            <div class="obligations-grid">
+                {{ field('financial_obligations', 'عهد مالية أو مستحقات') }}{{ field('administrative_notes', 'ملاحظات إدارية') }}{{ field('other_obligations', 'التزامات إضافية') }}
+            </div>
+        </section>
+
+        <section class="clearance-section final-declarations">
+            <h2>إقرار الشخص</h2>
+            <p class="declaration">أقر أنا الموقع أدناه بإعادة ما بعهدتي من مركبات ومعدات وأدوات، وبصحة البيانات الواردة في هذا النموذج، وأتعهد بتسوية أي التزامات موضحة أعلاه.</p>
+            <div class="signature-grid">
+                {{ field('recipient_name', 'اسم المستلم') }}{{ field('employee_signature', 'التوقيع') }}{{ field('employee_date', 'التاريخ') }}
+            </div>
+        </section>
+
+        <section class="clearance-section final-declarations">
+            <h2>اعتماد الإدارة</h2>
+            <div class="signature-grid">
+                {{ field('manager_name', 'اسم المسؤول') }}{{ field('manager_job', 'الوظيفة') }}{{ field('manager_signature', 'التوقيع') }}{{ field('manager_date', 'التاريخ') }}
+            </div>
+        </section>
+    </form>
+</div>
+
+<style>
+    .clearance-page { width: 210mm !important; min-height: 0 !important; height: auto !important; padding: 8mm 10mm !important; margin: 0 auto !important; color: #172033; background: #fff !important; font-family: Tahoma, Arial, sans-serif !important; font-size: 13px; line-height: 1.25; box-shadow: none !important; border: 0 !important; justify-content: flex-start !important; }
+    .clearance-sheet { width: 100%; color: #172033; font-family: Tahoma, Arial, sans-serif; }
+    .clearance-title { position: relative; margin: 0 0 7px; padding: 0 0 5px; border-bottom: 2px solid #1b365d; text-align: center; }
+    .clearance-title h1 { margin: 0; color: #1b365d; font-size: 19px; font-weight: 700; }
+    .clearance-section { margin: 0 0 5px; break-inside: avoid; page-break-inside: avoid; }
+    .clearance-section h2 { margin: 0 0 3px; padding: 2px 5px; border: 1px solid #1b365d; color: #17324f; background: #e7edf4 !important; font-size: 14px; line-height: 1.2; }
+    .person-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px 8px; }
+    .form-field { display: flex; align-items: baseline; gap: 4px; min-width: 0; min-height: 20px; }
+    .form-field strong { flex: 0 0 auto; font-size: 13px; }
+    .form-field input, .form-field select { width: 100%; min-width: 0; height: 20px; padding: 0 2px; border: 0; border-bottom: 1px solid #64748b; border-radius: 0; background: #fff; color: #172033; font: inherit; font-size: 13px; }
+    .field-value { min-width: 0; flex: 1; min-height: 17px; border-bottom: 1px solid #64748b; overflow-wrap: anywhere; }
+    .clearance-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px !important; }
+    .clearance-table th, .clearance-table td { height: 22px; padding: 2px 4px; border: 1px solid #475569; color: #172033; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+    .clearance-table th { background: #dbe7f2 !important; color: #17324f !important; font-size: 13px !important; font-weight: 700 !important; }
+    .clearance-table tbody tr:nth-child(even) td { background: #f5f8fb !important; }
+    .clearance-table input { width: 100%; min-width: 0; height: 18px; padding: 0 2px; border: 0; background: transparent; color: #172033; text-align: center; font: inherit; font-size: 13px; }
+    .explanatory, .declaration { margin: 3px 0 0; color: #334155; font-size: 13px; }
+    .compact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .obligations-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .signature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px 8px; }
+    .final-declarations .signature-grid { grid-template-columns: repeat(4, 1fr); }
+    .form-actions { display: flex; align-items: center; gap: 10px; margin: 0 auto 8px; width: 210mm; }
+    .form-actions a, .form-actions button { padding: 6px 10px; border: 1px solid #1b365d; border-radius: 3px; background: #fff; color: #1b365d; text-decoration: none; font: inherit; cursor: pointer; }
+    .form-actions span { color: #333; font-size: 11px; }
+    @media print {
+        @page { size: A4 portrait; margin: 2cm; }
+        html, body { background: #fff !important; font-family: Tahoma, Arial, sans-serif !important; }
+        .page-container.portrait.clearance-page { width: 100% !important; height: 257mm !important; min-height: 257mm !important; padding: 0 !important; margin: 0 !important; }
+        .clearance-sheet { width: 100%; height: 100%; }
+        .clearance-page, .clearance-page * { box-shadow: none !important; }
+        .clearance-section, .clearance-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .form-actions, .action-bar, .modal-overlay { display: none !important; }
+        .clearance-section h2 { background: #e7edf4 !important; }
+        .clearance-table th { background: #dbe7f2 !important; }
+        .clearance-table tbody tr:nth-child(even) td { background: #f5f8fb !important; }
+    }
+</style>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    @media print {
+        #clearancePageActions,
+        #clearancePageActions * {
+            display: none !important;
+            visibility: hidden !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}{% endblock %}
+{% block footer %}{% endblock %}

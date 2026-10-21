@@ -1,0 +1,184 @@
+{% extends "print_base.html" %}
+
+{% block title %}مذكرة طلبات الورشة الرسمية{% endblock %}
+
+{% block content %}
+<div class="doc-container">
+    
+    <!-- ورقة المذكرة الرسمية -->
+    <div class="official-paper">
+        
+        <!-- الترويسة -->
+        <div class="paper-header">
+            <div class="company-brand">
+                <h2>شركة سيماكم </h2>
+                <p>إدارة الصيانة والورش المركزية</p>
+            </div>
+            <div class="doc-meta">
+                <p><strong>الرقم المرجعي:</strong> MEM-2026-0043</p>
+                <p><strong>التاريخ:</strong> 2026/10/19</p>
+            </div>
+        </div>
+
+        <h1 class="doc-title">مذكـرة إدارية وفنية</h1>
+
+        <!-- جدول تفاصيل المذكرة -->
+        <table class="info-table">
+            <tr>
+                <td class="label">إلى:</td>
+                <td>مدير إدارة الورش والصيانة</td>
+            </tr>
+            <tr>
+                <td class="label">من:</td>
+                <td>مشرف الورشة المركزية</td>
+            </tr>
+            <tr>
+                <td class="label">الموضوع:</td>
+                <td><strong>طلب اعتماد أعمال صيانة عاجلة وتوفير قطع غيار</strong></td>
+            </tr>
+        </table>
+
+        <!-- محتوى المذكرة -->
+        <div class="paper-body">
+            <p>السلام عليكم ورحمة الله وبركاته،،</p>
+            <p>بالإشارة إلى الموضوع أعلاه، ونظراً لمتطلبات العمل وحاجة الأساطيل المستمرة لجاهزية المركبات، نفيدكم بأن المركبة / المعدة الواردة ضمن التقارير الفنية تحتاج إلى إجراء صيانة فورية واستبدال القطع التالفة لضمان استمرارية التشغيل دون أي توقف.</p>
+            <p>عليه، نرجو التكرم بالاطلاع والموافقة على اعتماد الطلب المرفق ليتسنى لنا استكمال الإجراءات الفنية اللازمة في أسرع وقت ممكن.</p>
+            <p class="closing">ولكم جزيل الشكر والتقدير،،</p>
+        </div>
+
+        <!-- التواقيع -->
+        <div class="signatures-section">
+            <div class="sig-box">
+                <p>مُعد المذكرة</p>
+                <div class="sig-line"></div>
+            </div>
+            <div class="sig-box">
+                <p>مشرف الورشة</p>
+                <div class="sig-line"></div>
+            </div>
+            <div class="sig-box">
+                <p>اعتماد الإدارة</p>
+                <div class="sig-line"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+    .doc-container {
+        max-width: 900px;
+        margin: 20px auto;
+        padding: 0 15px;
+        direction: rtl;
+        text-align: right;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .doc-actions {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+    .btn-print {
+        background: #1e3a8a;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .btn-back {
+        background: #64748b;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .official-paper {
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+    }
+    .paper-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #1e3a8a;
+        padding-bottom: 20px;
+        margin-bottom: 25px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    .company-brand h2 { margin: 0; color: #1e3a8a; font-size: 20px; }
+    .company-brand p { margin: 5px 0 0; color: #64748b; font-size: 13px; }
+    .doc-meta { font-size: 13px; color: #334155; }
+    .doc-title {
+        text-align: center;
+        color: #1e3a8a;
+        font-size: 20px;
+        margin: 20px 0 30px;
+        background: #f8fafc;
+        padding: 10px;
+        border-radius: 6px;
+    }
+    .info-table {
+        width: 100%;
+        margin-bottom: 30px;
+        border-collapse: collapse;
+    }
+    .info-table td {
+        padding: 10px 15px;
+        border: 1px solid #e2e8f0;
+        font-size: 14px;
+    }
+    .info-table td.label {
+        background: #f8fafc;
+        font-weight: bold;
+        width: 15%;
+        color: #475569;
+    }
+    .paper-body {
+        line-height: 2;
+        font-size: 15px;
+        color: #334155;
+        margin-bottom: 50px;
+    }
+    .paper-body .closing { margin-top: 30px; }
+    .signatures-section {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 40px;
+        text-align: center;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+    .sig-box {
+        flex: 1;
+        min-width: 200px;
+        font-weight: bold;
+        color: #334155;
+    }
+    .sig-line {
+        margin-top: 40px;
+        border-bottom: 1px dashed #94a3b8;
+        width: 80%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    @media (max-width: 768px) {
+        .official-paper { padding: 20px; }
+        .paper-header { flex-direction: column; text-align: center; }
+        .signatures-section { flex-direction: column; align-items: center; }
+    }
+
+    @media print {
+        .no-print { display: none !important; }
+        .official-paper { border: none; box-shadow: none; padding: 0; }
+    }
+</style>
+{% endblock %}

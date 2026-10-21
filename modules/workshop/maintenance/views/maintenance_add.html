@@ -53,17 +53,14 @@
                     </div>
                 </div>
 
-                <!-- 2. نوع الصيانة - تاريخ الأمر - درجة الخطورة -->
+                <!-- 2. نوع الصيانة - تاريخ الأمر - الأولوية -->
                 <div class="row mb-3">
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">نوع الصيانة (maintenance_type) <span class="text-danger">*</span></label>
                         <select name="maintenance_type" class="form-select" required>
-                            <option value="تصحيحية" selected>تصحيحية</option>
-                            <option value="وقائية">وقائية</option>
-                            <option value="طارئة">طارئة</option>
-                            <option value="دورية">دورية</option>
-                            <option value="تعديل">تعديل</option>
-                            <option value="أخرى">أخرى</option>
+                            {% for maintenance_type in reference_lists.maintenance_types %}
+                            <option value="{{ maintenance_type }}" {% if maintenance_type == 'تصحيحية' %}selected{% endif %}>{{ maintenance_type }}</option>
+                            {% endfor %}
                         </select>
                     </div>
 
@@ -73,12 +70,11 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">درجة الخطورة (severity)</label>
+                        <label class="form-label fw-semibold">الأولوية (severity)</label>
                         <select name="severity" class="form-select">
-                            <option value="منخفضة">منخفضة</option>
-                            <option value="متوسطة" selected>متوسطة</option>
-                            <option value="عالية">عالية</option>
-                            <option value="خطيرة">خطيرة</option>
+                            {% for severity in reference_lists.maintenance_severities %}
+                            <option value="{{ severity }}" {% if severity == 'متوسطة' %}selected{% endif %}>{{ severity }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>

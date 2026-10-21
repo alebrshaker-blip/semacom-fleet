@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نموذج إخلاء طرف عهدة المركبات والمعدات - SEMACOM</title>
+    <style>
+        /* نظام الخطوط والتنسيق العام - يعمل أوفلاين 100% */
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 'Traditional Arabic', 'Cairo', sans-serif;
+        }
+
+        body {
+            background-color: #e9ecef;
+            margin: 0;
+            padding: 20px 0;
+            direction: rtl;
+            color: #000000;
+        }
+
+        /* شريط التحكم الخارجي */
+        .action-bar {
+            width: 210mm;
+            margin: 0 auto 15px auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-action {
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-approve { background-color: #28a745; color: #ffffff; }
+        .btn-approve:hover { background-color: #218838; }
+        .btn-print { background-color: #1b365d; color: #ffffff; }
+        .btn-print:hover { background-color: #0f2341; }
+        .btn-back { background-color: #6c757d; color: #ffffff; }
+        .btn-back:hover { background-color: #5a6268; }
+        .btn-active-orientation { background-color: #1b365d; color: #ffffff; }
+        .btn-inactive-orientation { background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; }
+        .btn-inactive-orientation:hover { background-color: #cbd5e1; }
+
+        /* حاوية الورقة A4 الموحدة */
+        .page-container {
+            background: #ffffff;
+            margin: 0 auto;
+            border: 1px solid #dcdcdc;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* نمط A4 العمودي (Portrait) */
+        .page-container.portrait {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm 15mm;
+        }
+
+        /* نمط A4 الأفقي (Landscape) */
+        .page-container.landscape {
+            width: 297mm;
+            min-height: 210mm;
+            padding: 12mm 15mm;
+        }
+
+        .page-container + .page-container {
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px !important;
+            font-weight: 600;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #475569;
+            padding: 7px 8px;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        table th,
+        table thead td {
+            background: #dbe7f2 !important;
+            color: #17324f;
+            font-size: 13px !important;
+            font-weight: 800 !important;
+        }
+
+        table tbody tr:nth-child(even) td {
+            background: #f5f8fb;
+        }
+
+        /* --- 1. الترويسة الرسمية --- */
+        .official-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 6px;
+        }
+
+        .header-right-zone {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-logo-zone img {
+            max-width: 95px;
+            max-height: 80px;
+            object-fit: contain;
+        }
+
+        .header-company-info {
+            text-align: right;
+        }
+
+        .header-company-info .title-ar {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1b365d;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .header-company-info .sub-ar {
+            font-size: 11px;
+            font-weight: bold;
+            color: #222222;
+            margin: 3px 0;
+        }
+
+        .header-company-info .title-en {
+            font-size: 9px;
+            font-weight: bold;
+            color: #1b365d;
+            margin: 0;
+            direction: ltr;
+            text-align: right;
+            letter-spacing: 0.2px;
+        }
+
+        /* المربع الأيسر للـ QR Code */
+        .header-qr-zone {
+            width: 85px;
+            height: 85px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #cbd5e1;
+            border-radius: 4px;
+            background-color: #fafafa;
+        }
+
+        .header-qr-zone img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .header-double-line {
+            border-top: 3px solid #1b365d;
+            border-bottom: 1px solid #1b365d;
+            height: 3px;
+            margin: 6px 0 12px 0;
+        }
+
+        /* --- 2. شريط بيانات المستند --- */
+        .document-meta-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 18px;
+            padding: 0 4px;
+        }
+
+        .meta-right {
+            text-align: right;
+            color: #111827;
+        }
+
+        /* الرقم المرجعي الموحد باللون الأحمر العريض */
+        .meta-left.ref-number-red {
+            color: #dc3545 !important;
+            font-size: 14px;
+            font-weight: bold;
+            direction: ltr;
+            text-align: left;
+        }
+
+        .meta-left.ref-number-red .ref-label {
+            direction: rtl;
+            display: inline-block;
+            margin-right: 4px;
+            color: #111827;
+        }
+
+        /* --- 3. مربع عنوان التقرير --- */
+        .report-title-box {
+            border: 1px solid #000000;
+            border-radius: 8px 0 8px 0;
+            padding: 8px 15px;
+            text-align: center;
+            margin: 0 auto 20px auto;
+            width: 70%;
+            background-color: #ffffff;
+        }
+
+        .report-title-box h2 {
+            margin: 0;
+            font-size: 19px;
+            font-weight: bold;
+            color: #000000;
+        }
+
+        /* --- 4. محتوى التقرير الأساسي --- */
+        .report-content {
+            flex-grow: 1;
+        }
+
+        [contenteditable="true"] {
+            outline: none;
+            transition: background-color 0.2s;
+        }
+
+        [contenteditable="true"]:hover, 
+        [contenteditable="true"]:focus {
+            background-color: #fffde7;
+            box-shadow: inset 0 0 0 1px #fbc02d;
+            border-radius: 2px;
+        }
+
+        /* --- 5. التوقيعات والذيل الرسمي --- */
+        .official-footer {
+            margin-top: 25px;
+            padding-top: 10px;
+        }
+
+        .signatures-grid {
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .signature-box {
+            width: 30%;
+        }
+
+        .signature-space {
+            height: 45px;
+        }
+
+        /* --- 6. النوافذ المنبثقة للأوفلاين (Modals) --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal-box {
+            background: #ffffff;
+            padding: 24px 28px;
+            border-radius: 10px;
+            width: 420px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+            border-top: 6px solid #1b365d;
+            animation: modalFadeIn 0.2s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1b365d;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .modal-desc {
+            font-size: 13.5px;
+            color: #475569;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        /* تنسيق ثابت وتراكمي لعرض المستند في المتصفح وWeasyPrint */
+        body {
+            background-color: #f5f7fa;
+        }
+
+        .page-container {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .page-container + .page-container {
+            margin-top: 18px;
+        }
+
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+
+            html,
+            body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+            }
+
+            .action-bar,
+            .modal-overlay,
+            #approveModal,
+            #successApproveModal,
+            #existingReportModal,
+            #customModalOverlay {
+                display: none !important;
+                visibility: hidden !important;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .print-sheets {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .page-container {
+                margin: 0 !important;
+                border: 0 !important;
+                box-shadow: none !important;
+            }
+
+            .page-container.portrait:not(.handover-document-page) {
+                width: 210mm !important;
+                min-height: 297mm !important;
+            }
+
+            .page-container.landscape:not(.handover-document-page) {
+                width: 297mm !important;
+                min-height: 210mm !important;
+            }
+
+            .page-container + .page-container {
+                margin-top: 0 !important;
+                page-break-before: always;
+                break-before: page;
+            }
+        }
+    </style>
+    
+</head>
+<body class="portrait">
+
+    <!-- شريط الإجراءات العلوي -->
+    <div class="action-bar">
+        <a href="javascript:history.back()" class="btn-action btn-back">← العودة</a>
+
+        
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+            
+            <button id="btn_share_doc" type="button" onclick="shareApprovedReport()" class="btn-action btn-print"
+                    >
+                مشاركة التقرير
+            </button>
+            <button onclick="window.print()" class="btn-action btn-print">🖨️ طباعة المستند</button>
+        </div>
+    </div>
+
+    <div class="print-sheets">
+    
+<div class="page-container portrait clearance-page">
+    
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                 <img src="/static/logo.jpg"
+                     alt="شعار الشركة">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000078.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ الإصدار: </span>
+            <span contenteditable="false">2026/10/20م</span>
+            
+        </div>
+
+        
+        
+        
+        <div class="meta-left ref-number-red document-reference" >
+            <span class="doc_ref_display" contenteditable="false">No.000078</span>
+        </div>
+    </div>
+</div>
+    
+
+    <form id="clearanceForm" method="post" class="clearance-sheet">
+        <input type="hidden" name="clearance_id" value="2">
+        <header class="clearance-title">
+            <h1>نموذج إخلاء طرف عهدة المركبات والمعدات</h1>
+        </header>
+
+        <section class="clearance-section">
+            <h2>بيانات الشخص</h2>
+            <div class="person-grid">
+                <label class="form-field"><strong>الاسم</strong>
+    <span class="field-value">سشؤ</span>
+    
+</label>
+                <label class="form-field"><strong>الوظيفة (سائق / موظف / عامل)</strong>
+                    <span class="field-value">سائق</span>
+                    
+                </label>
+                <label class="form-field"><strong>رقم الهوية / الإقامة</strong>
+    <span class="field-value">سشبب</span>
+    
+</label>
+                <label class="form-field"><strong>القسم</strong>
+    <span class="field-value">سشبسش</span>
+    
+</label>
+                <label class="form-field"><strong>تاريخ الإخلاء</strong>
+                    <span class="field-value">2026-10-20</span>
+                    
+                </label>
+            </div>
+        </section>
+
+        <section class="clearance-section">
+            <h2>المركبات والمعدات المعادة</h2>
+            <table class="clearance-table">
+                <thead><tr><th>نوع المركبة/المعدة</th><th>الرقم/الكود</th><th>الحالة عند الإعادة</th><th>ملاحظات</th></tr></thead>
+                <tbody>
+                    
+                    <tr>
+                        <td><span>سشبص</span></td><td><span>سشبسشب</span></td><td><span>سبش</span></td><td><span>سشب</span></td>
+                    </tr>
+                    <tr>
+                        <td><span>سشب</span></td><td><span>سشب</span></td><td><span>سشب</span></td><td><span>سشب</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="explanatory">يُثبت أعلاه ما تمت معاينته وإعادته، وتدوّن الملاحظات أو النواقص إن وجدت.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>الأدوات والمستلزمات</h2>
+            <table class="clearance-table">
+                <thead><tr><th>اسم الأداة</th><th>الكمية</th><th>الحالة</th><th>ملاحظات</th></tr></thead>
+                <tbody>
+                    
+                    <tr>
+                        <td><span>سشب</span></td><td><span>سشب</span></td><td><span>—</span></td><td><span>—</span></td>
+                    </tr>
+                    <tr>
+                        <td><span>سشب</span></td><td><span>سشب</span></td><td><span>—</span></td><td><span>—</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="explanatory">تسجل الأدوات والمستلزمات المسلّمة، مع بيان حالتها والكمية المعادة.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>الغرامات والمخالفات المرورية</h2>
+            <div class="compact-grid">
+                <label class="form-field"><strong>عدد المخالفات</strong>
+    <span class="field-value">التب</span>
+    
+</label><label class="form-field"><strong>قيمة المخالفات غير المسددة</strong>
+    <span class="field-value">لاتت</span>
+    
+</label>
+            </div>
+            <p class="declaration">أقر بصحة بيان المخالفات أعلاه، وأتحمل ما يترتب على المخالفات غير المسددة وفق الأنظمة والإجراءات المعتمدة.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>غرامات الحوادث</h2>
+            <div class="compact-grid">
+                <label class="form-field"><strong>عدد الحوادث</strong>
+    <span class="field-value">لات</span>
+    
+</label><label class="form-field"><strong>نسبة الخطأ</strong>
+    <span class="field-value">لات</span>
+    
+</label><label class="form-field"><strong>قيمة الإصلاحات غير المسددة</strong>
+    <span class="field-value">—</span>
+    
+</label>
+            </div>
+            <p class="declaration">أقر بصحة بيانات الحوادث والإصلاحات الموضحة أعلاه، وتسوى أي مبالغ مستحقة وفق الإجراءات المعتمدة.</p>
+        </section>
+
+        <section class="clearance-section">
+            <h2>التزامات أخرى</h2>
+            <div class="obligations-grid">
+                <label class="form-field"><strong>عهد مالية أو مستحقات</strong>
+    <span class="field-value">لات</span>
+    
+</label><label class="form-field"><strong>ملاحظات إدارية</strong>
+    <span class="field-value">تلا</span>
+    
+</label><label class="form-field"><strong>التزامات إضافية</strong>
+    <span class="field-value">تلا</span>
+    
+</label>
+            </div>
+        </section>
+
+        <section class="clearance-section final-declarations">
+            <h2>إقرار الشخص</h2>
+            <p class="declaration">أقر أنا الموقع أدناه بإعادة ما بعهدتي من مركبات ومعدات وأدوات، وبصحة البيانات الواردة في هذا النموذج، وأتعهد بتسوية أي التزامات موضحة أعلاه.</p>
+            <div class="signature-grid">
+                <label class="form-field"><strong>اسم المستلم</strong>
+    <span class="field-value">يسرليس</span>
+    
+</label><label class="form-field"><strong>التوقيع</strong>
+    <span class="field-value">يسبل</span>
+    
+</label><label class="form-field"><strong>التاريخ</strong>
+    <span class="field-value">يبسب</span>
+    
+</label>
+            </div>
+        </section>
+
+        <section class="clearance-section final-declarations">
+            <h2>اعتماد الإدارة</h2>
+            <div class="signature-grid">
+                <label class="form-field"><strong>اسم المسؤول</strong>
+    <span class="field-value">يسثبب</span>
+    
+</label><label class="form-field"><strong>الوظيفة</strong>
+    <span class="field-value">سبيشب</span>
+    
+</label><label class="form-field"><strong>التوقيع</strong>
+    <span class="field-value">بسشي</span>
+    
+</label><label class="form-field"><strong>التاريخ</strong>
+    <span class="field-value">بشسي</span>
+    
+</label>
+            </div>
+        </section>
+    </form>
+</div>
+
+<style>
+    .clearance-page { width: 210mm !important; min-height: 0 !important; height: auto !important; padding: 8mm 10mm !important; margin: 0 auto !important; color: #172033; background: #fff !important; font-family: Tahoma, Arial, sans-serif !important; font-size: 13px; line-height: 1.25; box-shadow: none !important; border: 0 !important; justify-content: flex-start !important; }
+    .clearance-sheet { width: 100%; color: #172033; font-family: Tahoma, Arial, sans-serif; }
+    .clearance-title { position: relative; margin: 0 0 7px; padding: 0 0 5px; border-bottom: 2px solid #1b365d; text-align: center; }
+    .clearance-title h1 { margin: 0; color: #1b365d; font-size: 19px; font-weight: 700; }
+    .clearance-section { margin: 0 0 5px; break-inside: avoid; page-break-inside: avoid; }
+    .clearance-section h2 { margin: 0 0 3px; padding: 2px 5px; border: 1px solid #1b365d; color: #17324f; background: #e7edf4 !important; font-size: 14px; line-height: 1.2; }
+    .person-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px 8px; }
+    .form-field { display: flex; align-items: baseline; gap: 4px; min-width: 0; min-height: 20px; }
+    .form-field strong { flex: 0 0 auto; font-size: 13px; }
+    .form-field input, .form-field select { width: 100%; min-width: 0; height: 20px; padding: 0 2px; border: 0; border-bottom: 1px solid #64748b; border-radius: 0; background: #fff; color: #172033; font: inherit; font-size: 13px; }
+    .field-value { min-width: 0; flex: 1; min-height: 17px; border-bottom: 1px solid #64748b; overflow-wrap: anywhere; }
+    .clearance-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px !important; }
+    .clearance-table th, .clearance-table td { height: 22px; padding: 2px 4px; border: 1px solid #475569; color: #172033; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+    .clearance-table th { background: #dbe7f2 !important; color: #17324f !important; font-size: 13px !important; font-weight: 700 !important; }
+    .clearance-table tbody tr:nth-child(even) td { background: #f5f8fb !important; }
+    .clearance-table input { width: 100%; min-width: 0; height: 18px; padding: 0 2px; border: 0; background: transparent; color: #172033; text-align: center; font: inherit; font-size: 13px; }
+    .explanatory, .declaration { margin: 3px 0 0; color: #334155; font-size: 13px; }
+    .compact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .obligations-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .signature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px 8px; }
+    .final-declarations .signature-grid { grid-template-columns: repeat(4, 1fr); }
+    .form-actions { display: flex; align-items: center; gap: 10px; margin: 0 auto 8px; width: 210mm; }
+    .form-actions a, .form-actions button { padding: 6px 10px; border: 1px solid #1b365d; border-radius: 3px; background: #fff; color: #1b365d; text-decoration: none; font: inherit; cursor: pointer; }
+    .form-actions span { color: #333; font-size: 11px; }
+    @media print {
+        @page { size: A4 portrait; margin: 2cm; }
+        html, body { background: #fff !important; font-family: Tahoma, Arial, sans-serif !important; }
+        .page-container.portrait.clearance-page { width: 100% !important; height: 257mm !important; min-height: 257mm !important; padding: 0 !important; margin: 0 !important; }
+        .clearance-sheet { width: 100%; height: 100%; }
+        .clearance-page, .clearance-page * { box-shadow: none !important; }
+        .clearance-section, .clearance-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .form-actions, .action-bar, .modal-overlay { display: none !important; }
+        .clearance-section h2 { background: #e7edf4 !important; }
+        .clearance-table th { background: #dbe7f2 !important; }
+        .clearance-table tbody tr:nth-child(even) td { background: #f5f8fb !important; }
+    }
+</style>
+
+    </div>
+
+    <!-- 1. نافذة التأكيد قبل الاعتماد (Modal 1) -->
+    <div id="approveModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                🛡️ تأكيد اعتماد الوثيقة
+            </div>
+            <div class="modal-desc">
+                هل أنت متأكد من اعتماد هذه الوثيقة؟<br>
+                سيتم توليد الرقم المرجعي المتسلسل الرسمي والـ QR Code الخاص بها، ولا يمكن التراجع بعد إتمام الاعتماد.
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-approve" onclick="confirmApproval()">نعم، اعتمد الوثيقة</button>
+                <button type="button" class="btn-action btn-back" onclick="hideApproveModal()">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. نافذة النجاح المنسقة والمستقلة بالكامل أوفلاين (Modal 2) -->
+    <div id="successApproveModal" class="modal-overlay">
+        <div class="modal-box" style="border-top-color: #28a745;">
+            <div style="font-size: 42px; line-height: 1; margin-bottom: 8px;">✅</div>
+            <div class="modal-title" style="color: #28a745;">تم اعتماد الوثيقة بنجاح!</div>
+            <div class="modal-desc">
+                تم تسجيل الوثيقة رسمياً في قاعدة البيانات.<br>
+                الرقم المرجعي المعتمد:
+                <div id="modal_ref_result" style="font-size: 22px; font-weight: bold; color: #dc3545; margin: 12px 0; background-color: #fff5f5; padding: 10px; border-radius: 6px; border: 1px dashed #feb2b2; direction: ltr; font-family: monospace;">
+                    No.000000
+                </div>
+                تم إنشاء رمز الـ QR المخصص وإضافته تلقائياً للترويسة.
+            </div>
+            <div class="modal-actions">
+                <a id="approvedReportLink" class="btn-action btn-print" target="_blank" rel="noopener"
+                   href="/reports/public/view/No.000078">
+                    عرض / طباعة التقرير المعتمد
+                </a>
+                <button type="button" class="btn-action btn-approve" onclick="closeSuccessModal()" style="width: 100%; justify-content: center; font-size: 15px; padding: 10px;">
+                    موافق
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="existingReportModal" class="modal-overlay" role="dialog" aria-modal="true"
+         aria-labelledby="existingReportTitle">
+        <div class="modal-box">
+            <div id="existingReportTitle" class="modal-title">التقرير موجود بالفعل</div>
+            <div class="modal-desc">تم اعتماد هذا التقرير مسبقاً ولا يمكن تعديله. يمكنك عرض النسخة المعتمدة.</div>
+            <div class="modal-actions">
+                <a id="existingReportPrintLink" class="btn-action btn-print" target="_blank" rel="noopener">
+                    طباعة التقرير المعتمد
+                </a>
+                <button type="button" class="btn-action btn-back" onclick="hideExistingReportModal()">
+                    إلغاء
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function changeOrientation(newOrientation) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('orientation', newOrientation);
+            window.location.href = url.toString();
+        }
+
+        function showApproveModal() {
+            document.getElementById('approveModal').style.display = 'flex';
+        }
+
+        function hideApproveModal() {
+            document.getElementById('approveModal').style.display = 'none';
+        }
+
+        function closeSuccessModal() {
+            document.getElementById('successApproveModal').style.display = 'none';
+        }
+
+        function hideExistingReportModal() {
+            document.getElementById('existingReportModal').style.display = 'none';
+        }
+
+        async function shareApprovedReport() {
+            const reportLink = document.getElementById('approvedReportLink');
+            if (!reportLink || !reportLink.href) {
+                alert('اعتمد التقرير أولاً قبل مشاركته.');
+                return;
+            }
+            try {
+                if (navigator.share) {
+                    await navigator.share({ title: document.title, url: reportLink.href });
+                } else {
+                    await navigator.clipboard.writeText(reportLink.href);
+                    alert('تم نسخ رابط التقرير المعتمد.');
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    alert('تعذرت مشاركة التقرير. يمكنك فتحه ونسخ رابطه يدوياً.');
+                }
+            }
+        }
+
+        function confirmApproval() {
+            hideApproveModal();
+            submitApproval('approve');
+        }
+
+        async function submitApproval(action) {
+            const approvalDocType = "custody_clearance";
+            const itemId = "2";
+            const approvalToken = "16e48876b3194b5ba403c0af0ed3acd2";
+            const formData = new FormData();
+            formData.append('doc_type', approvalDocType);
+            formData.append('item_id', itemId);
+            formData.append('approval_token', approvalToken);
+            formData.append('action', action);
+            document.querySelectorAll('input[type="file"][name]').forEach(input => {
+                if (input.files && input.files[0]) {
+                    formData.append(input.name, input.files[0]);
+                }
+            });
+
+            try {
+                const response = await fetch("/reports/approve", {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: formData
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 409 && data.already_finalized && data.final_url) {
+                    const printLink = document.getElementById('existingReportPrintLink');
+                    printLink.href = data.final_url;
+                    document.getElementById('existingReportModal').style.display = 'flex';
+                    return;
+                }
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `تعذر اعتماد التقرير (HTTP ${response.status}).`);
+                }
+
+                document.querySelectorAll('.doc_ref_display').forEach(el => {
+                    el.innerText = data.doc_number;
+                    const referenceContainer = el.closest('.document-reference');
+                    if (referenceContainer) referenceContainer.hidden = false;
+                });
+                document.querySelectorAll('.header-qr-zone').forEach(qrContainer => {
+                    qrContainer.innerHTML = `<img class="qr_img" src="${data.qr_code_url}" alt="QR Code">`;
+                });
+
+                const approveBtn = document.getElementById('btn_approve_doc');
+                if (approveBtn) approveBtn.style.display = 'none';
+                document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+                    el.setAttribute('contenteditable', 'false');
+                });
+                document.querySelectorAll('[data-photo-input]').forEach(input => {
+                    input.disabled = true;
+                });
+                document.querySelectorAll('.photo-picker').forEach(picker => {
+                    picker.hidden = true;
+                });
+
+                const approvedReportLink = document.getElementById('approvedReportLink');
+                if (approvedReportLink && data.public_url) {
+                    approvedReportLink.href = data.public_url;
+                    approvedReportLink.hidden = false;
+                }
+                const shareBtn = document.getElementById('btn_share_doc');
+                if (shareBtn) shareBtn.hidden = false;
+                document.getElementById('modal_ref_result').innerText = data.doc_number;
+                document.getElementById('successApproveModal').style.display = 'flex';
+
+                if (approvalDocType === 'handover_document') {
+                    const listWindow = window.opener && !window.opener.closed
+                        ? window.opener
+                        : window;
+                    window.setTimeout(() => listWindow.location.reload(), 800);
+                }
+                if (data.final_url) {
+                    const approvedReportLink = document.getElementById('approvedReportLink');
+                    if (approvedReportLink) approvedReportLink.href = data.final_url;
+                }
+            } catch (error) {
+                console.error('Report approval failed:', error);
+                alert(error.message || 'حدث خطأ أثناء اعتماد التقرير.');
+            }
+        }
+    </script>
+    
+</body>
+</html>

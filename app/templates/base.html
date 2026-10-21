@@ -311,6 +311,14 @@
           {% endif %}
         {% endwith %}
 
+        {% if request.path.startswith('/workshop/') and request.path.rstrip('/') != '/workshop' %}
+         <div style="margin-bottom: 16px;">
+           <a href="{{ url_for('workshop.index') }}" class="btn btn-secondary" style="display: inline-block; padding: 8px 14px; border-radius: 6px; background: #6c757d; color: white; text-decoration: none; font-weight: 600;">
+             العودة إلى صفحة الورشة
+           </a>
+         </div>
+        {% endif %}
+
         {% block content %}
         {% endblock %}
     </main>

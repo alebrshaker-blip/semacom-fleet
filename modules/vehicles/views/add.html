@@ -26,6 +26,9 @@
         .form-label { display: block; margin-bottom: 6px; font-weight: bold; color: #2c3e50; font-size: 14px; }
         .form-control, .form-select { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #ced4da; border-radius: 4px; }
         .form-control:focus, .form-select:focus { outline: none; border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
+        .unique-feedback { display: block; margin-top: 5px; color: #b02a37; font-size: 13px; font-weight: 700; }
+        .unique-feedback[hidden] { display: none; }
+        .form-control.unique-invalid { border-color: #dc3545; }
         
         /* قسم الحقول الإضافية */
         .custom-fields-section {
@@ -82,12 +85,14 @@
                     <div class="form-grid">
                         <div class="mb-3">
                             <label for="vehicle_code" class="form-label">كود المركبة <span style="color:red">*</span></label>
-                            <input type="text" class="form-control" id="vehicle_code" name="vehicle_code" value="{{ form_data.get('vehicle_code', '') if form_data else '' }}" required>
+                            <input type="text" class="form-control" id="vehicle_code" name="vehicle_code" value="{{ form_data.get('vehicle_code', '') if form_data else '' }}" data-unique-check="{{ url_for('vehicles.check_vehicle_unique') }}" data-unique-field="vehicle_code" data-unique-feedback="vehicleCodeFeedback" autocomplete="off" required>
+                            <small id="vehicleCodeFeedback" class="unique-feedback" aria-live="polite" hidden></small>
                         </div>
 
                         <div class="mb-3">
                             <label for="plate_number" class="form-label">رقم اللوحة <span style="color:red">*</span></label>
-                            <input type="text" class="form-control" id="plate_number" name="plate_number" value="{{ form_data.get('plate_number', '') if form_data else '' }}" required>
+                            <input type="text" class="form-control" id="plate_number" name="plate_number" value="{{ form_data.get('plate_number', '') if form_data else '' }}" data-unique-check="{{ url_for('vehicles.check_vehicle_unique') }}" data-unique-field="plate_number" data-unique-feedback="plateNumberFeedback" autocomplete="off" required>
+                            <small id="plateNumberFeedback" class="unique-feedback" aria-live="polite" hidden></small>
                         </div>
 
                         <div class="mb-3">
@@ -129,7 +134,7 @@
                             <label for="ownership" class="form-label">الملكية <span style="color:red">*</span></label>
                             <select class="form-select" id="ownership" name="ownership" required>
                                 <option value="">-- اختر الملكية --</option>
-                                {% for owner in ['شركة سيماكم', 'شركة الذئب العربي', 'شركة نبض', 'شركة تالا', 'اجار', 'جهة خارجية'] %}
+                                {% for owner in reference_lists.vehicle_ownership %}
                                     <option value="{{ owner }}" {% if form_data and form_data.get('ownership') == owner %}selected{% endif %}>{{ owner }}</option>
                                 {% endfor %}
                             </select>
@@ -192,5 +197,6 @@
             container.appendChild(row);
         }
     </script>
+    <script src="{{ url_for('static', filename='js/unique_field_validator.js') }}"></script>
 </body>
 </html>

@@ -1,26 +1,46 @@
+import io
 import json
 import os
 import re
-import sqlite3
+from core import database as dbapi
+from core import storage
+import smtplib
 import uuid
 from contextlib import closing
 from datetime import datetime
-from flask import Blueprint, current_app, render_template, request, jsonify, redirect, url_for, abort
+from flask import Blueprint, Response, current_app, render_template, request, jsonify, redirect, url_for, abort, session, send_file, flash
+from PIL import Image, ImageOps, UnidentifiedImageError
 from modules.reports.controllers.reports_controller import ReportsController
+from modules.reports.models.reports_model import ReportsModel
 from .services.reports_service import (
     generate_reference_number,
     generate_document_qr,
     init_report_counter_db,
-    DB_PATH,
+    render_report_pdf,
     QR_DIR,
     REPORTS_DIR
 )
-from core.database import Database
+from core.database import Database, SessionLocal, get_session
+from modules.workshop.maintenance.models.maintenance_orm import MaintenanceOrder
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from modules.reports import repository as reports_repository
 from modules.workshop.maintenance.controller.maintenance_controller import MaintenanceController
 from modules.workshop.maintenance.controller.maintenance_controller import TYPE_TITLES as MAINTENANCE_TYPE_TITLES
 from modules.workshop.maintenance.services.maintenance_services import MaintenanceService
-from modules.drivers.models.drivers_model import DB_PATH as DRIVER_DB_PATH
+from modules.handover.services.handover_service import get_db_connection
+from modules.settings.services.email_service import (
+    EmailConfigurationError,
+    get_email_setting,
+    get_public_base_url,
+    send_email,
+)
 from utils.expiry_status import get_expiry_status
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+ACCIDENT_UPLOADS_DIR = os.path.join(
+    PROJECT_ROOT, 'app', 'static', 'uploads', 'accidents'
+)
 
 # إنشاء راوتر الموديول (Blueprint)
 reports_bp = Blueprint(
@@ -30,6 +50,17 @@ reports_bp = Blueprint(
     url_prefix='/reports'
 )
 
+GENERAL_MEMO_FIELD_TITLES = {
+    'recipient': 'التوجيه',
+    'subject': 'الموضوع',
+    'salutation': 'التقديم',
+    'body': 'المتن',
+    'recommendations': 'التوصيات',
+    'requests': 'الطلبات',
+    'conclusion': 'الخاتمة',
+    'signature': 'التوقيع',
+}
+
 
 @reports_bp.app_context_processor
 def inject_report_approval_token():
@@ -37,6 +68,7 @@ def inject_report_approval_token():
 
 # استدعاء متحكم التقارير
 controller = ReportsController()
+reports_model = ReportsModel()
 
 DATA_REPORT_LABELS = {
     'employees': {
@@ -79,7 +111,16 @@ DATA_REPORT_LABELS = {
 
 def _data_report_columns(category, column_names):
     labels = DATA_REPORT_LABELS[category]
-    return [{'key': name, 'label': labels.get(name, name.replace('_', ' '))} for name in column_names]
+    hidden_columns = {
+        'id', 'record_id', 'serial_number', 'status', 'system_status'
+    }
+    hide_attachments = category in {'insurance', 'inspections', 'violations'}
+    return [
+        {'key': name, 'label': labels.get(name, name.replace('_', ' '))}
+        for name in column_names
+        if name not in hidden_columns
+        and not (hide_attachments and 'attachment' in name.lower())
+    ]
 
 
 def _data_report_context(category, params):
@@ -96,8 +137,8 @@ def _data_report_context(category, params):
     if report_type not in allowed_types[category]:
         raise ValueError('قيمة الفلتر غير صالحة')
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = dbapi.connect()
+    conn.row_factory = dbapi.Row
     try:
         if category == 'employees':
             table_columns = [row['name'] for row in conn.execute('PRAGMA table_info(team_members)')]
@@ -291,26 +332,273 @@ def _accident_report_title(params):
     return 'تقرير الحوادث المرورية'
 
 
-def _lookup_approved_report(item_id=None, doc_type='accidents_report', approval_token=None):
-    if not approval_token:
-        return None, None
-    conn = None
+def _accident_report_phase(accident):
+    status = str(accident.get('status') or '').strip().lower()
+    return 'closed' if status == 'closed' or accident.get('closed_at') else 'open'
+
+
+def _accident_single_report_title(accident):
+    phase_title = (
+        'بعد الإقفال والتسوية'
+        if _accident_report_phase(accident) == 'closed'
+        else 'قبل الإقفال والتسوية'
+    )
+    return f'تقرير حادث سير - {phase_title}'
+
+
+def _accident_report_identity(accident):
+    return json.dumps({
+        'accident_id': str(accident.get('id') or accident.get('accident_number') or ''),
+        'phase': _accident_report_phase(accident)
+    }, sort_keys=True)
+
+
+def _parse_accident_report_identity(item_id):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        row = conn.execute(
-            'SELECT doc_number FROM approved_documents '
-            'WHERE approval_token = ? AND doc_type = ? AND item_id = ?',
-            (approval_token, doc_type, str(item_id))
-        ).fetchone()
-        if row:
-            qr_filename = f"qr_{row[0].replace('.', '_').replace('-', '_')}.png"
-            return row[0], f"/static/uploads/qrcodes/{qr_filename}"
-    except sqlite3.Error:
-        pass
-    finally:
-        if conn is not None:
-            conn.close()
+        identity = json.loads(item_id)
+    except (TypeError, json.JSONDecodeError):
+        return str(item_id), None
+    if isinstance(identity, int) and not isinstance(identity, bool):
+        return str(identity), None
+    if (
+        not isinstance(identity, dict)
+        or not str(identity.get('accident_id', '')).strip()
+        or identity.get('phase') not in {'open', 'closed'}
+    ):
+        raise ValueError('هوية تقرير الحادث غير صالحة')
+    return str(identity['accident_id']), identity['phase']
+
+
+def _lookup_approved_report(item_id=None, doc_type='accidents_report', approval_token=None):
+    try:
+        init_report_counter_db()
+        doc_number, qr_path = reports_repository.lookup_approved_report(
+            item_id, doc_type, approval_token
+        )
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to look up a finalized report')
+        abort(500, description='تعذر التحقق من اعتماد التقرير')
+    if doc_number:
+        if not qr_path:
+            qr_filename = f"qr_{doc_number.replace('.', '_').replace('-', '_')}.png"
+            qr_path = f"/static/uploads/qrcodes/{qr_filename}"
+        return doc_number, qr_path
     return None, None
+
+def _redirect_to_finalized_report(item_id, doc_type):
+    doc_number, _ = _lookup_approved_report(item_id, doc_type)
+    if doc_number:
+        return redirect(url_for('reports.final_report', doc_number=doc_number))
+    return None
+
+
+def _finalized_document(doc_number):
+    init_report_counter_db()
+    try:
+        return reports_model.get_finalized_report_by_number(doc_number)
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to load finalized report %s', doc_number)
+        abort(500, description='تعذر تحميل بيانات التقرير النهائي')
+
+
+def _stored_accident_image(filename):
+    """Stored accident attachment as something an <img> can load, or None."""
+    if not filename:
+        return None
+    if storage.is_url(filename):
+        return filename
+    basename = os.path.basename(str(filename))
+    resolved = os.path.realpath(os.path.join(ACCIDENT_UPLOADS_DIR, basename))
+    try:
+        if os.path.commonpath((os.path.realpath(ACCIDENT_UPLOADS_DIR), resolved)) != os.path.realpath(ACCIDENT_UPLOADS_DIR):
+            return None
+    except ValueError:
+        return None
+    if not os.path.isfile(resolved):
+        return None
+    return url_for('static', filename=f"uploads/accidents/{basename}")
+
+
+def _discard_uploaded(urls):
+    storage.delete_files(*urls)
+
+
+def _save_accident_report_images(accident, uploaded_files, reference_number):
+    image_sources = {}
+    saved_paths = []
+    for field_name, database_key in (
+        ('accident_attachment', 'accident_attachment'),
+        ('accident_attachment_2', 'accident_attachment_2')
+    ):
+        uploaded = uploaded_files.get(field_name)
+        if not uploaded or not uploaded.filename:
+            saved_image = _stored_accident_image(accident.get(database_key))
+            if saved_image:
+                image_sources[field_name] = saved_image
+            continue
+
+        payload = uploaded.stream.read(12 * 1024 * 1024 + 1)
+        if len(payload) > 12 * 1024 * 1024:
+            _discard_uploaded(saved_paths)
+            raise ValueError('يجب ألا يتجاوز حجم كل صورة 12 ميغابايت')
+        try:
+            with Image.open(io.BytesIO(payload)) as image:
+                if image.width * image.height > 40_000_000:
+                    raise ValueError('حجم أبعاد الصورة يتجاوز الحد المسموح')
+                image.verify()
+            with Image.open(io.BytesIO(payload)) as image:
+                normalized_image = ImageOps.exif_transpose(image).convert('RGB')
+        except (
+            UnidentifiedImageError, OSError, ValueError,
+            Image.DecompressionBombError, Image.DecompressionBombWarning
+        ):
+            _discard_uploaded(saved_paths)
+            raise ValueError('الملف المختار ليس صورة صالحة أو يتجاوز الأبعاد المسموحة')
+
+        buffer = io.BytesIO()
+        try:
+            normalized_image.save(buffer, format='JPEG', quality=92, optimize=True)
+            image_url = storage.upload_bytes(
+                buffer.getvalue(),
+                'report_images',
+                f"report_image_{reference_number.replace('.', '_').replace('-', '_')}.jpg",
+                content_type='image/jpeg',
+            )
+        except (OSError, storage.StorageError):
+            _discard_uploaded(saved_paths)
+            current_app.logger.exception('Unable to save accident report image')
+            raise
+        finally:
+            normalized_image.close()
+
+        saved_paths.append(image_url)
+        image_sources[field_name] = image_url
+
+    return image_sources, saved_paths
+
+
+def _save_maintenance_report_photos(orders, uploaded_files):
+    allowed_formats = {
+        'JPEG': 'jpg',
+        'PNG': 'png',
+        'GIF': 'gif',
+        'WEBP': 'webp',
+        'BMP': 'bmp'
+    }
+    expected_uploads = {
+        f'maintenance_photo_{photo_slot}_{order["id"]}': (order, f'photo_{photo_slot}')
+        for order in orders
+        for photo_slot in ('before', 'after')
+    }
+    unexpected_uploads = [
+        field_name for field_name in uploaded_files
+        if field_name not in expected_uploads
+        and any(upload.filename for upload in uploaded_files.getlist(field_name))
+    ]
+    if unexpected_uploads:
+        raise ValueError('حقول صور تقرير الصيانة غير صالحة')
+
+    photo_updates = {}
+    saved_paths = []
+    try:
+        for upload_name, (order, field_name) in expected_uploads.items():
+            uploads = uploaded_files.getlist(upload_name)
+            if len(uploads) > 1:
+                raise ValueError('يمكن اختيار صورة واحدة لكل خانة')
+            if not uploads or not uploads[0].filename:
+                continue
+
+            upload = uploads[0]
+            payload = upload.stream.read(12 * 1024 * 1024 + 1)
+            if len(payload) > 12 * 1024 * 1024:
+                raise ValueError('يجب ألا يتجاوز حجم كل صورة 12 ميغابايت')
+            try:
+                with Image.open(io.BytesIO(payload)) as image:
+                    image_format = image.format
+                    image.verify()
+            except (
+                UnidentifiedImageError, OSError, ValueError,
+                Image.DecompressionBombError
+            ):
+                raise ValueError('الملف المختار ليس صورة صالحة')
+
+            extension = allowed_formats.get(image_format)
+            if not extension:
+                raise ValueError('صيغة الصورة غير مدعومة')
+
+            image_url = storage.upload_bytes(
+                payload, 'maintenance', extension=f'.{extension}',
+                content_type=f'image/{"jpeg" if extension == "jpg" else extension}',
+            )
+            saved_paths.append(image_url)
+            photo_updates.setdefault(order['id'], {})[field_name] = image_url
+    except Exception:
+        _discard_uploaded(saved_paths)
+        raise
+
+    return photo_updates, saved_paths
+
+
+def _saved_handover_document_response(handover, handover_id):
+    if handover['report_data']:
+        return Response(
+            re.sub(
+                r'\scontenteditable\s*=\s*(["\'])true\1',
+                ' contenteditable="false"',
+                handover['report_data'],
+                flags=re.IGNORECASE
+            ),
+            mimetype='text/html'
+        )
+
+    report_paths = [handover['report_file_path']]
+    try:
+        approved_path = reports_repository.latest_document_path('handover_document', handover_id)
+        if approved_path:
+            report_paths.append(approved_path)
+        if handover['document_number']:
+            generated_path = reports_repository.generated_report_path(
+                handover['document_number'], 'handover'
+            )
+            if generated_path:
+                report_paths.append(generated_path)
+    except SQLAlchemyError:
+        current_app.logger.exception(
+            'Unable to find the approved file for handover %s', handover_id
+        )
+        abort(500, description='تعذر استرجاع ملف التوثيق المعتمد')
+
+    report_root = os.path.realpath(REPORTS_DIR)
+    for report_path in report_paths:
+        if not report_path:
+            continue
+        candidates = [os.path.realpath(report_path)]
+        candidates.append(
+            os.path.realpath(os.path.join(report_root, os.path.basename(report_path)))
+        )
+        for resolved_path in candidates:
+            try:
+                is_saved_report = os.path.commonpath((report_root, resolved_path)) == report_root
+            except ValueError:
+                is_saved_report = False
+            if not is_saved_report or not os.path.isfile(resolved_path):
+                continue
+            try:
+                with open(resolved_path, encoding='utf-8') as report_file:
+                    report_html = report_file.read()
+            except (OSError, UnicodeError):
+                current_app.logger.exception(
+                    'Unable to read the approved report for handover %s', handover_id
+                )
+                continue
+            report_html = re.sub(
+                r'\scontenteditable\s*=\s*(["\'])true\1',
+                ' contenteditable="false"',
+                report_html,
+                flags=re.IGNORECASE
+            )
+            return Response(report_html, mimetype='text/html')
+    return None
 
 
 def _maintenance_filters(params):
@@ -341,7 +629,12 @@ def _maintenance_orders(filters=None, order_id=None):
 def _maintenance_report_title(orders, filters, order_id=None):
     if order_id is not None:
         order = orders[0] if orders else {}
-        return f"تقرير أمر صيانة {order.get('order_no') or order.get('id') or order_id}"
+        title = f"تقرير أمر صيانة {order.get('order_no') or order.get('id') or order_id}"
+        if order.get('status') == 'open':
+            return f"{title} (قبل التقفيل)"
+        if order.get('status') == 'closed':
+            return f"{title} (بعد التقفيل)"
+        return title
     type_title = MAINTENANCE_TYPE_TITLES.get(filters['type'], 'جميع أنواع الصيانة')
     status_title = {'open': 'المفتوحة', 'closed': 'المغلقة المؤرشفة', 'all': 'المفتوحة والمغلقة'}[filters['status']]
     title = f"تقرير {type_title} {status_title}"
@@ -350,10 +643,36 @@ def _maintenance_report_title(orders, filters, order_id=None):
     return title
 
 
-def _maintenance_approval_identity(filters, order_id=None):
+def _maintenance_approval_identity(filters, order_id=None, orders=None):
     if order_id is not None:
-        return 'maintenance_order', str(order_id)
+        order = orders[0] if orders else {}
+        return 'maintenance_order', json.dumps({
+            'order_id': order_id,
+            'status': order.get('status')
+        }, sort_keys=True, ensure_ascii=False)
     return 'maintenance_report', json.dumps(filters, sort_keys=True, ensure_ascii=False)
+
+
+def _is_repeatable_aggregate_report(doc_type, item_id):
+    if doc_type in {'accidents_report', 'maintenance_report'}:
+        return True
+    report_type = None
+    try:
+        identity = json.loads(item_id)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(identity, dict):
+        return False
+    if doc_type == 'drivers_report':
+        report_type = identity.get('report_type')
+    elif doc_type == 'vehicles_report':
+        report_type = identity.get('report_type')
+    elif doc_type == 'data_report':
+        params = identity.get('params')
+        report_type = params.get('report_type', 'all') if isinstance(params, dict) else None
+    elif doc_type == 'handover_report':
+        report_type = identity.get('report_type')
+    return report_type is not None and report_type != 'single'
 
 
 DRIVER_FIELD_LABELS = {
@@ -382,8 +701,8 @@ def _vehicle_report_filters(params):
 
 
 def _vehicle_report_options():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = dbapi.connect()
+    conn.row_factory = dbapi.Row
     try:
         columns = {row['name'] for row in conn.execute('PRAGMA table_info(vehicles)')}
         options = {}
@@ -404,12 +723,21 @@ def _vehicle_report_options():
 
 def _vehicle_report_data(filters=None, vehicle_id=None):
     filters = filters or _vehicle_report_filters({})
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = dbapi.connect()
+    conn.row_factory = dbapi.Row
     try:
         vehicles = [dict(row) for row in conn.execute(
             'SELECT * FROM vehicles ORDER BY vehicle_code, plate_number'
         ).fetchall()]
+        archive_table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vehicle_archive'"
+        ).fetchone() is not None
+        archived_vehicles = {
+            str(row['vehicle_id']): dict(row)
+            for row in conn.execute(
+                'SELECT * FROM vehicle_archive'
+            ).fetchall()
+        } if archive_table_exists else {}
         handover_table_exists = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'handovers'"
         ).fetchone() is not None
@@ -467,6 +795,22 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
             for key in filters if key != 'status'
         ):
             continue
+        archive = archived_vehicles.get(str(vehicle.get('id')))
+        if archive:
+            vehicle['status'] = 'خارج الخدمة'
+            vehicle['workshop_status'] = 'خارج الخدمة'
+            if filters.get('status') and filters['status'] != vehicle['status']:
+                continue
+            result.append({
+                'vehicle': vehicle,
+                'driver': None,
+                'is_assigned': False,
+                'is_archived': True,
+                'archive': archive,
+                'policies': [],
+                'inspections': [],
+            })
+            continue
 
         status = vehicle.get('status') or 'متاحة'
         active_handover = next(
@@ -509,6 +853,8 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
             'vehicle': vehicle,
             'driver': driver,
             'is_assigned': is_assigned,
+            'is_archived': False,
+            'archive': None,
             'policies': related_policies,
             'inspections': related_inspections
         })
@@ -516,28 +862,39 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
     vehicle_fields = [
         {'key': name, 'label': VEHICLE_FIELD_LABELS.get(name, name.replace('_', ' '))}
         for name in vehicle_columns
+        if name not in {'id', 'vehicle_id', 'chassis_number', 'vin'}
     ]
     inspection_fields = [
         {'key': name, 'label': INSPECTION_REPORT_LABELS.get(name, name.replace('_', ' '))}
         for name in inspection_columns
+        if name not in {'id', 'record_id', 'serial_number', 'status', 'system_status'}
+        and 'attachment' not in name.lower()
     ]
-    if 'status_type' not in inspection_columns:
+    if 'status_type' not in inspection_columns and not any(
+        field['key'] == 'status_type' for field in inspection_fields
+    ):
         inspection_fields.append({'key': 'status_type', 'label': 'حالة الفحص'})
     policy_fields = [
         {'key': name, 'label': DATA_REPORT_LABELS['insurance'].get(name, name.replace('_', ' '))}
         for name in policy_columns
+        if name not in {'id', 'record_id', 'serial_number', 'status', 'system_status'}
+        and 'attachment' not in name.lower()
     ]
-    if 'status_type' not in policy_columns:
+    if 'status_type' not in policy_columns and not any(
+        field['key'] == 'status_type' for field in policy_fields
+    ):
         policy_fields.append({'key': 'status_type', 'label': 'حالة التأمين'})
     driver_fields = [
         {'key': name, 'label': DRIVER_FIELD_LABELS.get(name, name.replace('_', ' '))}
         for name in driver_columns
     ]
-    title = (
-        f"بيانات المركبة {result[0]['vehicle'].get('vehicle_code') or ''} "
-        f"— رقم اللوحة {result[0]['vehicle'].get('plate_number') or ''}"
-        if vehicle_id is not None and result else 'تقرير المعدات والمركبات'
-    )
+    title = 'تقرير المعدات والمركبات'
+    if vehicle_id is not None and result:
+        title = (
+            f"تقرير مركبة مؤرشفة — رقم اللوحة {result[0]['vehicle'].get('plate_number') or ''}"
+            if result[0].get('is_archived')
+            else f"بيانات المركبة — رقم اللوحة {result[0]['vehicle'].get('plate_number') or ''}"
+        )
     return result, vehicle_fields, inspection_fields, policy_fields, driver_fields, title
 
 
@@ -594,8 +951,8 @@ def _handover_report_context(params, document=False):
         if date_from and date_to and date_from > date_to:
             raise ValueError('تاريخ بداية الفترة يجب أن يسبق تاريخ نهايتها')
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = dbapi.connect()
+    conn.row_factory = dbapi.Row
     try:
         table_exists = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'handovers'"
@@ -605,6 +962,25 @@ def _handover_report_context(params, document=False):
         rows = [dict(row) for row in conn.execute(
             'SELECT * FROM handovers ORDER BY handover_date DESC, id DESC'
         ).fetchall()]
+        vehicle_plates = {}
+        vehicles_table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vehicles'"
+        ).fetchone()
+        if vehicles_table_exists:
+            vehicle_rows = conn.execute(
+                'SELECT id, vehicle_code, plate_number FROM vehicles'
+            ).fetchall()
+            vehicle_plates = {
+                str(row['id']): row['plate_number'] for row in vehicle_rows
+            }
+            vehicle_plates_by_info = {}
+            for row in vehicle_rows:
+                vehicle_info = f"{row['vehicle_code'] or ''} - {row['plate_number'] or ''}".strip(' -')
+                for identifier in (vehicle_info, row['vehicle_code'], row['plate_number']):
+                    if identifier:
+                        vehicle_plates_by_info[str(identifier).strip()] = row['plate_number']
+        else:
+            vehicle_plates_by_info = {}
         columns_in_table = [
             row['name'] for row in conn.execute('PRAGMA table_info(handovers)')
         ]
@@ -614,6 +990,11 @@ def _handover_report_context(params, document=False):
     today = datetime.now().strftime('%Y-%m-%d')
     filtered_rows = []
     for record in rows:
+        record['vehicle_plate'] = (
+            vehicle_plates.get(str(record.get('vehicle_id') or ''))
+            or vehicle_plates_by_info.get(str(record.get('vehicle_info') or '').strip())
+            or '—'
+        )
         record_date = str(record.get('handover_date') or '').replace('T', ' ').strip()[:10]
         if report_type == 'single' and str(record.get('id')) != handover_id:
             continue
@@ -636,12 +1017,11 @@ def _handover_report_context(params, document=False):
             or (date_to and record_date > date_to)
         ):
             continue
-        if document and record.get('handover_type') != 'تسليم عهدة':
-            raise ValueError('وثيقة التوثيق متاحة لحركات تسليم العهدة فقط')
         filtered_rows.append(record)
 
     if report_type == 'single' or document:
-        title = 'وثيقة تسليم مركبة / معدة' if document else 'تقرير حركة استلام وتسليم محددة'
+        document_action = 'تسليم' if filtered_rows and filtered_rows[0].get('handover_type') == 'تسليم عهدة' else 'إرجاع'
+        title = f'وثيقة {document_action} مركبة / معدة' if document else 'تقرير حركة استلام وتسليم محددة'
     else:
         title_by_type = {
             'all': 'جميع حركات الاستلام والتسليم',
@@ -658,7 +1038,7 @@ def _handover_report_context(params, document=False):
 
 
 def _driver_report_fields():
-    conn = sqlite3.connect(DRIVER_DB_PATH)
+    conn = dbapi.connect()
     try:
         driver_columns = [row[1] for row in conn.execute('PRAGMA table_info(drivers)')]
         vehicle_columns = [row[1] for row in conn.execute('PRAGMA table_info(vehicles)')]
@@ -677,9 +1057,9 @@ def _driver_report_data(report_type, requested_fields=None, driver_id=None):
     if not selected:
         selected = driver_fields + (vehicle_fields if report_type == 'assigned' else [])
 
-    conn = sqlite3.connect(DRIVER_DB_PATH)
+    conn = dbapi.connect()
     try:
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = dbapi.Row
         has_handovers = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'handovers'"
         ).fetchone() is not None
@@ -752,6 +1132,11 @@ def index():
 def preview(template_key):
     """شاشة معاينة وطباعة التقرير بناءً على البيانات والقالب المختار"""
     params = request.args.to_dict() if request.method == 'GET' else request.form.to_dict()
+    candidate_id = params.get('id') or params.get('accident_id')
+    if candidate_id:
+        final_redirect = _redirect_to_finalized_report(candidate_id, template_key)
+        if final_redirect:
+            return final_redirect
     report_data = controller.generate_report_context(template_key, params)
     
     # ضمان وجود متغير الاتجاه
@@ -804,7 +1189,12 @@ def drivers_reports():
         {'report_type': report_type, 'fields': [column['key'] for column in columns]},
         sort_keys=True, ensure_ascii=False
     )
-    document_number, qr_code_url = _lookup_approved_report(item_id, doc_type)
+    if _is_repeatable_aggregate_report(doc_type, item_id):
+        document_number, qr_code_url = None, None
+    else:
+        document_number, qr_code_url = _lookup_approved_report(item_id, doc_type)
+    if document_number:
+        return redirect(url_for('reports.final_report', doc_number=document_number))
     titles = {
         'all': 'تقرير جميع السائقين',
         'assigned': 'تقرير السائقين المستلمين للمركبات',
@@ -840,8 +1230,8 @@ def vehicle_reports():
     filters = _vehicle_report_filters(request.args)
 
     if request.args.get('view') != 'print':
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = dbapi.connect()
+        conn.row_factory = dbapi.Row
         try:
             vehicles = [dict(row) for row in conn.execute(
                 'SELECT id, vehicle_code, plate_number FROM vehicles ORDER BY vehicle_code, plate_number'
@@ -867,7 +1257,12 @@ def vehicle_reports():
         'filters': filters
     }
     item_id = json.dumps(report_identity, sort_keys=True, ensure_ascii=False)
-    document_number, qr_code_url = _lookup_approved_report(item_id, 'vehicles_report')
+    if _is_repeatable_aggregate_report('vehicles_report', item_id):
+        document_number, qr_code_url = None, None
+    else:
+        document_number, qr_code_url = _lookup_approved_report(item_id, 'vehicles_report')
+    if document_number:
+        return redirect(url_for('reports.final_report', doc_number=document_number))
     return render_template(
         'vehicle_report_print.html',
         report_data=report_data,
@@ -896,12 +1291,18 @@ def update_vehicle_report_status(vehicle_id):
     if requested_status not in {'متاحة', 'تحت الصيانة'}:
         abort(400, description='حالة المركبة غير صالحة')
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = dbapi.connect()
+    conn.row_factory = dbapi.Row
     try:
         conn.execute('BEGIN IMMEDIATE')
         vehicle_row = conn.execute(
-            'SELECT * FROM vehicles WHERE id = ?', (vehicle_id,)
+            """SELECT * FROM vehicles WHERE id = ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM vehicle_archive
+                   WHERE vehicle_archive.vehicle_id = vehicles.id
+               )
+               AND COALESCE(status, '') != 'خارج الخدمة'""",
+            (vehicle_id,)
         ).fetchone()
         if not vehicle_row:
             abort(404, description='المركبة غير موجودة')
@@ -957,9 +1358,47 @@ def handover_reports():
         'date_to': request.args.get('date_to', '').strip(),
         'handover_id': request.args.get('handover_id', request.args.get('record_id', '')).strip()
     }
+    is_document = view == 'document'
+    handover_id = params['handover_id']
+    if is_document or params['report_type'] == 'single':
+        if handover_id.isdigit():
+            init_report_counter_db()
+            conn = get_db_connection()
+            try:
+                handover = conn.execute(
+                    """SELECT id, status, report_data, report_file_path, document_number,
+                              CASE WHEN is_certified = 1 OR EXISTS (
+                                  SELECT 1 FROM approved_documents
+                                  WHERE doc_type = 'handover_document'
+                                    AND item_id = CAST(handovers.id AS TEXT)
+                              ) THEN 1 ELSE 0 END AS is_certified
+                       FROM handovers WHERE id = ?""",
+                    (handover_id,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if not handover:
+                abort(404, description='حركة الاستلام والتسليم المطلوبة غير موجودة')
+            if handover['status'] == 'مؤرشف' and not handover['is_certified']:
+                abort(403, description='لا يمكن إنشاء تقرير جديد لحركة مؤرشفة غير موثقة')
+            if handover['is_certified']:
+                finalized_number, _ = _lookup_approved_report(
+                    handover_id, 'handover_document'
+                )
+                if finalized_number:
+                    return redirect(url_for(
+                        'reports.final_report', doc_number=finalized_number
+                    ))
+                saved_document = _saved_handover_document_response(handover, handover_id)
+                if saved_document:
+                    return saved_document
+                abort(410, description='رقم الحركة معتمد، لكن ملف التوثيق غير متاح')
+            if is_document and handover['status'] not in {'نشط', 'بانتظار التوثيق'}:
+                abort(403, description='لا يمكن توثيق حركة غير نشطة')
+
     if view not in {'print', 'document'}:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = dbapi.connect()
+        conn.row_factory = dbapi.Row
         try:
             options = [dict(row) for row in conn.execute(
                 'SELECT id, handover_type, vehicle_info, driver_info, handover_date '
@@ -969,10 +1408,9 @@ def handover_reports():
             conn.close()
         return render_template('handover_report_options.html', options=options)
 
-    is_document = view == 'document'
     try:
         records, columns, title = _handover_report_context(params, document=is_document)
-    except (ValueError, sqlite3.Error) as error:
+    except (ValueError, dbapi.Error) as error:
         abort(400, description=str(error))
     if not records:
         abort(404, description='لا توجد حركة استلام وتسليم مطابقة')
@@ -981,17 +1419,21 @@ def handover_reports():
     item_id = params['handover_id'] if is_document else json.dumps(
         params, sort_keys=True, ensure_ascii=False
     )
-    document_number, qr_code_url = _lookup_approved_report(item_id, doc_type)
+    if _is_repeatable_aggregate_report(doc_type, item_id):
+        document_number, qr_code_url = None, None
+    else:
+        document_number, qr_code_url = _lookup_approved_report(item_id, doc_type)
     return render_template(
         'handover_report_print.html',
         records=records,
         columns=columns,
-        report_title_text='وثيقة تسليم مركبة / معدة' if is_document else title,
+        report_title_text=title,
         report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
         report_date_hijri='1448/04/24',
         document_number=document_number or 'No.000000',
         qr_code_url=qr_code_url,
         hide_approve=bool(document_number),
+        is_certified=bool(document_number),
         approval_doc_type=doc_type,
         approval_item_id=item_id,
         orientation='portrait' if is_document else 'landscape',
@@ -1007,8 +1449,8 @@ def data_reports(report_key):
         return "<h3>نوع التقرير غير موجود.</h3>", 404
 
     if request.args.get('view') != 'print':
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = dbapi.connect()
+        conn.row_factory = dbapi.Row
         try:
             if report_key == 'employees':
                 options = [dict(row) for row in conn.execute(
@@ -1079,14 +1521,19 @@ def data_reports(report_key):
             raise ValueError('أدخل تاريخ بداية أو نهاية للفترة')
 
         rows, columns, title = _data_report_context(report_key, params)
-    except (ValueError, sqlite3.Error) as error:
+    except (ValueError, dbapi.Error) as error:
         abort(400, description=str(error))
 
     item_id = json.dumps(
         {'category': report_key, 'params': params},
         sort_keys=True, ensure_ascii=False
     )
-    document_number, qr_code_url = _lookup_approved_report(item_id, 'data_report')
+    if _is_repeatable_aggregate_report('data_report', item_id):
+        document_number, qr_code_url = None, None
+    else:
+        document_number, qr_code_url = _lookup_approved_report(item_id, 'data_report')
+    if document_number:
+        return redirect(url_for('reports.final_report', doc_number=document_number))
     return render_template(
         'data_report_print.html',
         rows=rows,
@@ -1124,8 +1571,13 @@ def maintenance_reports():
 
     filters = _maintenance_filters(request.args)
     orders = _maintenance_orders(filters, order_id)
-    doc_type, item_id = _maintenance_approval_identity(filters, order_id)
-    document_number, qr_code_url = _lookup_approved_report(item_id, doc_type)
+    doc_type, item_id = _maintenance_approval_identity(filters, order_id, orders)
+    if _is_repeatable_aggregate_report(doc_type, item_id):
+        document_number, qr_code_url = None, None
+    else:
+        document_number, qr_code_url = _lookup_approved_report(item_id, doc_type)
+    if document_number:
+        return redirect(url_for('reports.final_report', doc_number=document_number))
     return render_template(
         'maintenance_report_print.html',
         orders=orders,
@@ -1146,16 +1598,24 @@ def maintenance_reports():
 @reports_bp.route('/approve', methods=['POST'])
 def approve_document_api():
     """API اعتماد الوثيقة: توليد الرقم المرجعي المتسلسل No.000000 والـ QR Code وحفظهما"""
-    data = request.get_json(silent=True) or {}
+    data = (
+        request.form.to_dict()
+        if request.mimetype == 'multipart/form-data'
+        else request.get_json(silent=True) or {}
+    )
     if not isinstance(data, dict):
         return jsonify({'success': False, 'message': 'صيغة طلب الاعتماد غير صالحة'}), 400
     doc_type = data.get('doc_type', 'accident_single')
     item_id = str(data.get('item_id', '1'))
     approval_token = data.get('approval_token', '')
+    action = data.get('action', 'approve')
+    if action != 'approve':
+        return jsonify({'success': False, 'message': 'إجراء اعتماد التقرير غير صالح'}), 400
     valid_doc_types = {
         'accidents_report', 'accident_single', 'drivers_report', 'driver_single_report',
         'data_report', 'vehicles_report', 'handover_report', 'handover_document',
-        'maintenance_report', 'maintenance_order'
+        'maintenance_report', 'maintenance_order', 'workshop_memo', 'custody_clearance',
+        'general_memo'
     }
     if not isinstance(doc_type, str) or doc_type not in valid_doc_types:
         return jsonify({'success': False, 'message': 'نوع التقرير غير صالح للاعتماد'}), 400
@@ -1163,19 +1623,55 @@ def approve_document_api():
         return jsonify({'success': False, 'message': 'انتهت صلاحية معاينة التقرير؛ أعد فتحه ثم حاول مرة أخرى'}), 400
 
     init_report_counter_db()
+    if doc_type == 'handover_document':
+        if not item_id.isdigit():
+            return jsonify({'success': False, 'message': 'رقم حركة الاستلام والتسليم غير صالح'}), 400
+        try:
+            handover_conn = get_db_connection()
+            try:
+                handover = handover_conn.execute(
+                    """SELECT status, is_certified, document_number
+                       FROM handovers WHERE id = ?""",
+                    (item_id,)
+                ).fetchone()
+            finally:
+                handover_conn.close()
+        except dbapi.Error:
+            current_app.logger.exception('Unable to check handover certification')
+            return jsonify({'success': False, 'message': 'تعذر التحقق من حالة توثيق الحركة'}), 500
+        if not handover:
+            return jsonify({'success': False, 'message': 'حركة الاستلام والتسليم المطلوبة غير موجودة'}), 404
+        if handover['is_certified']:
+            existing_number = handover['document_number']
+            if not existing_number:
+                current_app.logger.error(
+                    'Certified handover %s is missing its document number', item_id
+                )
+                return jsonify({'success': False, 'message': 'بيانات التوثيق المعتمد غير مكتملة'}), 500
+            return jsonify({
+                'success': False,
+                'already_finalized': True,
+                'doc_number': existing_number,
+                'final_url': url_for(
+                    'reports.final_report', doc_number=existing_number, _external=True
+                ),
+                'message': 'تم اعتماد التقرير مسبقاً ولا يمكن تعديله.'
+            }), 409
+        if handover['status'] not in {'نشط', 'بانتظار التوثيق'}:
+            return jsonify({
+                'success': False,
+                'message': 'لا يمكن توثيق حركة مؤرشفة؛ يمكن عرض التوثيق السابق فقط'
+            }), 409
+
     try:
-        with closing(sqlite3.connect(DB_PATH)) as connection:
-            token_record = connection.execute(
-                'SELECT doc_number, doc_type, item_id FROM approved_documents WHERE approval_token = ?',
-                (approval_token,)
-            ).fetchone()
-    except sqlite3.Error:
+        token_record = reports_repository.get_by_token(approval_token)
+    except SQLAlchemyError:
         current_app.logger.exception('Unable to check the report approval token')
         return jsonify({'success': False, 'message': 'تعذر التحقق من حالة اعتماد التقرير'}), 500
-    if token_record and (token_record[1] != doc_type or str(token_record[2]) != item_id):
+    if token_record and (token_record['doc_type'] != doc_type or str(token_record['item_id']) != item_id):
         return jsonify({'success': False, 'message': 'معرّف الاعتماد مستخدم لمعاينة تقرير مختلفة'}), 409
     if token_record:
-        existing_number = token_record[0]
+        existing_number = token_record['doc_number']
         qr_filename = f"qr_{existing_number.replace('.', '_').replace('-', '_')}.png"
         return jsonify({
             'success': True,
@@ -1184,6 +1680,7 @@ def approve_document_api():
             'public_url': url_for(
                 'reports.public_view_document',
                 doc_number=existing_number,
+                token=approval_token,
                 _external=True
             )
         })
@@ -1191,10 +1688,13 @@ def approve_document_api():
     report_params = None
     report_data = None
     report_title = None
+    accident_record_id = None
+    accident_report_phase = None
     maintenance_filters = None
     maintenance_data = None
     maintenance_title = None
     maintenance_order_id = None
+    maintenance_order_status = None
     driver_report_type = None
     driver_report_data = None
     driver_report_columns = None
@@ -1217,22 +1717,45 @@ def approve_document_api():
     handover_report_params = None
     handover_report_title = None
     handover_is_document = False
+    handover_snapshot = None
+    workshop_memo = None
+    workshop_memo_items = None
+    workshop_memo_id = None
+    workshop_memo_approver = None
+    custody_clearance = None
+    custody_clearance_id = None
+    custody_clearance_approver = None
+    general_memo = None
+    general_memo_id = None
+    general_memo_approver = None
     if doc_type == 'accidents_report':
         try:
             report_params = json.loads(item_id)
         except (TypeError, json.JSONDecodeError):
             return jsonify({'success': False, 'message': 'بيانات فلاتر التقرير غير صالحة'}), 400
+        if not isinstance(report_params, dict):
+            return jsonify({'success': False, 'message': 'بيانات فلاتر التقرير غير صالحة'}), 400
+        report_format = report_params.get('report_format', 'illustrated')
+        if report_format not in {'normal', 'illustrated'}:
+            return jsonify({'success': False, 'message': 'تنسيق تقرير الحوادث غير صالح'}), 400
+        requested_orientation = report_params.get('orientation', 'portrait')
+        if requested_orientation not in {'portrait', 'landscape'}:
+            requested_orientation = 'portrait'
         report_params.update({'report_type': 'total', 'view': 'print'})
-        existing_number, existing_qr = _lookup_approved_report(item_id, doc_type, approval_token)
-        if existing_number:
-            return jsonify({'success': True, 'doc_number': existing_number, 'qr_code_url': existing_qr})
+        report_params['orientation'] = (
+            'landscape' if report_format == 'illustrated' else requested_orientation
+        )
         report_data = _fetch_accidents(report_params)
         report_title = _accident_report_title(report_params)
 
     if doc_type == 'accident_single':
+        try:
+            accident_record_id, accident_report_phase = _parse_accident_report_identity(item_id)
+        except ValueError as error:
+            return jsonify({'success': False, 'message': str(error)}), 400
         report_params = {
             'report_type': 'single',
-            'accident_id': item_id,
+            'accident_id': accident_record_id,
             'view': 'print',
             'orientation': 'landscape',
             'report_format': 'illustrated'
@@ -1240,7 +1763,15 @@ def approve_document_api():
         report_data = _fetch_accidents(report_params)
         if not report_data:
             return jsonify({'success': False, 'message': 'الحادث المطلوب غير موجود'}), 404
-        report_title = _accident_report_title(report_params)
+        current_phase = _accident_report_phase(report_data[0])
+        if accident_report_phase and accident_report_phase != current_phase:
+            return jsonify({
+                'success': False,
+                'message': 'تغيرت حالة الحادث منذ فتح المعاينة؛ أعد فتح التقرير قبل اعتماده'
+            }), 409
+        accident_report_phase = current_phase
+        item_id = _accident_report_identity(report_data[0])
+        report_title = _accident_single_report_title(report_data[0])
 
     if doc_type in ['drivers_report', 'driver_single_report']:
         if doc_type == 'driver_single_report':
@@ -1274,10 +1805,6 @@ def approve_document_api():
                 'unassigned': 'تقرير السائقين غير المستلمين للمركبات'
             }[driver_report_type]
         )
-        existing_number, existing_qr = _lookup_approved_report(item_id, doc_type, approval_token)
-        if existing_number:
-            return jsonify({'success': True, 'doc_number': existing_number, 'qr_code_url': existing_qr})
-
     if doc_type == 'data_report':
         try:
             identity = json.loads(item_id)
@@ -1288,14 +1815,10 @@ def approve_document_api():
             data_report_rows, data_report_columns, data_report_title = _data_report_context(
                 data_report_category, data_report_params
             )
-        except (KeyError, TypeError, json.JSONDecodeError, ValueError, sqlite3.Error):
+        except (KeyError, TypeError, json.JSONDecodeError, ValueError, dbapi.Error):
             return jsonify({'success': False, 'message': 'بيانات التقرير غير صالحة'}), 400
         if not data_report_rows:
             return jsonify({'success': False, 'message': 'لا توجد بيانات مطابقة لاعتماد التقرير'}), 404
-        existing_number, existing_qr = _lookup_approved_report(item_id, doc_type, approval_token)
-        if existing_number:
-            return jsonify({'success': True, 'doc_number': existing_number, 'qr_code_url': existing_qr})
-
     if doc_type == 'vehicles_report':
         try:
             vehicle_report_identity = json.loads(item_id)
@@ -1317,14 +1840,10 @@ def approve_document_api():
             ) = _vehicle_report_data(
                 vehicle_filters, vehicle_id if report_type == 'single' else None
             )
-        except (TypeError, json.JSONDecodeError, ValueError, sqlite3.Error):
+        except (TypeError, json.JSONDecodeError, ValueError, dbapi.Error):
             return jsonify({'success': False, 'message': 'بيانات تقرير المركبة غير صالحة'}), 400
         if not vehicle_report_data:
             return jsonify({'success': False, 'message': 'لا توجد مركبات مطابقة لاعتماد التقرير'}), 404
-        existing_number, existing_qr = _lookup_approved_report(item_id, doc_type, approval_token)
-        if existing_number:
-            return jsonify({'success': True, 'doc_number': existing_number, 'qr_code_url': existing_qr})
-
     if doc_type in {'handover_report', 'handover_document'}:
         handover_is_document = doc_type == 'handover_document'
         try:
@@ -1346,14 +1865,10 @@ def approve_document_api():
             handover_records, handover_columns, handover_report_title = _handover_report_context(
                 handover_report_params, document=handover_is_document
             )
-        except (TypeError, json.JSONDecodeError, ValueError, sqlite3.Error):
+        except (TypeError, json.JSONDecodeError, ValueError, dbapi.Error):
             return jsonify({'success': False, 'message': 'بيانات تقرير الاستلام والتسليم غير صالحة'}), 400
         if not handover_records:
             return jsonify({'success': False, 'message': 'لا توجد حركة مطابقة لاعتماد التقرير'}), 404
-        existing_number, existing_qr = _lookup_approved_report(item_id, doc_type, approval_token)
-        if existing_number:
-            return jsonify({'success': True, 'doc_number': existing_number, 'qr_code_url': existing_qr})
-
     if doc_type in ['maintenance_report', 'maintenance_order']:
         if doc_type == 'maintenance_report':
             try:
@@ -1363,28 +1878,207 @@ def approve_document_api():
             maintenance_data = _maintenance_orders(maintenance_filters)
         else:
             try:
-                maintenance_order_id = int(item_id)
-            except ValueError:
+                maintenance_identity = json.loads(item_id)
+                if not isinstance(maintenance_identity, dict):
+                    raise ValueError
+                maintenance_order_id = int(maintenance_identity.get('order_id'))
+                maintenance_order_status = maintenance_identity.get('status')
+                if maintenance_order_status not in {'open', 'closed'}:
+                    raise ValueError
+            except (TypeError, ValueError, json.JSONDecodeError):
                 return jsonify({'success': False, 'message': 'رقم أمر الصيانة غير صالح'}), 400
             maintenance_filters = _maintenance_filters({})
             maintenance_data = _maintenance_orders(maintenance_filters, maintenance_order_id)
+            if maintenance_data and maintenance_data[0].get('status') != maintenance_order_status:
+                return jsonify({
+                    'success': False,
+                    'message': 'تغيرت حالة أمر الصيانة منذ فتح المعاينة؛ أعد فتح التقرير قبل اعتماده'
+                }), 409
 
         if not maintenance_data:
             return jsonify({'success': False, 'message': 'لا يوجد أمر صيانة مطابق للاعتماد'}), 404
         maintenance_title = _maintenance_report_title(
             maintenance_data, maintenance_filters, maintenance_order_id
         )
-        existing_number, existing_qr = _lookup_approved_report(item_id, doc_type, approval_token)
-        if existing_number:
-            return jsonify({'success': True, 'doc_number': existing_number, 'qr_code_url': existing_qr})
-    
+    if doc_type == 'workshop_memo':
+        if not item_id.isdigit():
+            return jsonify({'success': False, 'message': 'رقم مذكرة الورشة غير صالح'}), 400
+        workshop_memo_id = int(item_id)
+        try:
+            with closing(dbapi.connect()) as connection:
+                connection.row_factory = dbapi.Row
+                memo_row = connection.execute(
+                    """SELECT m.*, u.full_name AS approver_name
+                       FROM workshop_memos m
+                       LEFT JOIN users u ON u.id = ?
+                       WHERE m.id = ?""",
+                    (session.get('user_id'), workshop_memo_id)
+                ).fetchone()
+            if not memo_row:
+                return jsonify({'success': False, 'message': 'مذكرة الورشة غير موجودة'}), 404
+            if memo_row['status'] != 'مسودة':
+                return jsonify({'success': False, 'message': 'المذكرة لم تعد مسودة قابلة للاعتماد'}), 409
+            workshop_memo = dict(memo_row)
+            workshop_memo_items = json.loads(workshop_memo.get('items_json') or '[]')
+            if not isinstance(workshop_memo_items, list) or not workshop_memo_items:
+                return jsonify({'success': False, 'message': 'لا تحتوي المذكرة على مواد صالحة للاعتماد'}), 400
+            workshop_memo_approver = (
+                workshop_memo.get('approver_name') or session.get('username') or 'غير محدد'
+            )
+            report_title = workshop_memo.get('subject') or 'مذكرة طلب مواد لزوم صيانة المعدات والمركبات'
+        except (dbapi.Error, TypeError, json.JSONDecodeError):
+            current_app.logger.exception('Unable to load workshop memo for approval')
+            return jsonify({'success': False, 'message': 'تعذر تحميل مذكرة الورشة للاعتماد'}), 500
+
+    if doc_type == 'custody_clearance':
+        if not item_id.isdigit():
+            return jsonify({'success': False, 'message': 'رقم نموذج إخلاء العهدة غير صالح'}), 400
+        custody_clearance_id = int(item_id)
+        try:
+            with closing(dbapi.connect()) as connection:
+                connection.row_factory = dbapi.Row
+                row = connection.execute(
+                    """SELECT c.*, u.full_name AS approver_name
+                       FROM custody_clearances c
+                       LEFT JOIN users u ON u.id = ?
+                       WHERE c.id = ?""",
+                    (session.get('user_id'), custody_clearance_id)
+                ).fetchone()
+            if not row:
+                return jsonify({'success': False, 'message': 'نموذج إخلاء العهدة غير موجود'}), 404
+            if row['status'] != 'مسودة':
+                return jsonify({'success': False, 'message': 'نموذج إخلاء العهدة لم يعد مسودة قابلة للاعتماد'}), 409
+            custody_clearance = dict(row)
+            custody_clearance['data'] = json.loads(custody_clearance.get('data_json') or '{}')
+            if not isinstance(custody_clearance['data'], dict):
+                return jsonify({'success': False, 'message': 'بيانات نموذج إخلاء العهدة غير صالحة'}), 400
+            required_fields = ('person_name', 'job_title', 'national_id', 'department', 'clearance_date')
+            if any(not custody_clearance['data'].get(field) for field in required_fields):
+                return jsonify({'success': False, 'message': 'أكمل بيانات الشخص الأساسية قبل اعتماد النموذج'}), 400
+            custody_clearance_approver = (
+                custody_clearance.get('approver_name') or session.get('username') or 'غير محدد'
+            )
+            report_title = 'نموذج إخلاء طرف عهدة المركبات والمعدات'
+        except (dbapi.Error, TypeError, json.JSONDecodeError):
+            current_app.logger.exception('Unable to load custody clearance for approval')
+            return jsonify({'success': False, 'message': 'تعذر تحميل نموذج إخلاء العهدة للاعتماد'}), 500
+
+    if doc_type == 'general_memo':
+        if not item_id.isdigit():
+            return jsonify({'success': False, 'message': 'رقم المذكرة غير صالح'}), 400
+        general_memo_id = int(item_id)
+        try:
+            with closing(dbapi.connect()) as connection:
+                connection.row_factory = dbapi.Row
+                row = connection.execute(
+                    """SELECT m.*, u.full_name AS approver_name
+                       FROM general_memos m
+                       LEFT JOIN users u ON u.id = ?
+                       WHERE m.id = ?""",
+                    (session.get('user_id'), general_memo_id)
+                ).fetchone()
+            if not row:
+                return jsonify({'success': False, 'message': 'المذكرة غير موجودة'}), 404
+            if row['status'] != 'مسودة':
+                return jsonify({'success': False, 'message': 'المذكرة لم تعد مسودة قابلة للاعتماد'}), 409
+            general_memo = dict(row)
+            general_memo['data'] = json.loads(general_memo.get('data_json') or '{}')
+            if not isinstance(general_memo['data'], dict):
+                return jsonify({'success': False, 'message': 'بيانات المذكرة غير صالحة'}), 400
+            memo_options = general_memo['data'].get('field_options', {})
+            required_fields = ('recipient', 'subject', 'body')
+            if any(
+                memo_options.get(field, {}).get('included', True)
+                and not general_memo['data'].get(field)
+                for field in required_fields
+            ):
+                return jsonify({'success': False, 'message': 'أكمل التوجيه والموضوع والمتن قبل اعتماد المذكرة'}), 400
+            general_memo_approver = (
+                general_memo.get('approver_name') or session.get('username') or 'غير محدد'
+            )
+            report_title = (
+                general_memo['data'].get('document_title') or 'مذكرة رسمية'
+            ) or 'مذكرة رسمية'
+        except (dbapi.Error, TypeError, json.JSONDecodeError):
+            current_app.logger.exception('Unable to load general memo for approval')
+            return jsonify({'success': False, 'message': 'تعذر تحميل المذكرة للاعتماد'}), 500
+
+    uploaded_files = request.files if request.mimetype == 'multipart/form-data' else {}
+    if uploaded_files and doc_type not in {
+        'accident_single', 'maintenance_report', 'maintenance_order'
+    }:
+        return jsonify({
+            'success': False,
+            'message': 'رفع الملفات غير متاح لنوع التقرير المحدد'
+        }), 400
+
+    maintenance_photo_updates = {}
+    maintenance_photo_paths = []
+    try:
+        if doc_type == 'accident_single':
+            legacy_item_id = accident_record_id if accident_report_phase == 'open' else None
+            existing_document = reports_repository.find_finalized(
+                doc_type, [item_id, legacy_item_id]
+            )
+        elif _is_repeatable_aggregate_report(doc_type, item_id):
+            existing_document = None
+        else:
+            existing_document = reports_repository.find_finalized(doc_type, [item_id])
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to check for an existing finalized report')
+        return jsonify({
+            'success': False,
+            'message': 'تعذر التحقق من وجود تقرير معتمد سابق'
+        }), 500
+
+    if existing_document:
+        existing_number = existing_document['doc_number']
+        return jsonify({
+            'success': False,
+            'already_finalized': True,
+            'doc_number': existing_number,
+            'final_url': url_for(
+                'reports.final_report', doc_number=existing_number, _external=True
+            ),
+            'message': 'تم اعتماد التقرير مسبقاً ولا يمكن تعديله.'
+        }), 409
+
+    if uploaded_files and doc_type in {'maintenance_report', 'maintenance_order'}:
+        try:
+            maintenance_photo_updates, maintenance_photo_paths = (
+                _save_maintenance_report_photos(maintenance_data, uploaded_files)
+            )
+        except ValueError as error:
+            return jsonify({'success': False, 'message': str(error)}), 400
+        except OSError:
+            current_app.logger.exception('Unable to save maintenance report photos')
+            return jsonify({
+                'success': False,
+                'message': 'تعذر حفظ صور تقرير الصيانة'
+            }), 500
+        for order in maintenance_data:
+            order.update(maintenance_photo_updates.get(order['id'], {}))
+
     # 1. توليد الرقم المرجعي الموحد والمتسلسل (مثل No.000001)
     doc_number = generate_reference_number()
     
-    # 2. توليد رمز الـ QR Code المخصص للوثيقة
-    qr_url = generate_document_qr(doc_number, doc_type, item_id)
-
     archived_report_path = None
+    final_pdf_path = None
+    accident_image_paths = []
+    accident_image_sources = {}
+    archive_suffix = uuid.uuid4().hex
+    if doc_type == 'accident_single':
+        try:
+            accident_image_sources, accident_image_paths = _save_accident_report_images(
+                report_data[0], uploaded_files, doc_number
+            )
+        except ValueError as error:
+            return jsonify({'success': False, 'message': str(error)}), 400
+    # QR always resolves to the immutable final-report page, never to preview.
+    qr_url = generate_document_qr(
+        doc_number, doc_type, item_id, access_token=approval_token
+    )
+
     if doc_type in {'accidents_report', 'accident_single'}:
         html = render_template(
             'accidents_print.html',
@@ -1398,12 +2092,19 @@ def approve_document_api():
             report_title_text=report_title,
             report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
             report_date_hijri='1448/04/24',
-            orientation=report_params.get('orientation', 'portrait'),
+            orientation=(
+                'landscape'
+                if report_params.get('report_format', 'illustrated') == 'illustrated'
+                else report_params.get('orientation', 'portrait')
+            ),
             report_format=report_params.get('report_format', 'illustrated'),
+            allow_orientation=report_params.get('report_format', 'illustrated') != 'illustrated',
             filter_type=report_params.get('filter_type', 'all'),
-            report_type='single' if doc_type == 'accident_single' else 'total'
+            report_type='single' if doc_type == 'accident_single' else 'total',
+            accident_image_sources=accident_image_sources,
+            is_finalized=True
         )
-        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
         archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
@@ -1421,12 +2122,16 @@ def approve_document_api():
             approval_item_id=item_id,
             allow_orientation=False,
             orientation='landscape',
+            is_certified=True,
+            is_finalized=True,
             type_titles=MAINTENANCE_TYPE_TITLES
         )
-        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
         archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
+        if handover_is_document:
+            handover_snapshot = html
     elif doc_type in ['drivers_report', 'driver_single_report']:
         html = render_template(
             'drivers_report_print.html',
@@ -1444,7 +2149,7 @@ def approve_document_api():
             allow_orientation=False,
             report_type=driver_report_type
         )
-        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
         archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
@@ -1465,7 +2170,7 @@ def approve_document_api():
             allow_orientation=False,
             report_key=data_report_category
         )
-        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
         archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
@@ -1490,7 +2195,7 @@ def approve_document_api():
             report_type=vehicle_report_identity['report_type'],
             filters=vehicle_report_identity.get('filters') or {}
         )
-        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
         archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
@@ -1499,7 +2204,7 @@ def approve_document_api():
             'handover_report_print.html',
             records=handover_records,
             columns=handover_columns,
-            report_title_text='وثيقة تسليم مركبة / معدة' if handover_is_document else handover_report_title,
+            report_title_text=handover_report_title,
             report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
             report_date_hijri='1448/04/24',
             document_number=doc_number,
@@ -1510,146 +2215,656 @@ def approve_document_api():
             orientation='portrait' if handover_is_document else 'landscape',
             allow_orientation=False,
             is_document=handover_is_document,
+            is_certified=handover_is_document,
             report_params=handover_report_params
         )
-        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+        archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
+        archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
+        with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
+            archive_file.write(html)
+    elif doc_type == 'workshop_memo':
+        workshop_memo.update({
+            'status': 'معتمدة',
+            'reference_number': doc_number,
+            'approved_by_name': workshop_memo_approver,
+            'approved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'items': workshop_memo_items,
+        })
+        html = render_template(
+            'workshop_request_form.html',
+            memo=workshop_memo,
+            items=workshop_memo_items,
+            is_finalized=True,
+            document_number=doc_number,
+            qr_code_url=qr_url,
+            report_title_text=report_title,
+            report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
+            report_date_hijri='',
+            hide_approve=True,
+            approval_doc_type=doc_type,
+            approval_item_id=item_id,
+            orientation='portrait',
+            allow_orientation=False,
+        )
+        archive_filename = (
+            f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
+        )
+        archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
+        with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
+            archive_file.write(html)
+    elif doc_type == 'custody_clearance':
+        html = render_template(
+            'custody_clearance_form.html',
+            clearance_data=custody_clearance['data'],
+            clearance_id=custody_clearance_id,
+            is_finalized=True,
+            document_number=doc_number,
+            qr_code_url=qr_url,
+            report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
+            report_date_hijri='',
+            show_hijri_date=False,
+            hide_approve=True,
+            approval_doc_type=doc_type,
+            approval_item_id=item_id,
+            orientation='portrait',
+            allow_orientation=False,
+        )
+        archive_filename = (
+            f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
+        )
+        archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
+        with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
+            archive_file.write(html)
+    elif doc_type == 'general_memo':
+        html = render_template(
+            'general_memo_form.html',
+            memo_data=general_memo['data'],
+            memo_id=general_memo_id,
+            is_finalized=True,
+            document_number=doc_number,
+            qr_code_url=qr_url,
+            suppress_reference_number=True,
+            report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
+            report_date_hijri='',
+            show_hijri_date=False,
+            hide_approve=True,
+            approval_doc_type=doc_type,
+            approval_item_id=item_id,
+            orientation='portrait',
+            allow_orientation=False,
+        )
+        archive_filename = (
+            f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
+        )
         archived_report_path = os.path.join(REPORTS_DIR, archive_filename)
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
     
-    # 3. تسجيل المستند المعتمد في قاعدة البيانات
-    conn = sqlite3.connect(DB_PATH)
+    html = re.sub(
+        r'\scontenteditable\s*=\s*(["\'])true\1',
+        ' contenteditable="false"',
+        html,
+        flags=re.IGNORECASE
+    )
+    if archived_report_path:
+        with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
+            archive_file.write(html)
+    if handover_snapshot is not None:
+        handover_snapshot = html
+
+    final_pdf_path = os.path.join(
+        REPORTS_DIR,
+        f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.pdf"
+    )
     try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO approved_documents
-                (doc_number, doc_type, item_id, file_path, approval_token)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (doc_number, doc_type, item_id, archived_report_path or qr_url, approval_token))
+        render_report_pdf(html, final_pdf_path, request.url_root)
+    except RuntimeError as error:
+        current_app.logger.exception('WeasyPrint runtime is not ready')
+        for generated_path in (
+            archived_report_path, final_pdf_path, *accident_image_paths,
+            os.path.join(QR_DIR, os.path.basename(qr_url)) if qr_url else None,
+            *maintenance_photo_paths
+        ):
+            if generated_path and storage.is_url(generated_path):
+                storage.delete_file(generated_path)
+            elif generated_path and os.path.isfile(generated_path):
+                os.remove(generated_path)
+        return jsonify({
+            'success': False,
+            'message': f'تعذر إنشاء PDF: {error}'
+        }), 503
+    except Exception:
+        current_app.logger.exception('Unable to render finalized report PDF')
+        for generated_path in (
+            archived_report_path, final_pdf_path, *accident_image_paths,
+            os.path.join(QR_DIR, os.path.basename(qr_url)) if qr_url else None,
+            *maintenance_photo_paths
+        ):
+            if generated_path and storage.is_url(generated_path):
+                storage.delete_file(generated_path)
+            elif generated_path and os.path.isfile(generated_path):
+                os.remove(generated_path)
+        return jsonify({
+            'success': False,
+            'message': 'تعذر إنشاء PDF للتقرير النهائي. تحقق من إعداد WeasyPrint والخطوط.'
+        }), 500
+
+    # 3. تسجيل المستند المعتمد في قاعدة البيانات
+    qr_file_path = os.path.join(QR_DIR, os.path.basename(qr_url))
+
+    def _discard_files(*paths):
+        for generated_path in paths:
+            if generated_path and storage.is_url(generated_path):
+                storage.delete_file(generated_path)
+            elif generated_path and os.path.exists(generated_path):
+                os.remove(generated_path)
+
+    now_text = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
+    db_session = SessionLocal()
+    try:
+        # serialises concurrent approvals of the same item (replaces BEGIN IMMEDIATE)
+        db_session.execute(
+            text('SELECT pg_advisory_xact_lock(hashtext(:key))'),
+            {'key': f'{doc_type}:{item_id}'}
+        )
+        if doc_type == 'accident_single':
+            current_accident = db_session.execute(
+                text('SELECT status, closed_at FROM accidents WHERE CAST(id AS TEXT) = :id'),
+                {'id': str(accident_record_id)}
+            ).first()
+            current_phase = (
+                'closed'
+                if current_accident and (
+                    str(current_accident[0] or '').strip().lower() == 'closed'
+                    or current_accident[1]
+                )
+                else 'open'
+            )
+            if not current_accident or current_phase != accident_report_phase:
+                db_session.rollback()
+                _discard_files(
+                    archived_report_path, final_pdf_path, *accident_image_paths,
+                    qr_file_path, *maintenance_photo_paths
+                )
+                return jsonify({
+                    'success': False,
+                    'message': 'تغيرت حالة الحادث أثناء تجهيز التقرير؛ أعد فتح التقرير قبل اعتماده'
+                }), 409
+
+        if doc_type in {'maintenance_report', 'maintenance_order'}:
+            for order in maintenance_data:
+                current_order = db_session.get(MaintenanceOrder, order['id'])
+                if not current_order or current_order.status != order.get('status'):
+                    db_session.rollback()
+                    _discard_files(
+                        archived_report_path, final_pdf_path, *accident_image_paths,
+                        qr_file_path, *maintenance_photo_paths
+                    )
+                    return jsonify({
+                        'success': False,
+                        'message': 'تغيرت حالة أمر الصيانة أثناء تجهيز التقرير؛ أعد فتح التقرير قبل اعتماده'
+                    }), 409
+
+        for maintenance_id, photos in maintenance_photo_updates.items():
+            order_row = db_session.get(MaintenanceOrder, maintenance_id)
+            if order_row is None:
+                raise RuntimeError(f'تعذر حفظ صور تقرير أمر الصيانة {maintenance_id}')
+            for field_name, value in photos.items():
+                if field_name not in {'photo_before', 'photo_after', 'other_attachments'}:
+                    raise RuntimeError(f'حقل صور غير مدعوم: {field_name}')
+                setattr(order_row, field_name, value)
+        db_session.flush()
+
+        if doc_type == 'accident_single':
+            legacy_item_id = accident_record_id if accident_report_phase == 'open' else None
+            current_finalized = reports_repository.find_finalized(
+                doc_type, [item_id, legacy_item_id], db_session
+            )
+        elif _is_repeatable_aggregate_report(doc_type, item_id):
+            current_finalized = None
+        else:
+            current_finalized = reports_repository.find_finalized(doc_type, [item_id], db_session)
+        current_number = current_finalized['doc_number'] if current_finalized else None
+        if current_number is not None:
+            db_session.rollback()
+            _discard_files(
+                archived_report_path, final_pdf_path, *accident_image_paths,
+                *maintenance_photo_paths
+            )
+            if current_number:
+                return jsonify({
+                    'success': False,
+                    'already_finalized': True,
+                    'doc_number': current_number,
+                    'final_url': url_for(
+                        'reports.final_report', doc_number=current_number, _external=True
+                    ),
+                    'message': 'تم اعتماد التقرير مسبقاً ولا يمكن تعديله.'
+                }), 409
+            return jsonify({
+                'success': False,
+                'message': 'تغيرت حالة اعتماد التقرير؛ أعد فتح المعاينة وحاول مرة أخرى'
+            }), 409
+
+        if doc_type == 'handover_document':
+            handover = db_session.execute(
+                text("""SELECT status, is_certified, document_number
+                        FROM handovers WHERE CAST(id AS TEXT) = :id"""),
+                {'id': str(item_id)}
+            ).first()
+            if not handover:
+                db_session.rollback()
+                return jsonify({'success': False, 'message': 'حركة الاستلام والتسليم المطلوبة غير موجودة'}), 404
+            if handover[1]:
+                db_session.rollback()
+                _discard_files(archived_report_path, qr_file_path, *maintenance_photo_paths)
+                existing_number = handover[2]
+                qr_filename = f"qr_{existing_number.replace('.', '_').replace('-', '_')}.png"
+                return jsonify({
+                    'success': True,
+                    'doc_number': existing_number,
+                    'qr_code_url': f"/static/uploads/qrcodes/{qr_filename}",
+                    'public_url': url_for(
+                        'reports.public_view_document', doc_number=existing_number, _external=True
+                    )
+                })
+            if handover[0] not in {'نشط', 'بانتظار التوثيق'}:
+                db_session.rollback()
+                return jsonify({
+                    'success': False,
+                    'message': 'لا يمكن توثيق حركة مؤرشفة؛ يمكن عرض التوثيق السابق فقط'
+                }), 409
+
+        memo_approvals = {
+            'workshop_memo': (
+                'workshop_memos', workshop_memo_id if doc_type == 'workshop_memo' else None,
+                workshop_memo_approver if doc_type == 'workshop_memo' else None,
+                'تعذر تثبيت اعتماد مذكرة الورشة'
+            ),
+            'custody_clearance': (
+                'custody_clearances', custody_clearance_id if doc_type == 'custody_clearance' else None,
+                custody_clearance_approver if doc_type == 'custody_clearance' else None,
+                'تعذر تثبيت اعتماد إخلاء العهدة'
+            ),
+            'general_memo': (
+                'general_memos', general_memo_id if doc_type == 'general_memo' else None,
+                general_memo_approver if doc_type == 'general_memo' else None,
+                'تعذر تثبيت اعتماد المذكرة'
+            ),
+        }
+        if doc_type in memo_approvals:
+            memo_table, memo_id, approver_name, failure_message = memo_approvals[doc_type]
+            # memo_table is one of the three literals above, never user input
+            result = db_session.execute(
+                text(f"""UPDATE {memo_table}
+                         SET status = 'معتمدة', reference_number = :ref,
+                             approved_by = :user_id, approved_by_name = :approver,
+                             approved_at = {now_text}, updated_at = {now_text}
+                         WHERE id = :id AND status = 'مسودة'"""),
+                {
+                    'ref': doc_number, 'user_id': session.get('user_id'),
+                    'approver': approver_name, 'id': memo_id,
+                }
+            )
+            if result.rowcount != 1:
+                raise RuntimeError(failure_message)
+
+        reports_repository.add_approved_document(
+            db_session, doc_number=doc_number, doc_type=doc_type, item_id=item_id,
+            file_path=archived_report_path or qr_url, approval_token=approval_token,
+            final_pdf_path=final_pdf_path, qr_code_path=qr_url
+        )
+
+        def _add_generated(module_name, report_type, title, template_key, parameters):
+            reports_repository.add_generated_report(
+                db_session, doc_number=doc_number, module_name=module_name,
+                report_type=report_type, title=title, template_key=template_key,
+                parameters=parameters, report_path=archived_report_path, qr_path=qr_file_path
+            )
 
         if doc_type in {'accidents_report', 'accident_single'}:
-            cursor.execute('''
-                INSERT INTO generated_reports
-                    (doc_uuid, doc_number, module_name, report_type, title, template_key,
-                     parameters_json, local_report_path, local_qr_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                str(uuid.uuid4()), doc_number, 'accidents', report_params.get('report_format', 'illustrated'),
-                report_title, 'accidents', json.dumps(report_params, ensure_ascii=False),
-                archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))
-            ))
+            _add_generated(
+                'accidents', report_params.get('report_format', 'illustrated'),
+                report_title, 'accidents', report_params
+            )
         elif doc_type in ['maintenance_report', 'maintenance_order']:
-            cursor.execute('''
-                INSERT INTO generated_reports
-                    (doc_uuid, doc_number, module_name, report_type, title, template_key,
-                     parameters_json, local_report_path, local_qr_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                str(uuid.uuid4()), doc_number, 'maintenance', doc_type,
-                maintenance_title, 'maintenance',
-                json.dumps(maintenance_filters if doc_type == 'maintenance_report' else {'order_id': maintenance_order_id}, ensure_ascii=False),
-                archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))
-            ))
+            _add_generated(
+                'maintenance', doc_type, maintenance_title, 'maintenance',
+                maintenance_filters if doc_type == 'maintenance_report' else {
+                    'order_id': maintenance_order_id,
+                    'status': maintenance_order_status
+                }
+            )
         elif doc_type in ['drivers_report', 'driver_single_report']:
-            cursor.execute('''
-                INSERT INTO generated_reports
-                    (doc_uuid, doc_number, module_name, report_type, title, template_key,
-                     parameters_json, local_report_path, local_qr_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                str(uuid.uuid4()), doc_number, 'drivers', doc_type,
-                driver_report_title, 'drivers',
-                json.dumps(driver_report_params, ensure_ascii=False),
-                archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))
-            ))
+            _add_generated('drivers', doc_type, driver_report_title, 'drivers', driver_report_params)
         elif doc_type == 'data_report':
-            cursor.execute('''
-                INSERT INTO generated_reports
-                    (doc_uuid, doc_number, module_name, report_type, title, template_key,
-                     parameters_json, local_report_path, local_qr_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                str(uuid.uuid4()), doc_number, data_report_category,
-                data_report_params.get('report_type', 'all'),
-                data_report_title, 'data_report',
-                json.dumps(data_report_params, ensure_ascii=False),
-                archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))
-            ))
+            _add_generated(
+                data_report_category, data_report_params.get('report_type', 'all'),
+                data_report_title, 'data_report', data_report_params
+            )
         elif doc_type == 'vehicles_report':
-            cursor.execute('''
-                INSERT INTO generated_reports
-                    (doc_uuid, doc_number, module_name, report_type, title, template_key,
-                     parameters_json, local_report_path, local_qr_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                str(uuid.uuid4()), doc_number, 'vehicles',
-                vehicle_report_identity['report_type'], vehicle_report_title,
-                'vehicles_report', json.dumps(vehicle_report_identity, ensure_ascii=False),
-                archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))
-            ))
+            _add_generated(
+                'vehicles', vehicle_report_identity['report_type'], vehicle_report_title,
+                'vehicles_report', vehicle_report_identity
+            )
         elif doc_type in {'handover_report', 'handover_document'}:
-            cursor.execute('''
-                INSERT INTO generated_reports
-                    (doc_uuid, doc_number, module_name, report_type, title, template_key,
-                     parameters_json, local_report_path, local_qr_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                str(uuid.uuid4()), doc_number, 'handover',
+            _add_generated(
+                'handover',
                 'documentation' if handover_is_document else handover_report_params['report_type'],
-                'وثيقة تسليم مركبة / معدة' if handover_is_document else handover_report_title,
-                'handover_report',
-                json.dumps(handover_report_params, ensure_ascii=False),
-                archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))
-            ))
-        
+                handover_report_title, 'handover_report', handover_report_params
+            )
+            if handover_is_document:
+                result = db_session.execute(
+                    text("""UPDATE handovers
+                            SET status = CASE WHEN status = 'بانتظار التوثيق' THEN 'مؤرشف' ELSE status END,
+                                is_certified = 1, certified_at = :certified_at, certified_by = :certified_by,
+                                document_number = :doc_number, report_data = :report_data,
+                                report_file_path = :report_path
+                            WHERE CAST(id AS TEXT) = :id AND status IN ('نشط', 'بانتظار التوثيق')
+                              AND is_certified = 0"""),
+                    {
+                        'certified_at': datetime.now().isoformat(timespec='seconds'),
+                        'certified_by': session.get('full_name') or session.get('username') or 'غير محدد',
+                        'doc_number': doc_number, 'report_data': handover_snapshot,
+                        'report_path': archived_report_path, 'id': str(item_id),
+                    }
+                )
+                if result.rowcount != 1:
+                    raise RuntimeError('تعذر تثبيت توثيق الحركة')
+        elif doc_type == 'workshop_memo':
+            _add_generated(
+                'workshop', 'workshop_memo', report_title, 'workshop_request_form',
+                {'memo_id': workshop_memo_id}
+            )
+        elif doc_type == 'custody_clearance':
+            _add_generated(
+                'custody', 'custody_clearance', report_title, 'custody_clearance_form',
+                {'clearance_id': custody_clearance_id, 'data': custody_clearance['data']}
+            )
+        elif doc_type == 'general_memo':
+            _add_generated(
+                'reports', 'general_memo', report_title, 'general_memo_form',
+                {'memo_id': general_memo_id, 'data': general_memo['data']}
+            )
+
+        reports_repository.finalize_generated_report(
+            db_session, doc_number, final_pdf_path, qr_url
+        )
+
         # ربط الرقم المرجعي بسجل الحوادث إذا كان نوع التقرير حادث سير
         if doc_type in ['accident_single', 'accidents']:
+            accident_item_id = str(accident_record_id if doc_type == 'accident_single' else item_id)
             try:
-                cursor.execute('UPDATE accidents SET document_number = ? WHERE id = ? OR accident_number = ?', (doc_number, item_id, item_id))
-            except Exception:
-                pass
-            
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        print(f"Error during document approval: {e}")
-        for generated_path in (archived_report_path, os.path.join(QR_DIR, os.path.basename(qr_url))):
-            if generated_path and os.path.exists(generated_path):
-                os.remove(generated_path)
+                with db_session.begin_nested():
+                    db_session.execute(
+                        text("""UPDATE accidents SET document_number = :doc_number
+                                WHERE CAST(id AS TEXT) = :ref OR accident_number = :ref"""),
+                        {'doc_number': doc_number, 'ref': accident_item_id}
+                    )
+            except SQLAlchemyError:
+                current_app.logger.warning('Unable to link report %s to accident %s', doc_number, accident_item_id)
+
+        db_session.commit()
+    except Exception:
+        db_session.rollback()
+        current_app.logger.exception('Unable to persist finalized report')
+        _discard_files(
+            archived_report_path, final_pdf_path, *accident_image_paths,
+            qr_file_path, *maintenance_photo_paths
+        )
         return jsonify({'success': False, 'message': 'تعذر حفظ التقرير المعتمد'}), 500
     finally:
-        conn.close()
-    
+        db_session.close()
+
     return jsonify({
         'success': True,
         'doc_number': doc_number,
         'qr_code_url': qr_url,
         'report_url': url_for(
             'static',
-            filename=f"uploads/reports/report_{doc_number.replace('.', '_').replace('-', '_')}.html"
+            filename=f"uploads/reports/{os.path.basename(archived_report_path)}"
         ),
         'public_url': url_for(
-            'reports.public_view_document', doc_number=doc_number, _external=True
+            'reports.public_view_document', doc_number=doc_number,
+            token=approval_token, _external=True
+        ),
+        'pdf_url': url_for(
+            'reports.public_view_pdf', doc_number=doc_number, token=approval_token
         ),
         'message': 'تم اعتماد الوثيقة وتوليد الرقم المرجعي والـ QR Code بنجاح'
     })
 
 
+def _ensure_final_pdf(document):
+    report_root = os.path.realpath(REPORTS_DIR)
+    pdf_path = document.get('final_pdf_path')
+    if pdf_path:
+        resolved_pdf = os.path.realpath(pdf_path)
+        try:
+            if os.path.commonpath((report_root, resolved_pdf)) == report_root and os.path.isfile(resolved_pdf):
+                return resolved_pdf
+        except ValueError:
+            pass
+
+    html_path = document.get('file_path')
+    if not html_path:
+        abort(404, description='ملف التقرير المعتمد غير متاح')
+    resolved_html = os.path.realpath(html_path)
+    try:
+        if os.path.commonpath((report_root, resolved_html)) != report_root:
+            abort(404, description='مسار التقرير غير صالح')
+    except ValueError:
+        abort(404, description='مسار التقرير غير صالح')
+    if not os.path.isfile(resolved_html):
+        abort(404, description='ملف التقرير المعتمد غير متاح')
+
+    try:
+        with open(resolved_html, encoding='utf-8') as report_file:
+            html = report_file.read()
+        generated_pdf = os.path.join(
+            REPORTS_DIR,
+            f"legacy_final_{document['doc_number'].replace('.', '_')}_{uuid.uuid4().hex}.pdf"
+        )
+        render_report_pdf(html, generated_pdf, request.url_root)
+        reports_repository.set_final_pdf(document['doc_number'], generated_pdf)
+        return generated_pdf
+    except RuntimeError as error:
+        current_app.logger.exception(
+            'WeasyPrint runtime is unavailable for legacy report %s',
+            document['doc_number']
+        )
+        abort(503, description=str(error))
+    except Exception:
+        current_app.logger.exception(
+            'Unable to create a PDF for legacy finalized report %s',
+            document['doc_number']
+        )
+        abort(500, description='تعذر تجهيز PDF للتقرير المعتمد')
+
+
+@reports_bp.route('/final/<doc_number>')
+def final_report(doc_number):
+    document = _finalized_document(doc_number)
+    if not document:
+        abort(404, description='التقرير النهائي غير موجود أو غير معتمد')
+    try:
+        pdf_path = _ensure_final_pdf(document)
+    except Exception:
+        current_app.logger.exception('Final PDF fallback activated for %s', doc_number)
+        return render_template(
+            'final_report.html',
+            document=document,
+            pdf_url=url_for('reports.final_report_pdf', doc_number=doc_number),
+            pdf_download_url=url_for(
+                'reports.final_report_pdf', doc_number=doc_number, download=1
+            ),
+            pdf_filename=f"{document.get('reference_number') or doc_number}.pdf",
+            email_reports_enabled=(
+                get_email_setting('email_reports_enabled', '1') == '1'
+                and get_email_setting('smtp_enabled', '0') == '1'
+            ),
+            fallback_mode=True,
+            fallback_message='تعذر توليد ملف PDF المباشر، تم توجيهك لصفحة التقرير القابلة للطباعة عبر المتصفح.',
+            auto_print=True
+        )
+    return render_template(
+        'final_report.html',
+        document=document,
+        pdf_url=url_for('reports.final_report_pdf', doc_number=doc_number),
+        pdf_download_url=url_for(
+            'reports.final_report_pdf', doc_number=doc_number, download=1
+        ),
+        pdf_filename=os.path.basename(pdf_path),
+        email_reports_enabled=(
+            get_email_setting('email_reports_enabled', '1') == '1'
+            and get_email_setting('smtp_enabled', '0') == '1'
+        ),
+    )
+
+
+@reports_bp.route('/final/<doc_number>/email', methods=['POST'])
+def email_final_report(doc_number):
+    if session.get('role') != 'admin':
+        return jsonify({'status': 'error', 'message': 'يجب تسجيل الدخول بصلاحية مدير لإرسال التقرير'}), 401
+    if (
+        get_email_setting('email_reports_enabled', '1') != '1'
+        or get_email_setting('smtp_enabled', '0') != '1'
+    ):
+        return jsonify({'status': 'error', 'message': 'إرسال التقارير متوقف من إعدادات البريد'}), 403
+
+    recipient = request.get_json(silent=True)
+    recipient = str(recipient.get('recipient', '')).strip() if isinstance(recipient, dict) else ''
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', recipient):
+        return jsonify({'status': 'error', 'message': 'أدخل عنوان بريد مستلماً صالحاً'}), 400
+
+    document = _finalized_document(doc_number)
+    if not document:
+        abort(404, description='التقرير النهائي غير موجود أو غير معتمد')
+    approval_token = document.get('approval_token')
+    if not approval_token:
+        return jsonify({'status': 'error', 'message': 'لا يتوفر رابط مشاركة آمن لهذا التقرير'}), 409
+
+    try:
+        report_url = get_public_base_url() + url_for(
+            'reports.public_view_document',
+            doc_number=doc_number,
+            token=approval_token,
+        )
+        reference_number = document.get('reference_number') or doc_number
+        send_email(
+            f'تقرير SEMACOM المعتمد - {reference_number}',
+            f'تمت مشاركة التقرير المعتمد رقم {reference_number} معك.\n\n'
+            f'عرض التقرير وتنزيل نسخة PDF:\n{report_url}',
+            recipient,
+        )
+    except EmailConfigurationError as error:
+        return jsonify({'status': 'error', 'message': str(error)}), 400
+    except smtplib.SMTPAuthenticationError:
+        current_app.logger.exception('SMTP authentication failed while emailing report %s', doc_number)
+        return jsonify({'status': 'error', 'message': 'فشل تسجيل الدخول إلى خادم البريد'}), 502
+    except (smtplib.SMTPException, TimeoutError, OSError, dbapi.Error):
+        current_app.logger.exception('Unable to email finalized report %s', doc_number)
+        return jsonify({'status': 'error', 'message': 'تعذر إرسال التقرير؛ تحقق من إعدادات البريد وحاول مجددًا'}), 502
+
+    return jsonify({'status': 'success', 'message': f'تم إرسال رابط التقرير إلى {recipient}'}), 200
+
+
+@reports_bp.route('/final/<doc_number>/pdf')
+def final_report_pdf(doc_number):
+    document = _finalized_document(doc_number)
+    if not document:
+        abort(404, description='التقرير النهائي غير موجود أو غير معتمد')
+
+    pdf_path = _ensure_final_pdf(document)
+    reference_number = document.get('reference_number') or doc_number
+    return send_file(
+        pdf_path,
+        mimetype='application/pdf',
+        as_attachment=request.args.get('download') == '1',
+        download_name=f'{reference_number}.pdf'
+    )
+
+
+def _valid_public_report_token(doc_number, access_token):
+    if not isinstance(access_token, str) or not re.fullmatch(r'[0-9a-f]{32}', access_token):
+        return False
+    try:
+        return reports_repository.token_is_valid(doc_number, access_token)
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to validate public report access')
+        abort(500, description='تعذر التحقق من رابط التقرير')
+
+
+@reports_bp.route('/public/view/<doc_number>/pdf')
+def public_view_pdf(doc_number):
+    document = _finalized_document(doc_number)
+    access_token = request.args.get('token', '')
+    if not document or not _valid_public_report_token(doc_number, access_token):
+        abort(404, description='التقرير النهائي غير موجود أو رابط المشاركة غير صالح')
+
+    pdf_path = _ensure_final_pdf(document)
+    reference_number = document.get('reference_number') or doc_number
+    return send_file(
+        pdf_path,
+        mimetype='application/pdf',
+        as_attachment=request.args.get('download') == '1',
+        download_name=f'{reference_number}.pdf'
+    )
+
+
 @reports_bp.route('/public/view/<doc_number>')
 def public_view_document(doc_number):
-    """المسار العام المفتوح للوصول للوثيقة عند مسح رمز الـ QR Code من الجوال"""
+    """Serve token-authorized QR links and preserve legacy report redirects."""
+    document = _finalized_document(doc_number)
+    if document:
+        access_token = request.args.get('token', '')
+        if access_token:
+            if not _valid_public_report_token(doc_number, access_token):
+                abort(404, description='التقرير النهائي غير موجود أو رابط المشاركة غير صالح')
+            pdf_url = url_for(
+                'reports.public_view_pdf', doc_number=doc_number, token=access_token
+            )
+            return render_template(
+                'final_report.html',
+                document=document,
+                pdf_url=pdf_url,
+                pdf_download_url=url_for(
+                    'reports.public_view_pdf', doc_number=doc_number,
+                    token=access_token, download=1
+                ),
+                pdf_filename=f"{document.get('reference_number') or doc_number}.pdf",
+                email_reports_enabled=(
+                    get_email_setting('email_reports_enabled', '1') == '1'
+                    and get_email_setting('smtp_enabled', '0') == '1'
+                ),
+                final_page_url=url_for(
+                    'reports.public_view_document', doc_number=doc_number,
+                    token=access_token, _external=True
+                )
+            )
+        return redirect(url_for('reports.final_report', doc_number=doc_number))
+
+    if request.args.get('token'):
+        abort(404, description='التقرير النهائي غير موجود أو رابط المشاركة غير صالح')
+
     try:
-        with closing(sqlite3.connect(DB_PATH)) as conn:
-            result = conn.execute(
-                'SELECT doc_type, item_id, file_path FROM approved_documents WHERE doc_number = ?',
-                (doc_number,)
-            ).fetchone()
-    except sqlite3.Error:
+        legacy_document = reports_repository.get_document(doc_number)
+        result = (
+            (legacy_document['doc_type'], legacy_document['item_id'], legacy_document['file_path'])
+            if legacy_document else None
+        )
+    except SQLAlchemyError:
         current_app.logger.exception('Unable to load an approved public report')
         return '<h3>تعذر تحميل التقرير المعتمد حالياً.</h3>', 500
     
     if result:
         doc_type, item_id, file_path = result
+        if doc_type == 'workshop_memo':
+            return redirect(url_for('reports.final_report', doc_number=doc_number))
+        if doc_type == 'handover_document' and str(item_id).isdigit():
+            return redirect(url_for(
+                'reports.handover_reports', view='document', handover_id=item_id
+            ))
         if file_path and os.path.isfile(file_path):
             try:
                 report_root = os.path.realpath(REPORTS_DIR)
@@ -1675,7 +2890,17 @@ def public_view_document(doc_number):
             except (TypeError, json.JSONDecodeError):
                 return "<h3>تعذر استعادة فلاتر تقرير الصيانة المعتمد.</h3>", 400
         if doc_type == 'maintenance_order':
-            return redirect(url_for('reports.maintenance_reports', view='print', order_id=item_id))
+            try:
+                identity = json.loads(item_id)
+                if isinstance(identity, dict):
+                    order_id = identity['order_id']
+                elif isinstance(identity, int):
+                    order_id = identity
+                else:
+                    raise ValueError
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                return "<h3>تعذر استعادة أمر الصيانة من التقرير المعتمد.</h3>", 400
+            return redirect(url_for('reports.maintenance_reports', view='print', order_id=order_id))
         if doc_type == 'driver_single_report':
             return redirect(url_for('reports.drivers_reports', report_type='single', driver_id=item_id))
         if doc_type == 'drivers_report':
@@ -1729,7 +2954,16 @@ def public_view_document(doc_number):
             except (TypeError, ValueError, json.JSONDecodeError):
                 return "<h3>تعذر استعادة خيارات تقرير الاستلام والتسليم المعتمد.</h3>", 400
         if doc_type in ['accident_single', 'accidents']:
-            return redirect(url_for('reports.accidents_reports', report_type='single', accident_id=item_id, orientation='landscape'))
+            try:
+                accident_id, _ = _parse_accident_report_identity(item_id)
+            except ValueError:
+                accident_id = item_id
+            return redirect(url_for(
+                'reports.accidents_reports',
+                report_type='single',
+                accident_id=accident_id,
+                orientation='landscape'
+            ))
         return redirect(url_for('reports.preview', template_key=doc_type, id=item_id))
     
     return "<h3>عذراً، هذه الوثيقة غير مسجلة أو لم يتم اعتمادها بعد.</h3>", 404
@@ -1750,16 +2984,9 @@ def _lookup_qr(doc_num):
     if not doc_num:
         return None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('SELECT file_path FROM approved_documents WHERE doc_number = ?', (doc_num,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            return row[0]
+        return reports_repository.file_path_for_number(doc_num)
     except Exception:
-        pass
-    return None
+        return None
 
 
 @reports_bp.route('/accidents', methods=['GET'])
@@ -1768,6 +2995,8 @@ def accidents_reports():
     report_type = request.args.get('report_type', 'total')  # 'total' أو 'single'
     filter_type = request.args.get('filter_type', 'all')
     report_format = request.args.get('report_format', 'illustrated')
+    if report_format not in {'normal', 'illustrated'}:
+        report_format = 'illustrated'
     view_mode = request.args.get('view', '').strip()
 
     selected_month = request.args.get('month')
@@ -1779,6 +3008,10 @@ def accidents_reports():
 
     default_orientation = 'portrait'
     orientation = request.args.get('orientation', default_orientation)
+    if orientation not in {'portrait', 'landscape'}:
+        orientation = default_orientation
+    if report_format == 'illustrated':
+        orientation = 'landscape'
 
     accidents_data = _fetch_accidents(request.args.to_dict())
 
@@ -1787,6 +3020,7 @@ def accidents_reports():
         'report_date_hijri': '1448/04/24',
         'orientation': orientation,
         'report_format': report_format,
+        'allow_orientation': report_format != 'illustrated',
         'filter_type': filter_type,
     }
 
@@ -1794,11 +3028,25 @@ def accidents_reports():
         single_accident = accidents_data[0] if accidents_data else {}
         is_filtered_report = report_type != 'single'
         report_item_id = json.dumps(request.args.to_dict(), sort_keys=True, ensure_ascii=False)
-        if is_filtered_report:
-            doc_num, qr_url = _lookup_approved_report(report_item_id)
+        approval_doc_type = 'accidents_report' if is_filtered_report else 'accident_single'
+        approval_item_id = (
+            report_item_id if is_filtered_report
+            else _accident_report_identity(single_accident) if single_accident else ''
+        )
+        if _is_repeatable_aggregate_report(approval_doc_type, approval_item_id):
+            doc_num, qr_url = None, None
         else:
-            doc_num = None
-            qr_url = None
+            doc_num, qr_url = _lookup_approved_report(approval_item_id, approval_doc_type)
+        if (
+            not doc_num and not is_filtered_report and single_accident
+            and _accident_report_phase(single_accident) == 'open'
+        ):
+            doc_num, qr_url = _lookup_approved_report(
+                str(single_accident.get('id') or single_accident.get('accident_number') or ''),
+                approval_doc_type
+            )
+        if doc_num:
+            return redirect(url_for('reports.final_report', doc_number=doc_num))
 
         return render_template(
             'accidents_print.html',
@@ -1807,9 +3055,14 @@ def accidents_reports():
             document_number=doc_num or 'No.000000',
             qr_code_url=qr_url,
             hide_approve=(not accidents_data or bool(doc_num)),
-            approval_doc_type='accidents_report' if is_filtered_report else 'accident_single',
-            approval_item_id=report_item_id if is_filtered_report else str(single_accident.get('id') or single_accident.get('accident_number') or '1'),
-            report_title_text=_accident_report_title(request.args),
+            approval_doc_type=approval_doc_type,
+            approval_item_id=approval_item_id,
+            report_title_text=(
+                _accident_report_title(request.args)
+                if is_filtered_report
+                else _accident_single_report_title(single_accident)
+            ),
+            report_type='single' if report_type == 'single' else 'total',
             **print_ctx
         )
 
@@ -1827,6 +3080,721 @@ def accidents_reports():
         **print_ctx
     )
 
+@reports_bp.route('/general-memo', methods=['GET', 'POST'])
+def general_memo_form():
+    connection = None
+    try:
+        init_report_counter_db()
+        connection = dbapi.connect()
+        connection.row_factory = dbapi.Row
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS general_memos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reference_number TEXT UNIQUE,
+                submission_key TEXT,
+                status TEXT NOT NULL DEFAULT 'مسودة',
+                data_json TEXT NOT NULL DEFAULT '{}',
+                created_by INTEGER NOT NULL,
+                created_by_name TEXT NOT NULL,
+                approved_by INTEGER,
+                approved_by_name TEXT,
+                approved_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+        memo_columns = {
+            row['name'] for row in connection.execute('PRAGMA table_info(general_memos)')
+        }
+        if 'submission_key' not in memo_columns:
+            connection.execute('ALTER TABLE general_memos ADD COLUMN submission_key TEXT')
+        connection.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_general_memos_submission_key
+               ON general_memos(submission_key) WHERE submission_key IS NOT NULL"""
+        )
+        connection.commit()
+
+        def decode_memo(row):
+            entry = dict(row)
+            try:
+                entry['data'] = json.loads(entry.pop('data_json') or '{}')
+            except (TypeError, json.JSONDecodeError):
+                current_app.logger.exception('Invalid general memo data for %s', entry.get('id'))
+                abort(500, description='تعذر تحميل بيانات المذكرة')
+            return entry
+
+        memo_id = request.args.get('id', type=int)
+        memo = None
+        if memo_id is not None:
+            row = connection.execute(
+                'SELECT * FROM general_memos WHERE id = ?', (memo_id,)
+            ).fetchone()
+            if row is None:
+                abort(404, description='المذكرة غير موجودة')
+            memo = decode_memo(row)
+            if memo['status'] == 'معتمدة':
+                finalized = reports_repository.find_finalized('general_memo', [memo_id])
+                if finalized:
+                    return redirect(url_for('reports.final_report', doc_number=finalized['doc_number']))
+
+        if request.method == 'POST':
+            submitted_id = request.form.get('memo_id', '').strip()
+            submission_key = request.form.get('submission_key', '').strip()
+            if not re.fullmatch(r'[0-9a-f]{32}', submission_key):
+                submission_key = uuid.uuid4().hex
+            memo_data = {
+                key: request.form.get(key, '').strip()
+                for key in (
+                    'document_title', 'recipient', 'subject', 'salutation', 'body', 'recommendations',
+                    'requests', 'conclusion', 'signer_name', 'signer_title',
+                    'signature', 'signature_date',
+                )
+            }
+            memo_data['document_title'] = memo_data['document_title'] or 'مذكرة رسمية'
+            memo_data['field_options'] = {
+                key: {
+                    'included': request.form.get(f'include_{key}') == '1',
+                    'show_title': request.form.get(f'show_title_{key}') == '1',
+                    'title': request.form.get(f'title_{key}', title).strip()[:80] or title,
+                }
+                for key, title in GENERAL_MEMO_FIELD_TITLES.items()
+            }
+            user_id = session.get('user_id')
+            user = connection.execute(
+                'SELECT full_name, username FROM users WHERE id = ? AND is_active = 1',
+                (user_id,)
+            ).fetchone()
+            if not user:
+                abort(401)
+            if any(
+                memo_data['field_options'][field]['included'] and not memo_data[field]
+                for field in ('recipient', 'subject', 'body')
+            ):
+                flash('يرجى استكمال التوجيه والموضوع والمتن قبل حفظ المذكرة.', 'danger')
+                memo = {
+                    'id': int(submitted_id) if submitted_id.isdigit() else None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'submission_key': submission_key,
+                    'data': memo_data,
+                }
+            else:
+                connection.execute('BEGIN IMMEDIATE')
+                if submitted_id:
+                    if not submitted_id.isdigit():
+                        abort(400, description='رقم المذكرة غير صالح')
+                    existing = connection.execute(
+                        'SELECT status FROM general_memos WHERE id = ?',
+                        (int(submitted_id),)
+                    ).fetchone()
+                    if existing is None:
+                        abort(404, description='المذكرة المطلوب تحديثها غير موجودة')
+                    if existing['status'] != 'مسودة':
+                        abort(409, description='المذكرة معتمدة ولا يمكن تعديلها')
+                    memo_id = int(submitted_id)
+                    connection.execute(
+                        """UPDATE general_memos
+                           SET data_json = ?, updated_at = CURRENT_TIMESTAMP
+                           WHERE id = ? AND status = 'مسودة'""",
+                        (json.dumps(memo_data, ensure_ascii=False), memo_id)
+                    )
+                else:
+                    duplicate = connection.execute(
+                        'SELECT id FROM general_memos WHERE submission_key = ?',
+                        (submission_key,)
+                    ).fetchone()
+                    if duplicate:
+                        memo_id = duplicate['id']
+                        connection.commit()
+                        flash('تم حفظ هذه المذكرة بالفعل.', 'info')
+                        return redirect(url_for('reports.general_memo_form', id=memo_id))
+                    cursor = connection.execute(
+                        """INSERT INTO general_memos
+                           (submission_key, data_json, created_by, created_by_name)
+                           VALUES (?, ?, ?, ?)""",
+                        (
+                            submission_key, json.dumps(memo_data, ensure_ascii=False), user_id,
+                            user['full_name'] or user['username'],
+                        )
+                    )
+                    memo_id = cursor.lastrowid
+                connection.commit()
+                flash('تم حفظ المذكرة كمسودة.', 'success')
+                return redirect(url_for('reports.general_memo_form', id=memo_id))
+
+        if memo_id is None and request.args.get('new') != '1':
+            rows = connection.execute(
+                'SELECT * FROM general_memos ORDER BY id DESC LIMIT 100'
+            ).fetchall()
+            entries = [decode_memo(row) for row in rows]
+            return render_template(
+                'general_memos.html',
+                drafts=[entry for entry in entries if entry['status'] == 'مسودة'],
+                archived=[entry for entry in entries if entry['status'] == 'معتمدة'],
+                active_tab='reports',
+            )
+
+        memo_data = memo.get('data', {}) if memo else {}
+        is_finalized = bool(memo and memo.get('status') == 'معتمدة')
+        memo_token = (memo.get('submission_key') if memo else None) or uuid.uuid4().hex
+        return render_template(
+            'general_memo_form.html',
+            memo_data=memo_data,
+            memo_field_titles=GENERAL_MEMO_FIELD_TITLES,
+            memo_token=memo_token,
+            memo_id=memo.get('id') if memo else None,
+            is_finalized=is_finalized,
+            current_date=datetime.now().strftime('%Y-%m-%d'),
+            document_number=(memo.get('reference_number') if is_finalized else 'No.000000'),
+            qr_code_url=None,
+            suppress_reference_number=True,
+            report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
+            report_date_hijri='',
+            show_hijri_date=False,
+            hide_approve=not bool(memo and memo.get('status') == 'مسودة'),
+            approval_doc_type='general_memo',
+            approval_item_id=memo.get('id') if memo else '',
+            orientation='portrait',
+            allow_orientation=False,
+        )
+    except dbapi.Error:
+        if connection:
+            connection.rollback()
+        current_app.logger.exception('Unable to load or save general memo')
+        abort(500, description='تعذر حفظ المذكرة أو تحميلها')
+    finally:
+        if connection:
+            connection.close()
+
+
+def _delete_memo_and_documents(table, doc_type, memo_id, missing_message):
+    """Delete a memo row and its approved/generated documents atomically.
+
+    `table` is always a literal from the callers below. Returns the archived
+    files (inside the report/QR folders) the caller should remove afterwards.
+    """
+    init_report_counter_db()
+    with get_session() as db_session:
+        found = db_session.execute(
+            text(f'SELECT id FROM {table} WHERE id = :id FOR UPDATE'), {'id': memo_id}
+        ).first()
+        if found is None:
+            abort(404, description=missing_message)
+        stored = reports_repository.pop_documents(db_session, doc_type, memo_id)
+        db_session.execute(text(f'DELETE FROM {table} WHERE id = :id'), {'id': memo_id})
+
+    files = []
+    for stored_path, kind in stored:
+        if not stored_path:
+            continue
+        allowed_root = QR_DIR if kind == 'qr' else REPORTS_DIR
+        if kind == 'qr' and stored_path.startswith('/static/uploads/qrcodes/'):
+            stored_path = os.path.join(QR_DIR, os.path.basename(stored_path))
+        elif kind == 'report' and stored_path.startswith('/static/uploads/reports/'):
+            stored_path = os.path.join(REPORTS_DIR, os.path.basename(stored_path))
+        resolved = os.path.realpath(stored_path)
+        root = os.path.realpath(allowed_root)
+        try:
+            if os.path.commonpath((root, resolved)) == root and os.path.isfile(resolved):
+                files.append(resolved)
+        except ValueError:
+            current_app.logger.warning('Skipping out-of-root file while deleting %s %s', table, memo_id)
+    return files
+
+
+@reports_bp.route('/general-memo/<int:memo_id>/delete', methods=['POST'])
+def delete_general_memo(memo_id):
+    try:
+        files_to_remove = _delete_memo_and_documents(
+            'general_memos', 'general_memo', memo_id, 'المذكرة غير موجودة'
+        )
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to delete general memo %s', memo_id)
+        abort(500, description='تعذر حذف المذكرة')
+
+    for path in set(files_to_remove):
+        try:
+            os.remove(path)
+        except OSError:
+            current_app.logger.exception('Unable to remove archived memo file %s', path)
+    flash('تم حذف المذكرة وملفاتها المؤرشفة.', 'success')
+    return redirect(url_for('reports.general_memo_form'))
+
+
+@reports_bp.route('/custody-clearance', methods=['GET', 'POST'])
+def custody_clearance_form():
+    connection = None
+    try:
+        init_report_counter_db()
+        connection = dbapi.connect()
+        connection.row_factory = dbapi.Row
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS custody_clearances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reference_number TEXT UNIQUE,
+                status TEXT NOT NULL DEFAULT 'مسودة',
+                data_json TEXT NOT NULL DEFAULT '{}',
+                created_by INTEGER NOT NULL,
+                created_by_name TEXT NOT NULL,
+                approved_by INTEGER,
+                approved_by_name TEXT,
+                approved_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+        connection.commit()
+
+        def decode_clearance(row):
+            entry = dict(row)
+            try:
+                entry['data'] = json.loads(entry.pop('data_json') or '{}')
+            except (TypeError, json.JSONDecodeError):
+                current_app.logger.exception('Invalid custody clearance data for %s', entry.get('id'))
+                abort(500, description='تعذر تحميل بيانات إخلاء العهدة')
+            return entry
+
+        clearance_id = request.args.get('id', type=int)
+        clearance = None
+        if clearance_id is not None:
+            row = connection.execute(
+                'SELECT * FROM custody_clearances WHERE id = ?', (clearance_id,)
+            ).fetchone()
+            if row is None:
+                abort(404, description='نموذج إخلاء العهدة غير موجود')
+            clearance = decode_clearance(row)
+            if clearance['status'] == 'معتمدة':
+                finalized = reports_repository.find_finalized('custody_clearance', [clearance_id])
+                if finalized:
+                    return redirect(url_for('reports.final_report', doc_number=finalized['doc_number']))
+
+        if request.method == 'POST':
+            submitted_id = request.form.get('clearance_id', '').strip()
+            form_data = {
+                key: request.form.get(key, '').strip()
+                for key in (
+                    'person_name', 'job_title', 'national_id', 'department', 'clearance_date',
+                    'fines_count', 'fines_amount', 'accidents_count', 'fault_percentage',
+                    'repair_amount', 'financial_obligations', 'administrative_notes',
+                    'other_obligations', 'recipient_name', 'employee_signature',
+                    'employee_date', 'manager_name', 'manager_job', 'manager_signature',
+                    'manager_date',
+                )
+            }
+            form_data['vehicles'] = []
+            form_data['supplies'] = []
+            for target, fields in (
+                ('vehicles', ('type', 'code', 'condition', 'notes')),
+                ('supplies', ('name', 'quantity', 'condition', 'notes')),
+            ):
+                values = {field: request.form.getlist(f'{target[:-1] if target == "vehicles" else "supply"}_{field}[]') for field in fields}
+                for index in range(max((len(items) for items in values.values()), default=0)):
+                    row_data = {field: items[index].strip() if index < len(items) else '' for field, items in values.items()}
+                    if any(row_data.values()):
+                        form_data[target].append(row_data)
+
+            user_id = session.get('user_id')
+            user = connection.execute(
+                'SELECT full_name, username FROM users WHERE id = ? AND is_active = 1',
+                (user_id,)
+            ).fetchone()
+            if not user:
+                abort(401)
+            if not form_data['person_name']:
+                flash('يرجى إدخال اسم الشخص قبل حفظ النموذج.', 'danger')
+                clearance = {
+                    'id': int(submitted_id) if submitted_id.isdigit() else None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'data': form_data,
+                }
+            else:
+                connection.execute('BEGIN IMMEDIATE')
+                if submitted_id:
+                    if not submitted_id.isdigit():
+                        abort(400, description='رقم نموذج إخلاء العهدة غير صالح')
+                    existing = connection.execute(
+                        'SELECT status FROM custody_clearances WHERE id = ?',
+                        (int(submitted_id),)
+                    ).fetchone()
+                    if existing is None:
+                        abort(404, description='نموذج إخلاء العهدة المطلوب تحديثه غير موجود')
+                    if existing['status'] != 'مسودة':
+                        abort(409, description='النموذج معتمد ولا يمكن تعديله')
+                    clearance_id = int(submitted_id)
+                    connection.execute(
+                        """UPDATE custody_clearances
+                           SET data_json = ?, updated_at = CURRENT_TIMESTAMP
+                           WHERE id = ? AND status = 'مسودة'""",
+                        (json.dumps(form_data, ensure_ascii=False), clearance_id)
+                    )
+                else:
+                    cursor = connection.execute(
+                        """INSERT INTO custody_clearances
+                           (data_json, created_by, created_by_name)
+                           VALUES (?, ?, ?)""",
+                        (
+                            json.dumps(form_data, ensure_ascii=False), user_id,
+                            user['full_name'] or user['username'],
+                        )
+                    )
+                    clearance_id = cursor.lastrowid
+                connection.commit()
+                flash('تم حفظ نموذج إخلاء العهدة كمسودة.', 'success')
+                return redirect(url_for('reports.custody_clearance_form', id=clearance_id))
+
+        if clearance_id is None and request.args.get('new') != '1':
+            rows = connection.execute(
+                'SELECT * FROM custody_clearances ORDER BY id DESC LIMIT 100'
+            ).fetchall()
+            entries = [decode_clearance(row) for row in rows]
+            return render_template(
+                'custody_clearances.html',
+                drafts=[entry for entry in entries if entry['status'] == 'مسودة'],
+                archived=[entry for entry in entries if entry['status'] == 'معتمدة'],
+                active_tab='reports',
+            )
+
+        clearance_data = clearance.get('data', {}) if clearance else {}
+        is_finalized = bool(clearance and clearance.get('status') == 'معتمدة')
+        return render_template(
+            'custody_clearance_form.html',
+            clearance_data=clearance_data,
+            clearance_id=clearance.get('id') if clearance else None,
+            is_finalized=is_finalized,
+            current_date=datetime.now().strftime('%Y-%m-%d'),
+            document_number=(clearance.get('reference_number') if is_finalized else 'No.000000'),
+            qr_code_url=None,
+            report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
+            report_date_hijri='',
+            show_hijri_date=False,
+            hide_approve=not bool(clearance and clearance.get('status') == 'مسودة'),
+            approval_doc_type='custody_clearance',
+            approval_item_id=clearance.get('id') if clearance else '',
+            allow_orientation=False,
+            orientation='portrait',
+        )
+    except dbapi.Error:
+        if connection:
+            connection.rollback()
+        current_app.logger.exception('Unable to load or save custody clearance')
+        abort(500, description='تعذر حفظ نموذج إخلاء العهدة أو تحميله')
+    finally:
+        if connection:
+            connection.close()
+
+
+@reports_bp.route('/custody-clearance/<int:clearance_id>/delete', methods=['POST'])
+def delete_custody_clearance(clearance_id):
+    try:
+        files_to_remove = _delete_memo_and_documents(
+            'custody_clearances', 'custody_clearance', clearance_id,
+            'نموذج إخلاء العهدة غير موجود'
+        )
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to delete custody clearance %s', clearance_id)
+        abort(500, description='تعذر حذف نموذج إخلاء العهدة')
+
+    for path in set(files_to_remove):
+        try:
+            os.remove(path)
+        except OSError:
+            current_app.logger.exception('Unable to remove custody clearance archive file %s', path)
+    flash('تم حذف نموذج إخلاء العهدة وملفاته المؤرشفة.', 'success')
+    return redirect(url_for('reports.custody_clearance_form'))
+
+
 @reports_bp.route('/workshop-request', methods=['GET', 'POST'])
 def workshop_request_form():
-    return ReportsController.workshop_request_form()
+    connection = None
+    try:
+        init_report_counter_db()
+        connection = dbapi.connect()
+        connection.row_factory = dbapi.Row
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS workshop_memos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memo_number TEXT UNIQUE,
+                reference_number TEXT UNIQUE,
+                recipient TEXT NOT NULL,
+                department TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'عادي',
+                vehicle_id INTEGER,
+                vehicle_label TEXT,
+                background TEXT NOT NULL,
+                requested_action TEXT NOT NULL,
+                justification TEXT,
+                status TEXT NOT NULL DEFAULT 'مسودة',
+                created_by INTEGER NOT NULL,
+                created_by_name TEXT NOT NULL,
+                approved_by INTEGER,
+                approved_by_name TEXT,
+                manager_name TEXT,
+                receiver_authorization TEXT,
+                receiver_job TEXT,
+                approved_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+        memo_columns = {
+            row['name'] for row in connection.execute(
+                "PRAGMA table_info(workshop_memos)"
+            ).fetchall()
+        }
+        for column, column_type in (
+            ('purpose', 'TEXT'),
+            ('items_json', "TEXT NOT NULL DEFAULT '[]'"),
+            ('manager_name', 'TEXT'),
+            ('receiver_authorization', 'TEXT'),
+            ('receiver_job', 'TEXT'),
+        ):
+            if column not in memo_columns:
+                connection.execute(
+                    f'ALTER TABLE workshop_memos ADD COLUMN "{column}" {column_type}'
+                )
+        connection.commit()
+
+        vehicles = connection.execute(
+            "SELECT id, plate_number, vehicle_code, vehicle_type, model FROM vehicles ORDER BY plate_number"
+        ).fetchall()
+        memos = connection.execute(
+            """SELECT id, memo_number, reference_number, subject, recipient, purpose,
+                      background, status, created_by_name, created_at, updated_at
+               FROM workshop_memos ORDER BY id DESC LIMIT 100"""
+        ).fetchall()
+
+        memo_id = request.args.get('id', type=int)
+        memo = None
+        if memo_id is not None:
+            memo = connection.execute(
+                "SELECT * FROM workshop_memos WHERE id = ?", (memo_id,)
+            ).fetchone()
+            if memo is None:
+                abort(404, description='المذكرة المطلوبة غير موجودة')
+            memo = dict(memo)
+            if memo.get('status') == 'معتمدة':
+                finalized = reports_repository.find_finalized('workshop_memo', [memo_id])
+                if finalized:
+                    return redirect(url_for('reports.final_report', doc_number=finalized['doc_number']))
+            try:
+                memo['items'] = json.loads(memo.get('items_json') or '[]')
+            except (TypeError, json.JSONDecodeError):
+                current_app.logger.exception('Invalid workshop memo items for memo %s', memo_id)
+                abort(500, description='تعذر تحميل مواد المذكرة')
+        memos = [dict(row) for row in memos]
+
+        if memo_id is None and request.args.get('new') != '1':
+            return render_template(
+                'workshop_memos.html',
+                memos=memos,
+                active_tab='reports',
+            )
+
+        if request.method == 'POST':
+            action = request.form.get('action', 'save').strip()
+            department = request.form.get('department', '').strip()
+            subject = request.form.get('subject', '').strip()
+            purpose = request.form.get('purpose', '').strip()
+            manager_name = request.form.get('manager_name', '').strip()
+            receiver_authorization = request.form.get('receiver_authorization', '').strip()
+            receiver_job = request.form.get('receiver_job', '').strip()
+            descriptions = request.form.getlist('item_description[]')
+            quantities = request.form.getlist('item_quantity[]')
+            units = request.form.getlist('item_unit[]')
+            item_notes = request.form.getlist('item_notes[]')
+            submitted_id = request.form.get('memo_id', '').strip()
+            items = []
+            submitted_items = []
+            invalid_items = False
+            for index, description in enumerate(descriptions):
+                description = description.strip()
+                quantity = quantities[index].strip() if index < len(quantities) else ''
+                unit = units[index].strip() if index < len(units) else ''
+                notes = item_notes[index].strip() if index < len(item_notes) else ''
+                if not description and not quantity and not unit and not notes:
+                    continue
+                submitted_item = {
+                    'description': description,
+                    'quantity': quantity,
+                    'unit': unit,
+                    'notes': notes,
+                }
+                submitted_items.append(submitted_item)
+                if (
+                    not description or not re.fullmatch(r'\d+(?:\.\d{1,3})?', quantity)
+                    or float(quantity) <= 0 or not unit
+                ):
+                    invalid_items = True
+                else:
+                    items.append(submitted_item)
+            if invalid_items:
+                items = []
+
+            if action not in {'save', 'approve'}:
+                abort(400, description='إجراء المذكرة غير صالح')
+            if not department or len(department) > 120:
+                flash('يرجى كتابة جهة الإرسال (بحد أقصى 120 حرفاً).', 'danger')
+                memo = request.form.to_dict()
+                memo.update({
+                    'id': submitted_id or None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'items': submitted_items,
+                })
+            elif len(manager_name) > 120:
+                flash('اسم مدير المعدات يجب ألا يتجاوز 120 حرفاً.', 'danger')
+                memo = request.form.to_dict()
+                memo.update({
+                    'id': submitted_id or None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'items': submitted_items,
+                })
+            elif len(receiver_authorization) > 180 or len(receiver_job) > 180:
+                flash('يجب ألا يتجاوز التفويض أو المسمى الوظيفي 180 حرفاً.', 'danger')
+                memo = request.form.to_dict()
+                memo.update({
+                    'id': submitted_id or None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'items': submitted_items,
+                })
+            elif not subject or len(subject) > 180:
+                flash('يرجى كتابة عنوان للمذكرة (بحد أقصى 180 حرفاً).', 'danger')
+                memo = request.form.to_dict()
+                memo.update({
+                    'id': submitted_id or None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'items': submitted_items,
+                })
+            elif not purpose or len(purpose) > 500:
+                flash('يرجى تحديد الغرض من استخدام المواد (بحد أقصى 500 حرف).', 'danger')
+                memo = request.form.to_dict()
+                memo.update({
+                    'id': submitted_id or None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'items': submitted_items,
+                })
+            elif not items or len(items) > 25:
+                flash('أضف من مادة واحدة إلى 25 مادة، مع تحديد وصف وكمية ووحدة صحيحة لكل مادة.', 'danger')
+                memo = request.form.to_dict()
+                memo.update({
+                    'id': submitted_id or None,
+                    'status': 'مسودة' if submitted_id else None,
+                    'items': submitted_items,
+                })
+            else:
+                user_id = session.get('user_id')
+                user = connection.execute(
+                    "SELECT full_name, username FROM users WHERE id = ? AND is_active = 1",
+                    (user_id,)
+                ).fetchone()
+                if not user:
+                    abort(401)
+                requester_name = user['full_name'] or user['username']
+
+                connection.execute('BEGIN IMMEDIATE')
+                if submitted_id:
+                    if not submitted_id.isdigit():
+                        abort(400, description='رقم المذكرة غير صالح')
+                    existing = connection.execute(
+                        "SELECT status, created_by FROM workshop_memos WHERE id = ?",
+                        (int(submitted_id),)
+                    ).fetchone()
+                    if existing is None:
+                        abort(404, description='المذكرة المطلوب تحديثها غير موجودة')
+                    if existing['status'] == 'معتمدة':
+                        abort(409, description='المذكرة معتمدة ولا يمكن تعديلها')
+                    memo_id = int(submitted_id)
+                    connection.execute(
+                        """UPDATE workshop_memos
+                                    SET recipient = 'إدارة المستودعات', department = ?,
+                               subject = ?,
+                               purpose = ?, background = ?, requested_action = ?,
+                               items_json = ?, manager_name = ?,
+                               receiver_authorization = ?, receiver_job = ?,
+                               updated_at = CURRENT_TIMESTAMP
+                           WHERE id = ? AND status = 'مسودة'""",
+                        (
+                            department, subject, purpose, purpose, 'صرف المواد الموضحة في الجدول أدناه',
+                            json.dumps(items, ensure_ascii=False), manager_name,
+                            receiver_authorization, receiver_job, memo_id,
+                        )
+                    )
+                else:
+                    cursor = connection.execute(
+                        """INSERT INTO workshop_memos
+                           (recipient, department, subject, priority, background,
+                            requested_action, purpose, items_json,
+                            manager_name, receiver_authorization, receiver_job,
+                            created_by, created_by_name)
+                           VALUES ('إدارة المستودعات', ?, ?,
+                                   'عادي', ?, 'صرف المواد الموضحة في الجدول أدناه',
+                               ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            department, subject, purpose, purpose, json.dumps(items, ensure_ascii=False),
+                            manager_name, receiver_authorization, receiver_job,
+                            user_id, requester_name,
+                        )
+                    )
+                    memo_id = cursor.lastrowid
+                    connection.execute(
+                        "UPDATE workshop_memos SET memo_number = ? WHERE id = ?",
+                        (f"WS-MEM-{memo_id:06d}", memo_id)
+                    )
+
+                connection.commit()
+                flash(
+                    'تم حفظ المذكرة كمسودة. يمكنك اعتمادها من شريط إجراءات التقرير.',
+                    'success'
+                )
+                return redirect(url_for('reports.workshop_request_form', id=memo_id))
+
+        return render_template(
+            'workshop_request_form.html',
+            memo=memo,
+            memos=memos,
+            vehicles=vehicles,
+            current_date=datetime.now().strftime('%Y-%m-%d'),
+            active_tab='reports',
+            document_number='No.000000',
+            qr_code_url=None,
+            report_title_text='مذكرة طلب مواد لزوم صيانة المعدات والمركبات',
+            report_date_gregorian=datetime.now().strftime('%Y/%m/%d'),
+            report_date_hijri='',
+            show_hijri_date=False,
+            hide_approve=not bool(memo and memo.get('status') == 'مسودة'),
+            approval_doc_type='workshop_memo',
+            approval_item_id=memo.get('id') if memo else '',
+            allow_orientation=False,
+            orientation='portrait',
+        )
+    except dbapi.Error:
+        if connection:
+            connection.rollback()
+        current_app.logger.exception('Unable to load or save a workshop memo')
+        abort(500, description='تعذر حفظ مذكرة الورشة أو تحميلها')
+    finally:
+        if connection:
+            connection.close()
+
+
+@reports_bp.route('/workshop-request/<int:memo_id>/delete', methods=['POST'])
+def delete_workshop_memo(memo_id):
+    try:
+        files_to_remove = _delete_memo_and_documents(
+            'workshop_memos', 'workshop_memo', memo_id, 'مذكرة الورشة غير موجودة'
+        )
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to delete workshop memo %s', memo_id)
+        abort(500, description='تعذر حذف مذكرة الورشة')
+
+    for path in set(files_to_remove):
+        try:
+            os.remove(path)
+        except OSError:
+            current_app.logger.exception(
+                'Unable to remove archived workshop memo file %s', path
+            )
+            abort(500, description='حُذفت المذكرة من السجل، لكن تعذر حذف أحد ملفاتها المؤرشفة')
+    flash('تم حذف المذكرة وملفاتها المؤرشفة.', 'success')
+    return redirect(url_for('reports.workshop_request_form'))
+
+

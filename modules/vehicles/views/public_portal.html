@@ -59,13 +59,20 @@
         <div class="choice-grid">
             <a class="choice" href="{{ url_for('vehicles.public_information', token=token) }}">
                 <div class="choice-icon" aria-hidden="true">🚘</div>
-                <strong>الاستلام</strong>
+                <strong>الاستعلام</strong>
                 <span>عرض المعلومات العامة وحالة المركبة.</span>
             </a>
+            {% if inquiries_enabled %}
             <a class="choice" href="{{ url_for('vehicles.public_issue_form', token=token) }}">
                 <div class="choice-icon" aria-hidden="true">✉</div>
                 <strong>الاستفسار والإبلاغ عن مشكلة</strong>
-                <span>أرسل وصفاً للمشكلة وأرفق صورتين كحد أقصى.</span>
+                <span>أرسل وصفاً للمشكلة وأرفق صورة واحدة أو مقطعاً قصيراً.</span>
+            </a>
+            {% endif %}
+            <a class="choice" href="{{ url_for('vehicles.public_vehicle_submissions', token=token) }}">
+                <div class="choice-icon" aria-hidden="true">💬</div>
+                <strong>متابعة الاستفسارات والبلاغات</strong>
+                <span>عرض البلاغات والردود الواردة من فريق إدارة المعدات.</span>
             </a>
         </div>
         {% elif mode == "information" %}
@@ -99,7 +106,7 @@
         {% endif %}
         {% elif mode == "issue" %}
         <h2>الاستفسار والإبلاغ عن مشكلة</h2>
-        <p>يرجى وصف المشكلة أو الاستفسار، ويمكن إرفاق صورتين لتوضيح الحالة.</p>
+        <p>يرجى وصف المشكلة أو الاستفسار، ويمكن إرفاق صورة واحدة أو مقطع فيديو قصير لا تتجاوز مدته دقيقتين.</p>
         {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
         <form method="post" enctype="multipart/form-data" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
             <div class="form-row">
@@ -107,9 +114,14 @@
                 <textarea id="message" name="message" maxlength="4000" required>{{ request.form.get('message', '') }}</textarea>
             </div>
             <div class="form-row">
-                <label for="photos">الصور المرفقة (اختياري، صورتان كحد أقصى)</label>
-                <input id="photos" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple>
-                <small>الصيغ المدعومة JPG وPNG وWEBP، بحد أقصى 5 ميجابايت للصورة.</small>
+                <label for="photos">صورة مرفقة (اختياري)</label>
+                <input id="photos" type="file" name="photos" accept="image/jpeg,image/png,image/webp">
+                <small>الصيغ المدعومة JPG وPNG وWEBP، بحد أقصى 5 ميجابايت.</small>
+            </div>
+            <div class="form-row">
+                <label for="video">مقطع فيديو (اختياري، حتى دقيقتين)</label>
+                <input id="video" type="file" name="video" accept="video/mp4,video/quicktime,.mp4,.mov">
+                <small>الصيغ المدعومة MP4 وMOV، بحد أقصى 25 ميجابايت. يتم التحقق من مدة المقطع عند الإرسال.</small>
             </div>
             <div class="button-row">
                 <button class="button" type="submit">ترحيل البلاغ</button>
@@ -122,6 +134,46 @@
             <h2>تم استلام طلبكم</h2>
             <p>{{ message }}</p>
             <a class="button" href="{{ url_for('vehicles.public_landing', token=token) }}">العودة إلى الصفحة الرئيسية</a>
+        </div>
+        {% elif mode == "submissions" %}
+        <h2>متابعة الاستفسارات والبلاغات</h2>
+        <p>تظهر هنا الاستفسارات والبلاغات المرسلة من خلال رمز المركبة وردود فريق إدارة المعدات.</p>
+        {% for submission in submissions %}
+        <article class="info-item" style="margin:14px 0;">
+            <label>{{ submission.submission_type }} — {{ submission.submitted_at }}</label>
+            <div class="value">{{ submission.message }}</div>
+            {% if submission.photo_1 %}
+            <div class="form-row">
+                <a href="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ submission.photo_1) }}" target="_blank" rel="noopener">
+                    <img src="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ submission.photo_1) }}" alt="الصورة المرفقة" style="width:min(100%,360px);max-height:280px;object-fit:contain;border-radius:10px;">
+                </a>
+            </div>
+            {% endif %}
+            {% if submission.video_1 %}
+            <div class="form-row">
+                <video controls preload="metadata" style="width:min(100%,520px);max-height:320px;">
+                    <source src="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ submission.video_1) }}">
+                    متصفحك لا يدعم تشغيل الفيديو.
+                </video>
+            </div>
+            {% endif %}
+            {% if submission.response %}
+            <div class="info-item" style="background:#eef8f3;border-color:#c9e8d5;">
+                <label>رد فريق إدارة المعدات</label>
+                <div class="value">{{ submission.response }}</div>
+            </div>
+            {% else %}
+            <small>الحالة: {{ submission.status }} — لم يصدر رد بعد.</small>
+            {% endif %}
+        </article>
+        {% else %}
+        <div class="info-item">لا توجد استفسارات أو بلاغات مسجلة لهذه المركبة.</div>
+        {% endfor %}
+        <div class="button-row">
+            {% if inquiries_enabled %}
+            <a class="button" href="{{ url_for('vehicles.public_issue_form', token=token) }}">إرسال استفسار أو بلاغ</a>
+            {% endif %}
+            <a class="button secondary" href="{{ url_for('vehicles.public_landing', token=token) }}">العودة للصفحة الرئيسية</a>
         </div>
         {% endif %}
     </section>

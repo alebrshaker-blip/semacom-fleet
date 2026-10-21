@@ -49,11 +49,9 @@
                 <div class="form-group">
                     <label>نوع الحادث: *</label>
                     <select name="accident_type" required>
-                        <option value="صدم">صدم</option>
-                        <option value="اصطدام">اصطدام</option>
-                        <option value="انقلاب">انقلاب</option>
-                        <option value="حت / احتكاك">حت / احتكاك</option>
-                        <option value="أخرى">أخرى</option>
+                        {% for accident_type in reference_lists.accident_types %}
+                        <option value="{{ accident_type }}">{{ accident_type }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>

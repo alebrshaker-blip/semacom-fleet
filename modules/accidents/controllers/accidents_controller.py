@@ -14,10 +14,8 @@ class AccidentsController:
     @staticmethod
     def add_get():
         # استدعاء المركبات وربط السائق بتاريخ العهدة عند اختيار المركبة والتاريخ
-        from core.database import Database
-        db = Database()
-        vehicles = db.fetch_all("SELECT plate_number, vehicle_code FROM vehicles")
-        db.close()
+        from modules.vehicles import repository as vehicles_repository
+        vehicles = vehicles_repository.list_active()
         return render_template('accidents_add.html', vehicles=vehicles)
 
     @staticmethod

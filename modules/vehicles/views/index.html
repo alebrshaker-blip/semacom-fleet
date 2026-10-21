@@ -36,6 +36,8 @@
     .btn-warning:hover { background-color: #ffca2c; }
     .btn-danger { background-color: #dc3545; color: white; }
     .btn-danger:hover { background-color: #bb2d3b; }
+    .btn-archive { background-color: #495057; color: white; }
+    .btn-archive:hover { background-color: #343a40; }
     /* 🌟 زر التصدير إلى إكسل بتنسيق متناسق */
     .btn-success { background-color: #198754; color: white; }
     .btn-success:hover { background-color: #157347; }
@@ -87,8 +89,14 @@
     <div class="header-flex">
         <h2>إدارة المركبات والمعدات</h2>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('reports.vehicle_reports') }}" class="btn btn-info">
+                <i class="fas fa-chart-bar"></i> التقارير
+            </a>
             <a href="{{ url_for('vehicles.public_submissions') }}" class="btn btn-warning">
                 <i class="fas fa-inbox"></i> بلاغات واستفسارات QR
+            </a>
+            <a href="{{ url_for('vehicles.vehicle_archive_index') }}" class="btn btn-secondary">
+                <i class="fas fa-box-archive"></i> أرشيف المركبات
             </a>
             <!-- 🌟 زر التصدير إلى Excel مع الحفاظ على نتائج البحث الحالية -->
             <a href="/vehicles/export{% if request.args.get('q') %}?q={{ request.args.get('q') }}{% endif %}" class="btn btn-success">
@@ -137,12 +145,13 @@
                                     <i class="fas fa-circle-info" aria-hidden="true"></i> المعلومات
                                 </a>
                                 <a class="btn btn-primary btn-sm"
-                                   href="{{ url_for('reports.vehicle_reports', report_type='single', vehicle_id=vehicle.id) }}">
+                                   href="{{ url_for('reports.vehicle_reports', report_type='single', vehicle_id=vehicle.id, view='print') }}">
                                     تقرير
                                 </a>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="openDeleteModal('{{ vehicle.id }}', '{{ vehicle.vehicle_code }}')">
-                                    حذف
-                                </button>
+                                <a class="btn btn-archive btn-sm"
+                                   href="{{ url_for('vehicles.archive_vehicle', vehicle_id=vehicle.id) }}">
+                                    <i class="fas fa-box-archive" aria-hidden="true"></i> إخراج من الخدمة
+                                </a>
                             </td>
                         </tr>
                         {% else %}
@@ -157,37 +166,4 @@
     </div>
 </div>
 
-<!-- النافذة المنبثقة لتأكيد الحذف -->
-<div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
-    <div style="background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
-        <h3 style="margin-bottom: 15px; color: #dc3545;">تأكيد الحذف</h3>
-        <p id="deleteMessage" style="margin-bottom: 20px; color: #333; font-size: 15px;">هل أنت متأكد من حذف هذه المركبة؟</p>
-        
-        <form id="deleteForm" method="POST" style="display: flex; justify-content: center; gap: 10px;">
-            <button type="submit" class="btn btn-danger" style="padding: 8px 20px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">تأكيد الحذف</button>
-            <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">إلغاء</button>
-        </form>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    function openDeleteModal(vehicleId, vehicleCode) {
-        const modal = document.getElementById('deleteModal');
-        const form = document.getElementById('deleteForm');
-        const msg = document.getElementById('deleteMessage');
-        
-        // تحديث النص ورابط الإرسال بناءً على المركبة المحددة
-        msg.innerText = `هل أنت متأكد من رغبتك في حذف المركبة ذات الكود: (${vehicleCode})؟`;
-        form.action = `/vehicles/delete/${vehicleId}`;
-        
-        modal.style.display = 'flex';
-    }
-
-    function closeDeleteModal() {
-        const modal = document.getElementById('deleteModal');
-        modal.style.display = 'none';
-    }
-</script>
 {% endblock %}

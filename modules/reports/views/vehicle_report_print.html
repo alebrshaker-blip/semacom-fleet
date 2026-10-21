@@ -4,18 +4,30 @@
 
 {% block extra_css %}
 <style>
-    .vehicle-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
-    .vehicle-report-page { break-inside: avoid; }
-    .vehicle-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; margin: 0 0 10px; }
+    .vehicle-report-title { margin: 0 auto 12px; text-align: center; font-size: 20px; }
+    .vehicle-report-page { break-inside: auto; }
+    .vehicle-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; margin: 0 0 12px; }
     .vehicle-report-table th, .vehicle-report-table td {
         border: 1px solid #475569;
-        padding: 5px;
+        padding: 7px 9px;
         text-align: center;
-        overflow-wrap: anywhere;
-        font-size: 9px;
+        font-size: 13px;
+        word-break: keep-all;
+        overflow-wrap: normal;
+        white-space: nowrap;
     }
-    .vehicle-report-table th { background: #e9eff5; font-size: 10px; }
-    .vehicle-report-section-title { margin: 10px 0 5px; font-size: 12px; color: #1b365d; }
+    .vehicle-report-table th { background: #e9eff5; font-size: 13px; }
+    .vehicle-details-table { table-layout: fixed; }
+    .vehicle-details-table th { width: 13%; }
+    .vehicle-details-table td { width: 20.33%; }
+    .vehicle-report-table td.long-text {
+        white-space: normal;
+        word-break: keep-all;
+        overflow-wrap: break-word;
+        text-align: right;
+        min-width: 35mm;
+    }
+    .vehicle-report-section-title { margin: 12px 0 6px; font-size: 15px; color: #1b365d; }
     .vehicle-report-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
     .status-form { display: inline-flex; align-items: center; gap: 6px; }
     .status-form select, .status-form button { padding: 4px 6px; }
@@ -23,8 +35,14 @@
     .status-active { color: #198754; }
     .status-near { color: #d39e00; }
     .status-expired { color: #dc3545; }
+    @media screen {
+        .vehicle-report-table-wrap { width: 100%; overflow-x: auto; }
+    }
     @media print {
-        .vehicle-report-table th, .vehicle-report-table td { padding: 3px; }
+        .vehicle-report-table th, .vehicle-report-table td { padding: 5px 6px; font-size: 12px; }
+        .vehicle-report-section-title { font-size: 14px; }
+        .vehicle-report-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .vehicle-report-table-wrap { overflow: visible; }
         .status-form { display: none; }
     }
 </style>
@@ -34,26 +52,97 @@
 {% for item in report_data %}
 <section class="page-container landscape vehicle-report-page">
     {% include '_print_header.html' %}
+    {% if item.is_archived %}
     <h2 class="vehicle-report-title">
-        بيانات مركبة {{ item.vehicle.get('vehicle_code') or item.vehicle.get('id') }}
-        — رقم اللوحة {{ item.vehicle.get('plate_number') or '—' }}
+        تقرير مركبة خارجة عن الخدمة — رقم اللوحة {{ item.vehicle.get('plate_number') or '—' }}
+    </h2>
+
+    <h3 class="vehicle-report-section-title">بيانات المركبة</h3>
+    <div class="vehicle-report-table-wrap">
+        <table class="vehicle-report-table vehicle-details-table">
+            <tbody>
+                {% set identity_fields = vehicle_fields|selectattr('key', 'in', ['vehicle_code', 'plate_number', 'vehicle_type', 'model', 'manufacturer', 'color', 'fuel_type', 'engine_number'])|list %}
+                {% for field in identity_fields %}
+                    {% if loop.index0 is divisibleby 3 %}<tr>{% endif %}
+                    <th>{{ field.label }}</th>
+                    <td>{{ item.vehicle.get(field.key, '—') or '—' }}</td>
+                    {% if loop.index is divisibleby 3 or loop.last %}
+                        {% for _ in range((3 - loop.index % 3) % 3) %}
+                        <th></th><td></td>
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="vehicle-report-section-title">بيانات الأرشفة والإخراج من الخدمة</h3>
+    <div class="vehicle-report-table-wrap">
+        <table class="vehicle-report-table vehicle-details-table">
+            <tbody>
+                <tr>
+                    <th>سبب الإخراج</th>
+                    <td>{{ item.archive.get('reason') or '—' }}</td>
+                    <th>اسم المشتري</th>
+                    <td>{{ item.archive.get('buyer_name') or '—' }}</td>
+                    <th>قيمة البيع</th>
+                    <td>{{ '%.2f'|format(item.archive.sale_value) if item.archive.sale_value is not none else '—' }}</td>
+                </tr>
+                <tr>
+                    <th>تاريخ التسليم / الإخراج</th>
+                    <td>{{ item.archive.get('handover_date') or '—' }}</td>
+                    <th>تاريخ الأرشفة</th>
+                    <td colspan="3">{{ item.archive.get('archived_at') or '—' }}</td>
+                </tr>
+                <tr>
+                    <th>الحالة السابقة</th>
+                    <td>{{ item.archive.get('previous_status') or '—' }}</td>
+                    <th>حالة الورشة السابقة</th>
+                    <td colspan="3">{{ item.archive.get('previous_workshop_status') or '—' }}</td>
+                </tr>
+                <tr>
+                    <th>الملاحظات</th>
+                    <td colspan="5" class="long-text">{{ item.archive.get('notes') or '—' }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <h2 class="vehicle-report-title">
+        بيانات المركبة — رقم اللوحة {{ item.vehicle.get('plate_number') or '—' }}
     </h2>
 
     {% if vehicle_fields %}
     <h3 class="vehicle-report-section-title">بيانات المركبة</h3>
-    <table class="vehicle-report-table">
-        <thead><tr>{% for field in vehicle_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
-        <tbody><tr>{% for field in vehicle_fields %}<td>{{ item.vehicle.get(field.key, '—') or '—' }}</td>{% endfor %}</tr></tbody>
-    </table>
+    <div class="vehicle-report-table-wrap">
+        <table class="vehicle-report-table vehicle-details-table">
+            <tbody>
+                {% for field in vehicle_fields if field.key not in ['id', 'vehicle_id', 'chassis_number', 'vin'] and (field.key != 'workshop_status' or not item.is_assigned) %}
+                    {% if loop.index0 is divisibleby 3 %}<tr>{% endif %}
+                    <th>{{ field.label }}</th>
+                    <td>{{ item.vehicle.get(field.key, '—') or '—' }}</td>
+                    {% if loop.index is divisibleby 3 or loop.last %}
+                        {% for _ in range((3 - loop.index % 3) % 3) %}
+                        <th></th><td></td>
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% endif %}
 
     {% if item.is_assigned %}
     <h3 class="vehicle-report-section-title">السائق المستلم</h3>
     {% if item.driver and driver_fields %}
-    <table class="vehicle-report-table">
-        <thead><tr>{% for field in driver_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
-        <tbody><tr>{% for field in driver_fields %}<td>{{ item.driver.get(field.key, '—') or '—' }}</td>{% endfor %}</tr></tbody>
-    </table>
+    <div class="vehicle-report-table-wrap">
+        <table class="vehicle-report-table">
+            <thead><tr>{% for field in driver_fields if field.key not in ['id', 'license_issue_date'] %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+            <tbody><tr>{% for field in driver_fields if field.key not in ['id', 'license_issue_date'] %}<td>{{ item.driver.get(field.key, '—') or '—' }}</td>{% endfor %}</tr></tbody>
+        </table>
+    </div>
     {% elif item.driver %}
     <p>{{ item.driver.get('name') or 'السائق المستلم' }}</p>
     {% else %}
@@ -77,35 +166,40 @@
 
     <h3 class="vehicle-report-section-title">الفحص الدوري</h3>
     {% if item.inspections %}
-    <table class="vehicle-report-table">
-        <thead><tr>{% for field in inspection_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
-        <tbody>
-            {% for inspection in item.inspections %}
-            <tr>{% for field in inspection_fields %}
-                <td class="{% if field.key == 'status_type' %}{% if inspection.get(field.key) == 'ساري' %}status-active{% elif inspection.get(field.key) == 'قارب على الانتهاء' %}status-near{% else %}status-expired{% endif %}{% endif %}">
-                    {{ inspection.get(field.key, '—') or '—' }}
-                </td>
-            {% endfor %}</tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="vehicle-report-table-wrap">
+        <table class="vehicle-report-table">
+            <thead><tr>{% for field in inspection_fields if field.key not in ['id', 'record_id', 'serial_number', 'status', 'system_status'] and 'attachment' not in field.key|lower %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for inspection in item.inspections %}
+                <tr>{% for field in inspection_fields if field.key not in ['id', 'record_id', 'serial_number', 'status', 'system_status'] and 'attachment' not in field.key|lower %}
+                    <td class="{% if field.key == 'status_type' %}{% if inspection.get(field.key) == 'ساري' %}status-active{% elif inspection.get(field.key) == 'قارب على الانتهاء' %}status-near{% else %}status-expired{% endif %}{% endif %}{% if field.key in ['notes', 'description'] %} long-text{% endif %}">
+                        {{ inspection.get(field.key, '—') or '—' }}
+                    </td>
+                {% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% else %}<p>لا توجد سجلات فحص مرتبطة بالمركبة.</p>{% endif %}
 
     <h3 class="vehicle-report-section-title">التأمينات</h3>
     {% if item.policies %}
-    <table class="vehicle-report-table">
-        <thead><tr>{% for field in policy_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
-        <tbody>
-            {% for policy in item.policies %}
-            <tr>{% for field in policy_fields %}
-                <td class="{% if field.key == 'status_type' %}{% if policy.get(field.key) == 'ساري' %}status-active{% elif policy.get(field.key) == 'قارب على الانتهاء' %}status-near{% else %}status-expired{% endif %}{% endif %}">
-                    {{ policy.get(field.key, '—') or '—' }}
-                </td>
-            {% endfor %}</tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="vehicle-report-table-wrap">
+        <table class="vehicle-report-table">
+            <thead><tr>{% for field in policy_fields if field.key not in ['id', 'record_id', 'serial_number', 'status', 'system_status'] and 'attachment' not in field.key|lower %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for policy in item.policies %}
+                <tr>{% for field in policy_fields if field.key not in ['id', 'record_id', 'serial_number', 'status', 'system_status'] and 'attachment' not in field.key|lower %}
+                    <td class="{% if field.key == 'status_type' %}{% if policy.get(field.key) == 'ساري' %}status-active{% elif policy.get(field.key) == 'قارب على الانتهاء' %}status-near{% else %}status-expired{% endif %}{% endif %}{% if field.key in ['description', 'notes'] %} long-text{% endif %}">
+                        {{ policy.get(field.key, '—') or '—' }}
+                    </td>
+                {% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% else %}<p>لا توجد سجلات تأمين مرتبطة بالمركبة.</p>{% endif %}
+    {% endif %}
 </section>
 {% else %}
 <section class="page-container landscape">

@@ -2,11 +2,13 @@ from flask import flash, render_template, request, redirect, url_for
 from modules.handover.services.handover_service import (
     get_active_handovers,
     get_archived_handovers,
+    get_pending_handovers,
     get_form_entities,
     save_handover_process,
-    get_db_connection,
+    delete_archived_handover_record,
     get_driver_at_datetime
 )
+from sqlalchemy.exc import SQLAlchemyError
 from utils.excel_export import generate_semacom_excel
 
 def handover_index():
@@ -15,7 +17,8 @@ def handover_index():
     date_to = request.args.get('date_to', '')
     
     active_records = get_active_handovers(search_q)
-    archived_records = get_archived_handovers(search_q)
+    pending_records = get_pending_handovers(search_q)
+    archived_records = [dict(record) for record in get_archived_handovers(search_q)]
     
     # تصفية إضافية بالتاريخ للسجلات الأرشيفية إن وجدت
     if date_from:
@@ -25,6 +28,7 @@ def handover_index():
         
     return render_template('handover_index.html', 
                            active_records=active_records, 
+                           pending_records=pending_records,
                            archived_records=archived_records,
                            search_q=search_q,
                            date_from=date_from,
@@ -53,48 +57,18 @@ def save_handover():
             flash(f"تعذر تسجيل حركة العهدة: {e}", "danger")
         return redirect(url_for('handover.handover_index'))
 
-def delete_handover(record_id):
-    conn = get_db_connection()
+def delete_archived_handover(record_id):
     try:
-        record = conn.execute(
-            "SELECT vehicle_id, vehicle_info, status FROM handovers WHERE id = ?",
-            (record_id,)
-        ).fetchone()
-        if not record:
-            flash("سجل حركة العهدة المطلوب غير موجود.", "warning")
-            return redirect(url_for('handover.handover_index'))
-
-        vehicle_id = record['vehicle_id']
-        if vehicle_id is None and record['vehicle_info']:
-            vehicle = conn.execute(
-                """SELECT id FROM vehicles
-                   WHERE vehicle_code || ' - ' || plate_number = ?
-                      OR vehicle_code = ? OR plate_number = ?
-                   LIMIT 1""",
-                (record['vehicle_info'], record['vehicle_info'], record['vehicle_info'])
-            ).fetchone()
-            vehicle_id = vehicle['id'] if vehicle else None
-
-        conn.execute("DELETE FROM handovers WHERE id = ?", (record_id,))
-        if record['status'] == 'نشط':
-            active_handover = conn.execute(
-                """SELECT id FROM handovers
-                   WHERE status = 'نشط' AND (vehicle_id = ? OR vehicle_info = ?)
-                   LIMIT 1""",
-                (vehicle_id, record['vehicle_info'])
-            ).fetchone()
-            if not active_handover and vehicle_id is not None:
-                conn.execute(
-                    "UPDATE vehicles SET status = 'متاحة' WHERE id = ?",
-                    (vehicle_id,)
-                )
-        conn.commit()
-        flash("تم حذف سجل حركة العهدة.", "success")
-    except Exception as e:
-        conn.rollback()
-        flash(f"تعذر حذف سجل حركة العهدة: {e}", "danger")
-    finally:
-        conn.close()
+        outcome = delete_archived_handover_record(record_id)
+    except SQLAlchemyError as e:
+        flash(f"تعذر حذف سجل الحركة المؤرشفة: {e}", "danger")
+        return redirect(url_for('handover.handover_index'))
+    if outcome == 'missing':
+        flash("سجل حركة العهدة المطلوب غير موجود.", "warning")
+    elif outcome == 'not_archived':
+        flash("يمكن حذف الحركات المؤرشفة فقط.", "warning")
+    else:
+        flash("تم حذف سجل الحركة المؤرشفة.", "success")
     return redirect(url_for('handover.handover_index'))
 
 # دالة تصدير الحركات النشطة وحدها (بشكل آمن 100%)
@@ -103,7 +77,7 @@ def export_active_excel():
     headers = ['#', 'المركبة / المعدة', 'السائق المسؤول', 'الغرض', 'القسم التابع له', 'الوصف', 'العداد', 'الوقود', 'فني كهرباء', 'فني ميكانيكا', 'تاريخ التسليم', 'الحالة']
     data = []
     for idx, r in enumerate(active_records, 1):
-        # 🌟 تحويل الصف إلى قاموس عادي لتجنب خطأ sqlite3.Row نهائياً
+        # 🌟 تحويل الصف إلى قاموس عادي لتجنب خطأ dbapi.Row نهائياً
         row = dict(r)
         data.append([
             idx,
@@ -127,7 +101,7 @@ def export_archive_excel():
     headers = ['#', 'نوع العملية', 'المركبة / المعدة', 'السائق', 'الغرض', 'القسم التابع له', 'الوصف', 'العداد', 'تاريخ ووقت الحركة', 'ملاحظات']
     data = []
     for idx, r in enumerate(archived_records, 1):
-        # 🌟 تحويل الصف إلى قاموس عادي لتجنب خطأ sqlite3.Row نهائياً
+        # 🌟 تحويل الصف إلى قاموس عادي لتجنب خطأ dbapi.Row نهائياً
         row = dict(r)
         data.append([
             idx,

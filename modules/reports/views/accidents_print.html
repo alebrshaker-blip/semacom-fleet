@@ -68,8 +68,9 @@
 {% endmacro %}
 
 {% macro accident_photos(accident) %}
-{% set acc_src = attachment_src(accident.get('accident_attachment') or accident.get('accident_image')) %}
-{% set acc_src_2 = attachment_src(accident.get('accident_attachment_2')) %}
+{% set source_overrides = accident_image_sources|default({}) %}
+{% set acc_src = source_overrides.get('accident_attachment') or attachment_src(accident.get('accident_attachment') or accident.get('accident_image')) %}
+{% set acc_src_2 = source_overrides.get('accident_attachment_2') or attachment_src(accident.get('accident_attachment_2')) %}
 <div class="attachments-section">
     <div class="accident-number-banner">
         رقم الحادث: {{ accident.get('accident_number') or accident.get('id') or '---' }}
@@ -79,23 +80,41 @@
             <div class="card-title">صورة الحادث الأولى</div>
             <div class="attachment-img-container">
                 {% if acc_src %}
-                <img src="{{ acc_src }}" alt="صورة الحادث" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <img id="accident_image_preview_1" src="{{ acc_src }}" alt="صورة الحادث" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                 <span class="no-image-placeholder" style="display:none;">لا يوجد مرفق حادث</span>
                 {% else %}
+                <img id="accident_image_preview_1" alt="صورة الحادث" style="display:none;">
                 <span class="no-image-placeholder">لا يوجد مرفق حادث</span>
                 {% endif %}
             </div>
+            {% if report_type == 'single' and not is_finalized %}
+            <div class="no-print upload-action-box">
+                <label class="btn-upload-label" for="accident_attachment_input">إضافة / تغيير الصورة</label>
+                <input id="accident_attachment_input" class="file-input-hidden" type="file"
+                       name="accident_attachment" accept="image/*"
+                       onchange="previewReportImage(this, 'accident_image_preview_1')">
+            </div>
+            {% endif %}
         </div>
         <div class="attachment-card">
             <div class="card-title">صورة الحادث الثانية</div>
             <div class="attachment-img-container">
                 {% if acc_src_2 %}
-                <img src="{{ acc_src_2 }}" alt="صورة الحادث الثانية" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <img id="accident_image_preview_2" src="{{ acc_src_2 }}" alt="صورة الحادث الثانية" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                 <span class="no-image-placeholder" style="display:none;">لا توجد صورة ثانية للحادث</span>
                 {% else %}
+                <img id="accident_image_preview_2" alt="صورة الحادث الثانية" style="display:none;">
                 <span class="no-image-placeholder">لا توجد صورة ثانية للحادث</span>
                 {% endif %}
             </div>
+            {% if report_type == 'single' and not is_finalized %}
+            <div class="no-print upload-action-box">
+                <label class="btn-upload-label" for="accident_attachment_2_input">إضافة / تغيير الصورة</label>
+                <input id="accident_attachment_2_input" class="file-input-hidden" type="file"
+                       name="accident_attachment_2" accept="image/*"
+                       onchange="previewReportImage(this, 'accident_image_preview_2')">
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -107,17 +126,17 @@
         width: 100%;
         border-collapse: collapse;
         margin-top: 4px;
-        font-size: 13px;
+        font-size: 15px;
     }
 
     .accident-details-table td {
         border: 1px solid #1b365d;
-        padding: 8px 10px;
+        padding: 9px 11px;
         vertical-align: middle;
     }
 
     .accident-details-table .field-label {
-        background-color: #f1f5f9;
+        background-color: #b3e5fc;
         font-weight: bold;
         color: #1b365d;
         width: 16%;
@@ -142,20 +161,40 @@
         border: 1px solid #1b365d;
         border-radius: 6px;
         padding: 10px;
-        margin-bottom: 16px;
+        margin-bottom: 8px;
         background: #f8fafc;
     }
 
-    .attachments-grid {
+    .illustrated-photo-page {
+        height: 210mm;
+        min-height: 210mm;
+    }
+
+    .illustrated-photo-page .report-content,
+    .attachments-section,
+    .attachments-grid,
+    .attachment-card {
         display: flex;
-        gap: 16px;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .illustrated-photo-page .report-content,
+    .attachments-section,
+    .attachments-grid {
+        flex: 1;
+    }
+
+    .attachments-grid {
+        flex-direction: row;
+        gap: 12px;
     }
 
     .attachment-card {
-        flex: 1;
+        flex: 1 1 0;
         border: 1px solid #1b365d;
         border-radius: 6px;
-        padding: 8px;
+        padding: 6px;
         background: #fafafa;
     }
 
@@ -164,13 +203,14 @@
         font-weight: bold;
         color: #1b365d;
         text-align: center;
-        margin-bottom: 8px;
+        margin-bottom: 5px;
         border-bottom: 1px dashed #cbd5e1;
         padding-bottom: 6px;
     }
 
     .attachment-img-container {
-        min-height: 280px;
+        flex: 1;
+        min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -181,14 +221,33 @@
 
     .attachment-img-container img {
         width: 100%;
-        height: 320px;
-        object-fit: contain;
+        height: 100%;
+        object-fit: cover;
         background: #fff;
     }
 
     .no-image-placeholder {
         color: #94a3b8;
         font-size: 13px;
+    }
+
+    .upload-action-box {
+        margin-top: 8px;
+        text-align: center;
+    }
+
+    .btn-upload-label {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 4px;
+        background: #2563eb;
+        color: #fff;
+        cursor: pointer;
+        font-weight: 700;
+    }
+
+    .file-input-hidden {
+        display: none;
     }
 
     .empty-print-msg {
@@ -201,12 +260,30 @@
 
     @media print {
         .accident-details-table td {
-            padding: 6px 8px !important;
-            font-size: 12px !important;
+            padding: 8px 10px !important;
+            font-size: 14px !important;
+        }
+
+        .accident-details-table .field-label {
+            background-color: #b3e5fc !important;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+        }
+
+        .illustrated-photo-page {
+            height: 210mm !important;
+            min-height: 210mm !important;
+        }
+
+        .attachment-card,
+        .attachments-grid,
+        .attachments-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
         }
 
         .attachment-img-container img {
-            height: 360px !important;
+            object-fit: cover !important;
         }
 
         .no-print {
@@ -234,7 +311,7 @@
     </div>
 
     {% if report_format == 'illustrated' %}
-    <div class="page-container {{ sheet_class }}">
+    <div class="page-container {{ sheet_class }} illustrated-photo-page">
         {% with page_document_number = document_number if report_type != 'single' else (accident.get('document_number') or document_number) %}
             {% include '_print_header.html' %}
         {% endwith %}
@@ -256,4 +333,17 @@
         <div class="empty-print-msg">لا توجد حوادث مطابقة لخيارات التصفية المحددة.</div>
     </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function previewReportImage(input, imageId) {
+        const image = document.getElementById(imageId);
+        if (!image || !input.files || !input.files[0]) return;
+        image.src = URL.createObjectURL(input.files[0]);
+        image.style.display = 'block';
+        const placeholder = image.nextElementSibling;
+        if (placeholder) placeholder.style.display = 'none';
+    }
+</script>
 {% endblock %}

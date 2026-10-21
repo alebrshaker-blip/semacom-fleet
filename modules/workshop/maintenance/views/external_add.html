@@ -59,22 +59,18 @@
                     <div class="col-md-6">
                         <label class="form-label fw-semibold">نوع الصيانة (maintenance_type) <span class="text-danger">*</span></label>
                         <select name="maintenance_type" class="form-select" required>
-                            <option value="تصحيحية" selected>تصحيحية</option>
-                            <option value="وقائية">وقائية</option>
-                            <option value="طارئة">طارئة</option>
-                            <option value="حوادث">حوادث</option>
-                            <option value="تأمين">تأمين</option>
-                            <option value="أخرى">أخرى</option>
+                            {% for maintenance_type in reference_lists.external_maintenance_types %}
+                            <option value="{{ maintenance_type }}" {% if maintenance_type == 'تصحيحية' %}selected{% endif %}>{{ maintenance_type }}</option>
+                            {% endfor %}
                         </select>
                     </div>
 
                     <div class="col-md-6">
                         <label class="form-label fw-semibold">درجة الخطورة (severity)</label>
                         <select name="severity" class="form-select">
-                            <option value="منخفضة">منخفضة</option>
-                            <option value="متوسطة" selected>متوسطة</option>
-                            <option value="عالية">عالية</option>
-                            <option value="خطيرة">خطيرة</option>
+                            {% for severity in reference_lists.maintenance_severities %}
+                            <option value="{{ severity }}" {% if severity == 'متوسطة' %}selected{% endif %}>{{ severity }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
@@ -83,7 +79,12 @@
                 <div class="row mb-3">
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">اسم الورشة الخارجية (workshop_name) <span class="text-danger">*</span></label>
-                        <input type="text" name="workshop_name" class="form-control" required placeholder="اسم الورشة أو المركز الفني">
+                        <input type="text" name="workshop_name" class="form-control" list="externalWorkshopsList" required placeholder="اسم الورشة أو المركز الفني">
+                        <datalist id="externalWorkshopsList">
+                            {% for workshop in reference_lists.external_workshops %}
+                            <option value="{{ workshop }}">
+                            {% endfor %}
+                        </datalist>
                     </div>
 
                     <div class="col-md-4">

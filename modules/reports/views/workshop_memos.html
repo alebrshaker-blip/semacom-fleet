@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}مذكرات طلبات الورشة{% endblock %}
+
+{% block content %}
+<section class="memo-page">
+    <header class="memo-heading">
+        <div>
+            <p class="memo-eyebrow">التقارير / الورشة</p>
+            <h1>مذكرات طلبات الورشة</h1>
+        </div>
+        <div class="memo-page-actions">
+            <a class="memo-return" href="{{ url_for('reports.index') }}">العودة للتقارير</a>
+            <a class="memo-primary" href="{{ url_for('reports.workshop_request_form', new=1) }}">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                إنشاء مذكرة جديدة
+            </a>
+        </div>
+    </header>
+
+    <section class="memo-section" aria-labelledby="drafts-heading">
+        <div class="section-heading">
+            <h2 id="drafts-heading">المذكرات المحفوظة</h2>
+            <span>{{ memos|selectattr('status', 'equalto', 'مسودة')|list|length }}</span>
+        </div>
+        {% set drafts = memos|selectattr('status', 'equalto', 'مسودة')|list %}
+        {% if drafts %}
+        <div class="memo-table-wrap">
+            <table class="memo-table">
+                <thead>
+                    <tr><th>رقم المذكرة</th><th>تاريخ الإنشاء</th><th>الغرض</th><th>الحالة</th><th>إجراءات</th></tr>
+                </thead>
+                <tbody>
+                    {% for memo in drafts %}
+                    <tr>
+                        <td>{{ memo.reference_number or memo.memo_number or ('مسودة #' ~ memo.id) }}</td>
+                        <td>{{ memo.created_at[:10] if memo.created_at else '—' }}</td>
+                        <td>{{ memo.purpose or memo.background or '—' }}</td>
+                        <td><span class="status status-draft">مسودة</span></td>
+                        <td class="memo-actions">
+                            <a href="{{ url_for('reports.workshop_request_form', id=memo.id) }}">فتح</a>
+                            <form method="post" action="{{ url_for('reports.delete_workshop_memo', memo_id=memo.id) }}">
+                                <button type="submit" data-confirm-delete data-target-name="المذكرة {{ memo.reference_number or memo.memo_number or memo.id }}">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">لا توجد مسودات محفوظة.</p>
+        {% endif %}
+    </section>
+
+    <section class="memo-section" aria-labelledby="archive-heading">
+        <div class="section-heading">
+            <h2 id="archive-heading">الأرشيف المعتمد</h2>
+            <span>{{ memos|selectattr('status', 'equalto', 'معتمدة')|list|length }}</span>
+        </div>
+        {% set archived = memos|selectattr('status', 'equalto', 'معتمدة')|list %}
+        {% if archived %}
+        <div class="memo-table-wrap">
+            <table class="memo-table">
+                <thead>
+                    <tr><th>الرقم المرجعي</th><th>تاريخ الاعتماد</th><th>الغرض</th><th>الحالة</th><th>إجراءات</th></tr>
+                </thead>
+                <tbody>
+                    {% for memo in archived %}
+                    <tr>
+                        <td>{{ memo.reference_number or memo.memo_number or ('مذكرة #' ~ memo.id) }}</td>
+                        <td>{{ memo.updated_at[:10] if memo.updated_at else (memo.created_at[:10] if memo.created_at else '—') }}</td>
+                        <td>{{ memo.purpose or memo.background or '—' }}</td>
+                        <td><span class="status status-approved">معتمدة</span></td>
+                        <td class="memo-actions">
+                            <a href="{{ url_for('reports.final_report', doc_number=memo.reference_number) }}">عرض</a>
+                            <a href="{{ url_for('reports.final_report_pdf', doc_number=memo.reference_number, download=1) }}">تنزيل PDF</a>
+                            <form method="post" action="{{ url_for('reports.delete_workshop_memo', memo_id=memo.id) }}">
+                                <button type="submit" data-confirm-delete data-target-name="المذكرة {{ memo.reference_number or memo.memo_number or memo.id }}">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">لا توجد مذكرات معتمدة في الأرشيف.</p>
+        {% endif %}
+    </section>
+</section>
+
+<style>
+    .memo-page { max-width: 1120px; margin: 0 auto; color: #172033; }
+    .memo-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 2px solid #1b365d; }
+    .memo-eyebrow { margin-bottom: 6px; color: #64748b; font-size: 13px; }
+    .memo-heading h1 { font-size: 25px; color: #1b365d; }
+    .memo-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 9px 15px; border-radius: 4px; background: #1b365d; color: #fff; text-decoration: none; font-weight: 700; }
+    .memo-page-actions { display: flex; align-items: center; gap: 9px; }
+    .memo-return { min-height: 42px; padding: 9px 13px; border: 1px solid #64748b; border-radius: 4px; color: #334155; text-decoration: none; font-weight: 700; }
+    .memo-section { margin: 0 0 28px; }
+    .section-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .section-heading h2 { margin: 0; color: #1b365d; font-size: 18px; }
+    .section-heading span { min-width: 25px; padding: 3px 7px; border-radius: 12px; background: #e7edf4; color: #17324f; text-align: center; font-size: 12px; font-weight: 700; }
+    .memo-table-wrap { overflow-x: auto; border: 1px solid #dbe2ea; background: #fff; }
+    .memo-table { width: 100%; min-width: 680px; border-collapse: collapse; }
+    .memo-table th, .memo-table td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; vertical-align: middle; font-size: 13px; }
+    .memo-table th { background: #edf2f7; color: #17324f; font-weight: 700; }
+    .memo-table tbody tr:last-child td { border-bottom: 0; }
+    .memo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .memo-actions a { color: #1b5b88; font-weight: 700; text-decoration: none; }
+    .memo-actions form { margin: 0; }
+    .memo-actions button { padding: 0; border: 0; background: transparent; color: #a12727; font: inherit; cursor: pointer; }
+    .status { display: inline-block; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 700; }
+    .status-draft { background: #fff4d6; color: #72520a; }
+    .status-approved { background: #dff3e8; color: #155c38; }
+    .empty-state { margin: 0; padding: 18px 12px; border-right: 3px solid #cbd5e1; color: #64748b; background: #fff; }
+    @media (max-width: 650px) {
+        .memo-heading { align-items: flex-start; flex-direction: column; }
+        .memo-heading h1 { font-size: 21px; }
+        .memo-page-actions { width: 100%; flex-direction: column; }
+        .memo-return, .memo-primary { width: 100%; }
+        .memo-primary { width: 100%; }
+    }
+</style>
+{% endblock %}

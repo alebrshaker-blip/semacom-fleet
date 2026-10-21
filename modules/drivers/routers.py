@@ -1,7 +1,8 @@
 import sys
 import os
 from pathlib import Path
-from flask import Blueprint, render_template, request, redirect, url_for
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for
+from modules.drivers.models.drivers_model import is_driver_value_duplicate
 from modules.drivers.services.drivers_service import fetch_drivers, create_driver, remove_driver
 
 # 🌟 تحديد المسار الجذري للمشروع لاستيراد أداة التصدير الموحدة لسيماكم
@@ -37,8 +38,23 @@ def add():
         if success:
             return redirect(url_for('drivers.index'))
         else:
-            return render_template('driver_add.html', error=message)
+            return render_template(
+                'driver_add.html', error=message, form_data=request.form.to_dict()
+            )
     return render_template('driver_add.html')
+
+@drivers_bp.route('/check-duplicate')
+def check_duplicate():
+    field = request.args.get('field', '')
+    value = request.args.get('value', '')
+    labels = {'name': 'اسم الموظف', 'national_id': 'رقم الهوية'}
+    if field not in labels:
+        return jsonify({'duplicate': False, 'message': ''}), 400
+    duplicate = is_driver_value_duplicate(field, value)
+    return jsonify({
+        'duplicate': duplicate,
+        'message': f'{labels[field]} مسجل مسبقًا، يرجى إدخال قيمة مختلفة.' if duplicate else '',
+    })
 
 @drivers_bp.route('/delete/<int:driver_id>', methods=['POST'])
 def delete(driver_id):

@@ -15,7 +15,16 @@
     .proposals li { margin: 8px 0; }
     .photos { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
     .photos img { width: min(220px, 100%); max-height: 180px; object-fit: contain; border: 1px solid #e3e9f0; border-radius: 9px; }
+    .photos video { width: min(420px, 100%); max-height: 280px; }
+    .response-form { display: grid; gap: 10px; margin-top: 16px; }
+    .response-form textarea { width: 100%; min-height: 90px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+    .submission-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .empty { background: #fff; padding: 30px; text-align: center; border-radius: 14px; color: #67768a; }
+    .confirm-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 18px; background: rgba(15,23,42,.55); }
+    .confirm-backdrop[hidden] { display: none; }
+    .confirm-dialog { width: min(440px, 100%); background: #fff; border-radius: 16px; padding: 24px; box-shadow: 0 20px 60px rgba(15,23,42,.3); }
+    .confirm-dialog h2 { color: #1b365d; margin: 0 0 10px; }
+    .confirm-dialog p { line-height: 1.8; }
 </style>
 {% endblock %}
 
@@ -57,14 +66,76 @@
             {% endfor %}
         </div>
         {% endif %}
-        {% if submission.status != 'تمت المراجعة' %}
+        {% if submission.video_1 %}
+        <div class="photos">
+            <video controls preload="metadata">
+                <source src="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ submission.video_1) }}">
+                متصفحك لا يدعم تشغيل الفيديو.
+            </video>
+        </div>
+        {% endif %}
+        {% if submission.submission_type == 'استفسار أو بلاغ مشكلة' %}
+        <form class="response-form" method="post" action="{{ url_for('vehicles.reply_public_submission', submission_id=submission.id) }}">
+            <label for="response-{{ submission.id }}"><strong>رد فريق إدارة المعدات الذي سيظهر للزائر</strong></label>
+            <textarea id="response-{{ submission.id }}" name="response" maxlength="4000" required>{{ submission.response or '' }}</textarea>
+            <div class="submission-actions">
+                <button class="btn btn-success" type="submit">حفظ الرد</button>
+            </div>
+        </form>
+        {% elif submission.status != 'تمت المراجعة' %}
         <form method="post" action="{{ url_for('vehicles.review_public_submission', submission_id=submission.id) }}">
             <button class="btn btn-success" type="submit">تحديد كمراجع</button>
         </form>
         {% endif %}
+        <div class="submission-actions" style="margin-top:14px;">
+            <form method="post" action="{{ url_for('vehicles.delete_public_submission', submission_id=submission.id) }}" data-delete-submission>
+                <button class="btn btn-danger" type="submit">حذف البلاغ</button>
+            </form>
+        </div>
     </article>
     {% else %}
     <div class="empty">لا توجد بلاغات أو استفسارات حتى الآن.</div>
     {% endfor %}
 </div>
+<div class="confirm-backdrop" id="delete-confirm" hidden>
+    <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+        <h2 id="delete-confirm-title">تأكيد حذف البلاغ</h2>
+        <p>سيتم حذف البلاغ والرد والمرفقات المرتبطة به نهائياً. هل تريد المتابعة؟</p>
+        <div class="submission-actions">
+            <button type="button" class="btn btn-danger" id="confirm-delete">نعم، احذف البلاغ</button>
+            <button type="button" class="btn btn-secondary" id="cancel-delete">إلغاء</button>
+        </div>
+    </section>
+</div>
+<script>
+    (() => {
+        const dialog = document.getElementById("delete-confirm");
+        const confirmButton = document.getElementById("confirm-delete");
+        const cancelButton = document.getElementById("cancel-delete");
+        let pendingForm = null;
+
+        document.querySelectorAll("[data-delete-submission]").forEach((form) => {
+            form.addEventListener("submit", (event) => {
+                event.preventDefault();
+                pendingForm = form;
+                dialog.hidden = false;
+                confirmButton.focus();
+            });
+        });
+
+        confirmButton.addEventListener("click", () => {
+            if (pendingForm) pendingForm.submit();
+        });
+        cancelButton.addEventListener("click", () => {
+            pendingForm = null;
+            dialog.hidden = true;
+        });
+        dialog.addEventListener("click", (event) => {
+            if (event.target === dialog) {
+                pendingForm = null;
+                dialog.hidden = true;
+            }
+        });
+    })();
+</script>
 {% endblock %}

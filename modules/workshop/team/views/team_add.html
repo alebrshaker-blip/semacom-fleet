@@ -19,6 +19,9 @@
     .btn-success { background-color: #198754; color: white; }
     .btn-success:hover { background-color: #157347; }
     .custom-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed #ced4da; }
+    .unique-feedback { display: block; margin-top: 5px; color: #b02a37; font-size: 13px; font-weight: 700; }
+    .unique-feedback[hidden] { display: none; }
+    .form-control.unique-invalid { border-color: #dc3545; }
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
@@ -31,14 +34,17 @@
     </div>
 
     <form action="{{ url_for('workshop.team.save_member') }}" method="POST">
+        {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
         <div class="form-row">
             <div class="form-group">
                 <label>الاسم الكامل <span style="color: red;">*</span></label>
-                <input type="text" name="full_name" class="form-control" required placeholder="الاسم الرباعي">
+                <input type="text" name="full_name" class="form-control" value="{{ form_data.get('full_name', '') if form_data else '' }}" data-unique-check="{{ url_for('workshop.team.check_duplicate_member') }}" data-unique-field="full_name" data-unique-feedback="teamNameFeedback" autocomplete="off" required placeholder="الاسم الرباعي">
+                <small id="teamNameFeedback" class="unique-feedback" aria-live="polite" hidden></small>
             </div>
             <div class="form-group">
                 <label>رقم الهوية <span style="color: red;">*</span></label>
-                <input type="text" name="national_id" class="form-control" required placeholder="رقم الهوية أو الإقامة">
+                <input type="text" name="national_id" class="form-control" value="{{ form_data.get('national_id', '') if form_data else '' }}" data-unique-check="{{ url_for('workshop.team.check_duplicate_member') }}" data-unique-field="national_id" data-unique-feedback="teamNationalIdFeedback" autocomplete="off" required placeholder="رقم الهوية أو الإقامة">
+                <small id="teamNationalIdFeedback" class="unique-feedback" aria-live="polite" hidden></small>
             </div>
         </div>
 
@@ -131,4 +137,8 @@
         container.appendChild(row);
     }
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/unique_field_validator.js') }}"></script>
 {% endblock %}

@@ -1,94 +1,66 @@
-from core.database import Database
+from sqlalchemy import select
+
+from core import storage
+from core.database import engine, get_session, sync_columns
+from core.orm_utils import to_float
+from modules.insurance.models.insurance_orm import InsurancePolicy
 from utils.expiry_status import get_expiry_status
+
 
 class InsuranceModel:
 
     @staticmethod
     def create_table():
-        db = Database()
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS insurance_policies (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                policy_number TEXT NOT NULL,
-                vehicle_plate TEXT NOT NULL,
-                insurance_company TEXT NOT NULL,
-                insurance_type TEXT DEFAULT 'شامل',
-                start_date TEXT NOT NULL,
-                end_date TEXT NOT NULL,
-                policy_cost REAL DEFAULT 0.0,
-                description TEXT,
-                policy_attachment TEXT,
-                status TEXT DEFAULT 'active',
-                status_type TEXT DEFAULT 'ساري',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (vehicle_plate) REFERENCES vehicles(plate_number)
-            )
-        """)
-        columns = {
-            row["name"] for row in db.fetch_all("PRAGMA table_info(insurance_policies)")
-        }
-        for name, column_type in (
-            ("status", "TEXT DEFAULT 'active'"),
-            ("status_type", "TEXT DEFAULT 'ساري'"),
-        ):
-            if name not in columns:
-                db.execute(f'ALTER TABLE insurance_policies ADD COLUMN "{name}" {column_type}')
-        db.close()
+        InsurancePolicy.__table__.create(bind=engine, checkfirst=True)
+        sync_columns()
 
     @staticmethod
     def get_all(tab='active'):
-        db = Database()
-        policies = db.fetch_all("SELECT * FROM insurance_policies ORDER BY id DESC")
-        for policy in policies:
-            state = get_expiry_status(
-                policy.get("end_date"), "ساري", "قارب على الانتهاء", "منتهية"
-            )
-            policy_status = "expired" if state == "منتهية" else policy.get("status", "active")
-            db.execute(
-                "UPDATE insurance_policies SET status = ?, status_type = ? WHERE id = ?",
-                (policy_status, state, policy.get("id")),
-            )
-        if tab == 'active':
-            query = "SELECT * FROM insurance_policies WHERE status = 'active' ORDER BY id DESC"
-        else:
-            query = "SELECT * FROM insurance_policies WHERE status = 'expired' ORDER BY id DESC"
-        policies = db.fetch_all(query)
-        db.close()
-        return policies
+        wanted = 'active' if tab == 'active' else 'expired'
+        with get_session() as session:
+            for policy in session.scalars(select(InsurancePolicy)):
+                state = get_expiry_status(
+                    policy.end_date, "ساري", "قارب على الانتهاء", "منتهية"
+                )
+                policy.status = "expired" if state == "منتهية" else (policy.status or "active")
+                policy.status_type = state
+            session.flush()
+            rows = session.scalars(
+                select(InsurancePolicy)
+                .where(InsurancePolicy.status == wanted)
+                .order_by(InsurancePolicy.id.desc())
+            ).all()
+            return [row.to_dict() for row in rows]
 
     @staticmethod
     def add_policy(data, attachment_filename):
-        db = Database()
-        db.execute("""
-            INSERT INTO insurance_policies (
-                policy_number, vehicle_plate, insurance_company, insurance_type,
-                start_date, end_date, policy_cost, description, policy_attachment, status, status_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'ساري')
-        """, (
-            data.get('policy_number'),
-            data.get('vehicle_plate'),
-            data.get('insurance_company'),
-            data.get('insurance_type'),
-            data.get('start_date'),
-            data.get('end_date'),
-            float(data.get('policy_cost') or 0.0),
-            data.get('description'),
-            attachment_filename
-        ))
-        db.close()
+        with get_session() as session:
+            session.add(InsurancePolicy(
+                policy_number=data.get('policy_number'),
+                vehicle_plate=data.get('vehicle_plate'),
+                insurance_company=data.get('insurance_company'),
+                insurance_type=data.get('insurance_type'),
+                start_date=data.get('start_date'),
+                end_date=data.get('end_date'),
+                policy_cost=to_float(data.get('policy_cost'), 0.0),
+                description=data.get('description'),
+                policy_attachment=attachment_filename,
+                status='active',
+                status_type='ساري',
+            ))
 
     @staticmethod
     def expire_policy(policy_id):
-        db = Database()
-        db.execute("""
-            UPDATE insurance_policies 
-            SET status = 'expired', status_type = 'منتهي' 
-            WHERE id = ?
-        """, (policy_id,))
-        db.close()
+        with get_session() as session:
+            policy = session.get(InsurancePolicy, policy_id)
+            if policy:
+                policy.status = 'expired'
+                policy.status_type = 'منتهي'
 
     @staticmethod
     def delete_policy(policy_id):
-        db = Database()
-        db.execute("DELETE FROM insurance_policies WHERE id = ?", (policy_id,))
-        db.close()
+        with get_session() as session:
+            policy = session.get(InsurancePolicy, policy_id)
+            if policy:
+                storage.delete_file(policy.policy_attachment)
+                session.delete(policy)

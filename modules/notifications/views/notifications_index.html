@@ -13,13 +13,18 @@
             <h1><i class="fa-solid fa-bell"></i> مركز الإشعارات</h1>
             <p>تنبيهات تشغيلية من وحدات المركبات والورشة والصيانة.</p>
         </div>
-        <form method="post" action="{{ url_for('notifications_bp.mark_all_read') }}">
-            <input type="hidden" name="category" value="{{ selected_category }}">
-            <input type="hidden" name="read" value="{{ selected_read_filter }}">
-            <button class="notification-button secondary" type="submit" {% if not notification_unread_count %}disabled{% endif %}>
-                تعليم الكل كمقروء
-            </button>
-        </form>
+        <div class="notifications-heading-actions">
+            <a class="notification-button secondary" href="{{ url_for('home') }}">
+                <i class="fa-solid fa-arrow-right"></i> العودة إلى الصفحة الرئيسية
+            </a>
+            <form method="post" action="{{ url_for('notifications_bp.mark_all_read') }}">
+                <input type="hidden" name="category" value="{{ selected_category }}">
+                <input type="hidden" name="read" value="{{ selected_read_filter }}">
+                <button class="notification-button secondary" type="submit" {% if not notification_unread_count %}disabled{% endif %}>
+                    تعليم الكل كمقروء
+                </button>
+            </form>
+        </div>
     </header>
 
     <form class="notification-filters" method="get" action="{{ url_for('notifications_bp.index') }}">
@@ -45,11 +50,11 @@
 
     {% if notifications %}
     <div class="notification-bulk">
-        <form method="post" action="{{ url_for('notifications_bp.delete_filtered') }}"
-              onsubmit="return confirm('سيتم حذف جميع الإشعارات المطابقة للفرز الحالي. هل تريد المتابعة؟');">
+        <form method="post" action="{{ url_for('notifications_bp.delete_filtered') }}">
             <input type="hidden" name="category" value="{{ selected_category }}">
             <input type="hidden" name="read" value="{{ selected_read_filter }}">
-            <button class="notification-button danger" type="submit">حذف النتائج المعروضة</button>
+            <button class="notification-button danger" type="submit" data-confirm-delete
+                    data-target-name="جميع الإشعارات المطابقة للفرز الحالي">حذف النتائج المعروضة</button>
         </form>
     </div>
 
@@ -83,7 +88,7 @@
             </div>
             <div class="notification-actions">
                 <a class="notification-button primary" href="{{ notification.url }}">فتح القسم</a>
-                <a class="notification-button secondary" href="{{ url_for('tasks_bp.from_notification', notification_id=notification.id) }}">
+                <a class="notification-button secondary" href="{{ url_for('tasks_bp.from_notification', notification_id=notification.id, category=selected_category, read=selected_read_filter) }}">
                     <i class="fa-solid fa-list-check"></i> إنشاء مهمة
                 </a>
                 <form method="post" action="{{ url_for('notifications_bp.update', notification_id=notification.id, action='read' if not notification.is_read else 'unread') }}">
@@ -96,11 +101,11 @@
                     <input type="hidden" name="read" value="{{ selected_read_filter }}">
                     <button class="notification-button secondary" type="submit">{{ 'إلغاء التثبيت' if notification.is_pinned else 'تثبيت' }}</button>
                 </form>
-                <form method="post" action="{{ url_for('notifications_bp.update', notification_id=notification.id, action='delete') }}"
-                      onsubmit="return confirm('هل تريد حذف هذا الإشعار؟');">
+                <form method="post" action="{{ url_for('notifications_bp.update', notification_id=notification.id, action='delete') }}">
                     <input type="hidden" name="category" value="{{ selected_category }}">
                     <input type="hidden" name="read" value="{{ selected_read_filter }}">
-                    <button class="notification-button danger" type="submit">حذف</button>
+                    <button class="notification-button danger" type="submit" data-confirm-delete
+                            data-target-name="الإشعار: {{ notification.title }}">حذف</button>
                 </form>
             </div>
         </article>

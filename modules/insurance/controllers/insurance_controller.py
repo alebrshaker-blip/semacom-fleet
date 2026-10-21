@@ -13,10 +13,8 @@ class InsuranceController:
 
     @staticmethod
     def add_get():
-        from core.database import Database
-        db = Database()
-        vehicles = db.fetch_all("SELECT plate_number, vehicle_code FROM vehicles")
-        db.close()
+        from modules.vehicles import repository as vehicles_repository
+        vehicles = vehicles_repository.list_active()
         return render_template('insurance/views/insurance_add.html', vehicles=vehicles)
 
     @staticmethod

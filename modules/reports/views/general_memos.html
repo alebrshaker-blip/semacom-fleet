@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}المذكرات الرسمية{% endblock %}
+
+{% block content %}
+<section class="memo-index">
+    <header class="index-heading">
+        <div>
+            <p>التقارير / المذكرات</p>
+            <h1>المذكرات الرسمية</h1>
+        </div>
+        <div class="index-actions">
+            <a class="back-reports" href="{{ url_for('reports.index') }}">العودة للتقارير</a>
+            <a class="new-memo" href="{{ url_for('reports.general_memo_form', new=1) }}">إنشاء مذكرة جديدة</a>
+        </div>
+    </header>
+
+    <section class="index-section">
+        <h2>المسودات <span>{{ drafts|length }}</span></h2>
+        {% if drafts %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>الموضوع</th><th>التوجيه</th><th>آخر تحديث</th><th>إجراء</th></tr></thead>
+                <tbody>
+                    {% for memo in drafts %}
+                    <tr>
+                        <td>{{ memo.data.get('document_title') or memo.data.get('subject') or ('مسودة #' ~ memo.id) }}</td>
+                        <td>{{ memo.data.get('recipient') or '—' }}</td>
+                        <td>{{ memo.updated_at[:10] if memo.updated_at else '—' }}</td>
+                        <td class="memo-row-actions">
+                            <a href="{{ url_for('reports.general_memo_form', id=memo.id) }}">فتح المسودة</a>
+                            <form method="post" action="{{ url_for('reports.delete_general_memo', memo_id=memo.id) }}">
+                                <button type="submit" data-confirm-delete data-target-name="المذكرة {{ memo.data.get('document_title') or memo.id }}">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">لا توجد مسودات محفوظة.</p>{% endif %}
+    </section>
+
+    <section class="index-section">
+        <h2>الأرشيف المعتمد <span>{{ archived|length }}</span></h2>
+        {% if archived %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>الرقم المرجعي</th><th>الموضوع</th><th>التوجيه</th><th>تاريخ الاعتماد</th><th>إجراء</th></tr></thead>
+                <tbody>
+                    {% for memo in archived %}
+                    <tr>
+                        <td>{{ memo.reference_number }}</td>
+                        <td>{{ memo.data.get('document_title') or memo.data.get('subject') or '—' }}</td>
+                        <td>{{ memo.data.get('recipient') or '—' }}</td>
+                        <td>{{ memo.approved_at[:10] if memo.approved_at else '—' }}</td>
+                        <td class="archive-actions">
+                            <a href="{{ url_for('reports.final_report', doc_number=memo.reference_number) }}">عرض</a>
+                            <a href="{{ url_for('reports.final_report_pdf', doc_number=memo.reference_number, download=1) }}">تنزيل PDF</a>
+                            <form method="post" action="{{ url_for('reports.delete_general_memo', memo_id=memo.id) }}">
+                                <button type="submit" data-confirm-delete data-target-name="المذكرة {{ memo.data.get('document_title') or memo.id }}">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">لا توجد مذكرات معتمدة في الأرشيف.</p>{% endif %}
+    </section>
+</section>
+
+<style>
+    .memo-index { max-width: 1120px; margin: 0 auto; color: #172033; }
+    .index-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #1b365d; }
+    .index-heading p { margin: 0 0 5px; color: #64748b; font-size: 13px; }
+    .index-heading h1 { margin: 0; color: #1b365d; font-size: 23px; }
+    .new-memo { padding: 10px 15px; border-radius: 4px; background: #1b365d; color: #fff; text-decoration: none; font-weight: 700; }
+    .index-actions { display: flex; align-items: center; gap: 9px; }
+    .back-reports { padding: 9px 13px; border: 1px solid #64748b; border-radius: 4px; color: #334155; text-decoration: none; }
+    .index-section { margin-bottom: 26px; }
+    .index-section h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 10px; color: #1b365d; font-size: 17px; }
+    .index-section h2 span { padding: 2px 8px; border-radius: 12px; background: #e7edf4; font-size: 12px; }
+    .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #dbe2ea; }
+    .memo-index table { width: 100%; min-width: 650px; border-collapse: collapse; }
+    .memo-index th, .memo-index td { padding: 9px 11px; border-bottom: 1px solid #e2e8f0; text-align: right; font-size: 13px; }
+    .memo-index th { background: #edf2f7; color: #17324f; }
+    .memo-index td a { color: #1b5b88; font-weight: 700; text-decoration: none; }
+    .archive-actions { display: flex; gap: 12px; }
+    .memo-row-actions { display: flex; align-items: center; gap: 12px; }
+    .memo-row-actions form, .archive-actions form { margin: 0; }
+    .memo-row-actions button, .archive-actions button { border: 0; padding: 0; color: #a12727; background: transparent; font: inherit; cursor: pointer; }
+    .empty { padding: 14px; border-right: 3px solid #cbd5e1; color: #64748b; background: #fff; }
+    @media (max-width: 650px) { .index-heading { align-items: flex-start; flex-direction: column; } .index-actions, .new-memo { width: 100%; } .index-actions { flex-direction: column; } .new-memo, .back-reports { text-align: center; } }
+</style>
+{% endblock %}

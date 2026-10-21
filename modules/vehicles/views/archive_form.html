@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}إخراج مركبة من الخدمة{% endblock %}
+
+{% block extra_css %}
+<style>
+    .archive-container { max-width: 850px; margin: 0 auto; }
+    .archive-card { background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+    .archive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .archive-field { margin-bottom: 16px; }
+    .archive-field.full { grid-column: 1 / -1; }
+    .archive-field label { display: block; margin-bottom: 6px; font-weight: 700; }
+    .archive-field input, .archive-field select, .archive-field textarea {
+        width: 100%; padding: 10px 12px; border: 1px solid #ced4da; border-radius: 6px;
+    }
+    .archive-field textarea { min-height: 110px; resize: vertical; }
+    .vehicle-summary { margin: 18px 0; padding: 14px; background: #f1f5f9; border-radius: 8px; line-height: 1.9; }
+    .archive-actions { display: flex; gap: 10px; justify-content: flex-start; margin-top: 12px; }
+    .btn-archive-submit { background: #495057; color: white; }
+    .alert-danger { background: #f8d7da; border: 1px solid #f5c2c7; color: #842029; padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+    @media (max-width: 640px) { .archive-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="archive-container">
+    <div class="archive-card">
+        <h2>إخراج مركبة من الخدمة وأرشفتها</h2>
+        <div class="vehicle-summary">
+            <strong>كود المركبة:</strong> {{ vehicle.vehicle_code or '—' }}<br>
+            <strong>رقم اللوحة:</strong> {{ vehicle.plate_number or '—' }}<br>
+            <strong>النوع والموديل:</strong> {{ vehicle.vehicle_type or '—' }} {{ vehicle.model or '' }}
+        </div>
+
+        {% if error %}<div class="alert-danger" role="alert">{{ error }}</div>{% endif %}
+        <form method="POST" action="{{ url_for('vehicles.archive_vehicle', vehicle_id=vehicle.id) }}">
+            <div class="archive-grid">
+                <div class="archive-field">
+                    <label for="reason">سبب الإخراج <span aria-hidden="true">*</span></label>
+                    <select id="reason" name="reason" required>
+                        <option value="">اختر السبب</option>
+                        {% for reason in archive_reasons %}
+                        <option value="{{ reason }}" {% if form_data and form_data.get('reason') == reason %}selected{% endif %}>{{ reason }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="archive-field">
+                    <label for="handover_date">تاريخ التسليم / الإخراج</label>
+                    <input type="date" id="handover_date" name="handover_date" value="{{ form_data.get('handover_date', '') if form_data else '' }}">
+                </div>
+                <div class="archive-field sale-field">
+                    <label for="buyer_name">اسم المشتري</label>
+                    <input type="text" id="buyer_name" name="buyer_name" maxlength="200" value="{{ form_data.get('buyer_name', '') if form_data else '' }}">
+                </div>
+                <div class="archive-field sale-field">
+                    <label for="sale_value">قيمة البيع</label>
+                    <input type="number" id="sale_value" name="sale_value" min="0" step="0.01" value="{{ form_data.get('sale_value', '') if form_data else '' }}">
+                </div>
+                <div class="archive-field full">
+                    <label for="notes">ملاحظات</label>
+                    <textarea id="notes" name="notes" maxlength="2000" placeholder="أضف تفاصيل الإخراج أو بيانات مستند البيع إن وجدت">{{ form_data.get('notes', '') if form_data else '' }}</textarea>
+                </div>
+            </div>
+            <p>ستبقى بيانات المركبة وسجلاتها محفوظة، وستُنقل إلى الأرشيف وتُستبعد من سجل المركبات النشطة. يمكن استعادتها لاحقًا.</p>
+            <div class="archive-actions">
+                <button type="submit" class="btn btn-archive-submit">تأكيد الأرشفة</button>
+                <a href="{{ url_for('vehicles.vehicles_index') }}" class="btn btn-secondary">إلغاء</a>
+            </div>
+        </form>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const reasonSelect = document.getElementById('reason');
+    const saleFields = [...document.querySelectorAll('.sale-field')];
+    const buyerInput = document.getElementById('buyer_name');
+    const saleValueInput = document.getElementById('sale_value');
+
+    function updateSaleFields() {
+        const isSale = reasonSelect.value === 'بيع';
+        saleFields.forEach(field => { field.hidden = !isSale; });
+        buyerInput.required = isSale;
+        saleValueInput.required = isSale;
+    }
+
+    reasonSelect.addEventListener('change', updateSaleFields);
+    updateSaleFields();
+</script>
+{% endblock %}

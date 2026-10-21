@@ -1,5 +1,6 @@
 from flask import render_template, request, redirect, url_for, flash
 from modules.workshop.store.services.store_service import StoreService
+from utils.excel_export import generate_semacom_excel
 
 class StoreController:
 
@@ -18,6 +19,8 @@ class StoreController:
     @staticmethod
     def add_item():
         """معالجة عملية إضافة صنف جديد للمستودع (عرض النموذج واستقبال بيانات POST)"""
+        import math
+
         if request.method == 'POST':
             item_code = request.form.get('item_code', '').strip()
             name = request.form.get('name', '').strip()
@@ -25,21 +28,33 @@ class StoreController:
             unit = request.form.get('unit', 'قطعة').strip()
             
             try:
-                quantity = int(request.form.get('quantity', 0))
+                quantity = int(request.form.get('quantity', 0) or 0)
             except ValueError:
-                quantity = 0
+                flash("أدخل كمية صحيحة غير سالبة.", "warning")
+                return render_template('store_add.html')
+            if quantity < 0:
+                flash("لا يمكن أن تكون كمية الصنف سالبة.", "warning")
+                return render_template('store_add.html')
 
             try:
-                min_limit = int(request.form.get('min_limit', 5))
+                min_limit = int(request.form.get('min_limit', 5) or 5)
             except ValueError:
-                min_limit = 5
+                flash("أدخل حدًا أدنى صحيحًا غير سالب للمخزون.", "warning")
+                return render_template('store_add.html')
+            if min_limit < 0:
+                flash("لا يمكن أن يكون حد المخزون الأدنى سالبًا.", "warning")
+                return render_template('store_add.html')
 
             location = request.form.get('location', '').strip()
             
             try:
                 unit_price = float(request.form.get('unit_price', 0.0))
             except ValueError:
-                unit_price = 0.0
+                flash("أدخل سعر وحدة صحيحًا.", "warning")
+                return render_template('store_add.html')
+            if not math.isfinite(unit_price) or unit_price < 0:
+                flash("يجب أن يكون سعر الوحدة رقمًا موجبًا أو صفرًا.", "warning")
+                return render_template('store_add.html')
 
             notes = request.form.get('notes', '').strip()
 
@@ -69,3 +84,27 @@ class StoreController:
                 return render_template('store_add.html')
 
         return render_template('store_add.html')
+
+    @staticmethod
+    def delete_item(item_id):
+        success, message = StoreService.delete_item(item_id)
+        flash(message, 'success' if success else 'danger')
+        return redirect(url_for('workshop.store_bp.index'))
+
+    @staticmethod
+    def export_excel():
+        items = StoreService.get_all_items()
+        headers = [
+            'كود الصنف', 'اسم القطعة / الأداة', 'التصنيف', 'الوحدة',
+            'الكمية المتاحة', 'الحد الأدنى', 'الموقع', 'سعر الوحدة', 'ملاحظات', 'حالة المخزون',
+        ]
+        data = [
+            [
+                item.item_code, item.name, item.category, item.unit,
+                item.quantity, item.min_limit, item.location or '-',
+                item.unit_price, item.notes or '-',
+                'منخفض' if item.quantity <= item.min_limit else 'متوفر',
+            ]
+            for item in items
+        ]
+        return generate_semacom_excel('أصناف المستودع', headers, data)

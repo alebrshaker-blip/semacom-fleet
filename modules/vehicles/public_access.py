@@ -1,6 +1,9 @@
 import json
+import mimetypes
 import os
-import sqlite3
+from config import settings
+from core import database as dbapi
+from core import storage
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -11,11 +14,10 @@ from flask import current_app, request, url_for
 from werkzeug.utils import secure_filename
 
 from utils.expiry_status import get_expiry_status
-from core.database import DB_PATH as DATABASE_PATH
 
+UPLOAD_FOLDER = "vehicle_qr_reports"
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = DATABASE_PATH
 
 PUBLIC_FIELDS = [
     ("vehicle_code", "كود المركبة", "vehicle"),
@@ -37,15 +39,26 @@ PUBLIC_FIELDS = [
     ("comprehensive_status", "حالة الفحص الشامل", "comprehensive"),
 ]
 
+IMMUTABLE_PUBLIC_FIELDS = {
+    "vehicle_code",
+    "plate_number",
+    "vehicle_type",
+    "model",
+    "manufacturer",
+    "color",
+    "fuel_type",
+}
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov"}
+MAX_VIDEO_BYTES = 25 * 1024 * 1024
+MAX_VIDEO_DURATION_SECONDS = 120
 THANK_YOU_MESSAGE = "شكراً لكم، سيتم النظر في طلبكم وإبلاغكم بالرد في أقرب وقت."
 
 
 def get_connection():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(str(DB_PATH))
-    connection.row_factory = sqlite3.Row
+    connection = dbapi.connect()
+    connection.row_factory = dbapi.Row
     return connection
 
 
@@ -59,6 +72,7 @@ def ensure_public_tables(connection=None):
                 vehicle_id INTEGER PRIMARY KEY,
                 token TEXT NOT NULL UNIQUE,
                 field_settings TEXT NOT NULL DEFAULT '{}',
+                inquiries_enabled INTEGER NOT NULL DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS vehicle_public_submissions (
@@ -69,12 +83,33 @@ def ensure_public_tables(connection=None):
                 proposed_values TEXT,
                 photo_1 TEXT,
                 photo_2 TEXT,
+                video_1 TEXT,
+                response TEXT,
                 status TEXT NOT NULL DEFAULT 'جديد',
                 submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 reviewed_at TIMESTAMP
             );
             """
         )
+        access_columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(vehicle_public_access)"
+            ).fetchall()
+        }
+        if "inquiries_enabled" not in access_columns:
+            connection.execute(
+                "ALTER TABLE vehicle_public_access ADD COLUMN inquiries_enabled INTEGER NOT NULL DEFAULT 1"
+            )
+        submission_columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(vehicle_public_submissions)"
+            ).fetchall()
+        }
+        for column in ("video_1", "response"):
+            if column not in submission_columns:
+                connection.execute(
+                    f'ALTER TABLE vehicle_public_submissions ADD COLUMN "{column}" TEXT'
+                )
         if owns_connection:
             connection.commit()
     finally:
@@ -99,7 +134,7 @@ def ensure_vehicle_token(connection, vehicle_id):
             )
             connection.commit()
             return token
-        except sqlite3.IntegrityError:
+        except dbapi.IntegrityError:
             connection.rollback()
             existing = connection.execute(
                 "SELECT token FROM vehicle_public_access WHERE vehicle_id = ?",
@@ -112,7 +147,7 @@ def ensure_vehicle_token(connection, vehicle_id):
 def get_public_profile(connection, token):
     return connection.execute(
         """
-        SELECT a.vehicle_id, a.token, a.field_settings, v.*
+        SELECT a.vehicle_id, a.token, a.field_settings, a.inquiries_enabled, v.*
         FROM vehicle_public_access a
         JOIN vehicles v ON v.id = a.vehicle_id
         WHERE a.token = ?
@@ -304,29 +339,40 @@ def read_field_settings(raw_settings, definitions):
             "visible": bool(
                 current.get("visible", not field["key"].startswith("custom:"))
             ),
-            "editable": bool(current.get("editable", False)),
         }
+        settings[field["key"]]["editable"] = (
+            settings[field["key"]]["visible"]
+            and field["key"] not in IMMUTABLE_PUBLIC_FIELDS
+            and bool(current.get("editable", False))
+        )
     return settings
+
+
+_QR_URLS = {}
 
 
 def create_vehicle_qr(token):
     base_url = (
         current_app.config.get("PUBLIC_BASE_URL")
-        or os.environ.get("PUBLIC_BASE_URL")
+        or settings.PUBLIC_BASE_URL
         or request.host_url
     ).rstrip("/")
     public_path = url_for("vehicles.public_landing", token=token)
     public_url = f"{base_url}{public_path}"
-    relative_path = Path("uploads") / "vehicle_qr" / f"{token}.png"
-    qr_path = Path(current_app.static_folder) / relative_path
-    qr_path.parent.mkdir(parents=True, exist_ok=True)
-    qrcode.make(public_url).save(qr_path)
-    return url_for("static", filename=relative_path.as_posix()), public_url
+    cache_key = (token, public_url)
+    qr_url = _QR_URLS.get(cache_key)
+    if qr_url is None:
+        buffer = BytesIO()
+        qrcode.make(public_url).save(buffer, format="PNG")
+        qr_url = storage.upload_bytes(
+            buffer.getvalue(), "vehicle_qr", content_type="image/png",
+            path=f"vehicle_qr/{token}.png", upsert=True,
+        )
+        _QR_URLS[cache_key] = qr_url
+    return qr_url, public_url
 
 
 def validate_and_save_photos(files):
-    upload_dir = Path(current_app.static_folder) / "uploads" / "vehicle_qr_reports"
-    upload_dir.mkdir(parents=True, exist_ok=True)
     saved_names = []
     contents = []
     for upload in files:
@@ -352,28 +398,115 @@ def validate_and_save_photos(files):
             saved_names.append(None)
             continue
         extension, payload = item
-        filename = f"{uuid.uuid4().hex}{extension}"
-        file_path = upload_dir / filename
         try:
-            file_path.write_bytes(payload)
-        except OSError:
-            for saved_name in saved_names:
-                if saved_name:
-                    (upload_dir / saved_name).unlink(missing_ok=True)
+            url = storage.upload_bytes(
+                payload, UPLOAD_FOLDER, extension=extension,
+                content_type=mimetypes.guess_type(f"x{extension}")[0],
+            )
+        except storage.StorageError:
+            storage.delete_files(*saved_names)
             raise
-        saved_names.append(filename)
+        saved_names.append(url)
     return saved_names
 
 
-def save_submission(vehicle_id, submission_type, message, proposed_values=None, photos=None):
+def _mp4_duration_seconds(payload):
+    def read_box(start, end, target):
+        offset = start
+        while offset + 8 <= end:
+            size = int.from_bytes(payload[offset:offset + 4], "big")
+            box_type = payload[offset + 4:offset + 8]
+            header_size = 8
+            if size == 1:
+                if offset + 16 > end:
+                    return None
+                size = int.from_bytes(payload[offset + 8:offset + 16], "big")
+                header_size = 16
+            elif size == 0:
+                size = end - offset
+            if size < header_size or offset + size > end:
+                return None
+            box_start = offset + header_size
+            box_end = offset + size
+            if box_type == target or (
+                target == b"hdlr_vide" and box_type == b"hdlr"
+            ):
+                if target != b"hdlr_vide" or (
+                    box_end - box_start >= 12
+                    and payload[box_start + 8:box_start + 12] == b"vide"
+                ):
+                    return box_start, box_end
+            if box_type in {b"moov", b"trak", b"mdia"}:
+                result = read_box(box_start, box_end, target)
+                if result:
+                    return result
+            offset = box_end
+        return None
+
+    moov = read_box(0, len(payload), b"moov")
+    if not moov:
+        return None
+    file_type = read_box(0, len(payload), b"ftyp")
+    if not file_type:
+        return None
+    mvhd = read_box(moov[0], moov[1], b"mvhd")
+    if not mvhd:
+        return None
+    start, end = mvhd
+    version = payload[start]
+    if version == 0 and end - start >= 20:
+        timescale = int.from_bytes(payload[start + 12:start + 16], "big")
+        duration = int.from_bytes(payload[start + 16:start + 20], "big")
+    elif version == 1 and end - start >= 32:
+        timescale = int.from_bytes(payload[start + 20:start + 24], "big")
+        duration = int.from_bytes(payload[start + 24:start + 32], "big")
+    else:
+        return None
+    if not timescale or not duration:
+        return None
+    if not read_box(moov[0], moov[1], b"hdlr_vide"):
+        return None
+    return duration / timescale
+
+
+def validate_and_save_video(upload):
+    if not upload or not upload.filename:
+        return None
+    extension = Path(secure_filename(upload.filename)).suffix.lower()
+    if extension not in ALLOWED_VIDEO_EXTENSIONS:
+        raise ValueError("يرجى إرفاق مقطع بصيغة MP4 أو MOV.")
+    payload = upload.read(MAX_VIDEO_BYTES + 1)
+    if len(payload) > MAX_VIDEO_BYTES:
+        raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 25 ميجابايت.")
+    duration = _mp4_duration_seconds(payload)
+    if duration is None:
+        raise ValueError("تعذر التحقق من مدة المقطع؛ أرفق ملف MP4 أو MOV صالحاً.")
+    if duration > MAX_VIDEO_DURATION_SECONDS:
+        raise ValueError("يجب ألا تتجاوز مدة مقطع الفيديو دقيقتين.")
+
+    filename = None
+    try:
+        filename = storage.upload_bytes(
+            payload, UPLOAD_FOLDER, extension=extension,
+            content_type="video/quicktime" if extension == ".mov" else "video/mp4",
+        )
+    except storage.StorageError:
+        current_app.logger.exception("Failed to save a vehicle QR report video")
+        raise
+    return filename
+
+
+def save_submission(
+    vehicle_id, submission_type, message, proposed_values=None, photos=None, video=None
+):
     photos = photos or [None, None]
     connection = get_connection()
     try:
         connection.execute(
             """
             INSERT INTO vehicle_public_submissions
-                (vehicle_id, submission_type, message, proposed_values, photo_1, photo_2)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (vehicle_id, submission_type, message, proposed_values, photo_1, photo_2, video_1)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 vehicle_id,
@@ -382,16 +515,14 @@ def save_submission(vehicle_id, submission_type, message, proposed_values=None, 
                 json.dumps(proposed_values, ensure_ascii=False) if proposed_values else None,
                 photos[0],
                 photos[1],
+                video,
             ),
         )
         connection.commit()
-    except sqlite3.Error:
+    except dbapi.Error:
         connection.rollback()
-        if photos:
-            upload_dir = Path(current_app.static_folder) / "uploads" / "vehicle_qr_reports"
-            for filename in photos:
-                if filename:
-                    (upload_dir / filename).unlink(missing_ok=True)
+        if photos or video:
+            storage.delete_files(*photos, video)
         raise
     finally:
         connection.close()

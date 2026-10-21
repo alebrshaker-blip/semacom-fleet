@@ -1,5 +1,5 @@
 import json
-import sqlite3
+from core import database as dbapi
 from pathlib import Path
 from modules.reports.models.reports_model import ReportsModel
 from modules.reports.services.reports_service import ReportsService

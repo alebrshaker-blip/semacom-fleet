@@ -4,25 +4,140 @@
 
 {% block extra_css %}
 <style>
-    .data-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
+    .data-report-title { margin: 0 auto 12px; text-align: center; font-size: 20px; }
     .data-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; }
     .data-report-table th, .data-report-table td {
         border: 1px solid #475569;
-        padding: 6px;
+        padding: 7px 8px;
         text-align: center;
-        overflow-wrap: anywhere;
+        word-break: keep-all;
+        overflow-wrap: normal;
     }
-    .data-report-table th { background: #e9eff5; font-size: 11px; }
-    .data-report-table td { font-size: 10px; }
+    .data-report-table th {
+        background: #e9eff5;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .data-report-table td {
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .data-report-table td.long-text {
+        min-width: 45mm;
+        max-width: 75mm;
+        white-space: normal;
+        text-align: right;
+        line-height: 1.55;
+    }
     .data-report-table thead { display: table-header-group; }
     .data-report-table tr { break-inside: avoid; }
+    .employee-report-page,
+    .violation-report-page { justify-content: flex-start !important; }
+    .employee-report-record-title { margin: 0 0 5px; color: #17324f; font-size: 15px; }
+    .employee-fields-table { width: 100%; border-collapse: collapse; table-layout: fixed; direction: rtl; }
+    .employee-fields-table th, .employee-fields-table td {
+        width: 25%;
+        border: 1px solid #475569;
+        padding: 5px;
+        text-align: center;
+        overflow-wrap: anywhere;
+        line-height: 1.35;
+    }
+    .employee-fields-table th { background: #e9eff5; font-size: 11px; }
+    .employee-fields-table td { font-size: 11px; }
+    .employee-record-page,
+    .violation-record-page { break-after: page; page-break-after: always; }
+    .employee-record-page:last-child,
+    .violation-record-page:last-child { break-after: auto; page-break-after: auto; }
+    .violation-record-table { width: 100%; border-collapse: collapse; table-layout: fixed; direction: rtl; }
+    .violation-record-table th,
+    .violation-record-table td {
+        border: 1px solid #475569;
+        padding: 4mm;
+        text-align: right;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+        vertical-align: top;
+    }
+    .violation-record-table th { width: 20%; background: #e9eff5; font-size: 12px; }
+    .violation-record-table td { width: 30%; font-size: 12px; }
+    .violation-record-table tr { break-inside: avoid; }
     @media print {
-        .data-report-table th, .data-report-table td { padding: 4px; }
+        .data-report-table th, .data-report-table td { padding: 5px 6px; }
+        .data-report-table th { font-size: 12.5px; }
+        .data-report-table td { font-size: 12px; }
+        .employee-fields-table th { font-size: 11px !important; }
+        .employee-fields-table td { font-size: 11px !important; }
+        .violation-record-table th,
+        .violation-record-table td { padding: 3mm !important; }
+        .violation-record-table th,
+        .violation-record-table td { font-size: 12px !important; }
     }
 </style>
 {% endblock %}
 
 {% block pages %}
+{% if report_key == 'violations' and rows %}
+{% for row in rows %}
+<section class="page-container landscape violation-record-page">
+    {% include '_print_header.html' %}
+    <h2 class="data-report-title">{{ report_title_text }}</h2>
+    <h3 class="employee-report-record-title">المخالفة رقم {{ row.get('violation_number') or row.get('id') or loop.index }}</h3>
+    <table class="violation-record-table">
+        <tbody>
+            {% for field_group in columns|batch(2, none) %}
+            <tr>
+                {% for column in field_group %}
+                {% if column %}
+                <th>{{ column.label }}</th>
+                <td>{{ row.get(column.key, '—') or '—' }}</td>
+                {% else %}
+                <th></th><td></td>
+                {% endif %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endfor %}
+{% elif report_key == 'employees' and rows %}
+{% for row in rows %}
+<section class="page-container landscape employee-report-page employee-record-page">
+    {% include '_print_header.html' %}
+    <h2 class="data-report-title">{{ report_title_text }}</h2>
+    <h3 class="employee-report-record-title">{{ row.get('full_name') or ('موظف ' ~ loop.index) }}</h3>
+    <div class="report-content">
+        {% for field_group in columns|batch(4, none) %}
+        <table class="employee-fields-table">
+            <tbody>
+                <tr>
+                    {% for column in field_group[:2] %}
+                    <th>{{ column.label if column else '' }}</th>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    {% for column in field_group[:2] %}
+                    <td>{{ (row.get(column.key, '—') or '—') if column else '' }}</td>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    {% for column in field_group[2:] %}
+                    <th>{{ column.label if column else '' }}</th>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    {% for column in field_group[2:] %}
+                    <td>{{ (row.get(column.key, '—') or '—') if column else '' }}</td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+        {% endfor %}
+    </div>
+</section>
+{% endfor %}
+{% else %}
 <section class="page-container landscape">
     {% include '_print_header.html' %}
     <h2 class="data-report-title">{{ report_title_text }}</h2>
@@ -30,14 +145,18 @@
     <div class="report-content">
         <table class="data-report-table">
             <thead>
-                <tr><th>م</th>{% for column in columns %}<th>{{ column.label }}</th>{% endfor %}</tr>
+                <tr>
+                    {% if report_key not in ['insurance', 'inspections', 'violations'] %}<th>م</th>{% endif %}
+                    {% for column in columns %}<th>{{ column.label }}</th>{% endfor %}
+                </tr>
             </thead>
             <tbody>
                 {% for row in rows %}
                 <tr>
-                    <td>{{ loop.index }}</td>
+                    {% if report_key not in ['insurance', 'inspections', 'violations'] %}<td>{{ loop.index }}</td>{% endif %}
                     {% for column in columns %}
-                    <td>{{ row.get(column.key, '—') or '—' }}</td>
+                    {% set value = row.get(column.key, '—') or '—' %}
+                    <td{% if column.key in ['description', 'notes', 'closure_notes', 'payment_notes'] %} class="long-text"{% endif %}>{{ value }}</td>
                     {% endfor %}
                 </tr>
                 {% endfor %}
@@ -48,4 +167,5 @@
     <div class="report-content text-center text-muted py-5">لا توجد سجلات مطابقة لهذا التقرير.</div>
     {% endif %}
 </section>
+{% endif %}
 {% endblock %}

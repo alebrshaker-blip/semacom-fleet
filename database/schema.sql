@@ -28,6 +28,23 @@ CREATE TABLE IF NOT EXISTS vehicles (
 );
 
 -- ==========================================
+-- 2.1 سجل أرشفة المركبات الخارجة عن الخدمة
+-- ==========================================
+CREATE TABLE IF NOT EXISTS vehicle_archive (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL UNIQUE,
+    reason TEXT NOT NULL,
+    buyer_name TEXT,
+    sale_value REAL CHECK (sale_value IS NULL OR sale_value >= 0),
+    handover_date TEXT,
+    notes TEXT,
+    previous_status TEXT,
+    previous_workshop_status TEXT,
+    archived_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE RESTRICT
+);
+
+-- ==========================================
 -- 3. جدول الحقول للسائقين والموظفين
 -- ==========================================
 CREATE TABLE IF NOT EXISTS driver_fields (

@@ -1,6 +1,5 @@
 from datetime import datetime
-import sqlite3
-from core.database import DB_PATH
+from core import database as dbapi
 
 def generate_work_order_no(maintenance_type):
     prefixes = {
@@ -16,7 +15,7 @@ def generate_work_order_no(maintenance_type):
     month_str = now.strftime('%m')
     year_str = now.strftime('%y')  # أول رقمين من السنة (مثلاً 26)
     
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = dbapi.connect()
     try:
         cur = conn.cursor()
         

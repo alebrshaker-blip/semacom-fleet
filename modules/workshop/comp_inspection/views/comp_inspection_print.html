@@ -38,7 +38,7 @@
 <div class="print-container">
     <div class="print-info-grid">
         <div><strong>رقم اللوحة:</strong> {{ inspection.vehicle_plate }}</div>
-        <div><strong>اسم الفاحص:</strong> {{ inspection.inspector_name }}</div>
+        <div><strong>الفاحصون:</strong> {{ inspection.inspector_names }}</div>
         <div><strong>تاريخ الفحص:</strong> {{ inspection.inspection_date }}</div>
         <div><strong>عداد السيارة الحالي:</strong> {{ inspection.current_mileage or '---' }} كم</div>
         <div><strong>عداد آخر تغيير زيت:</strong> {{ inspection.oil_change_mileage or '---' }} كم</div>

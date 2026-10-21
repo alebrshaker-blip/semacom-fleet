@@ -17,6 +17,14 @@
 
 .tasks-heading {
     margin-bottom: 22px;
+    flex-wrap: wrap;
+}
+
+.tasks-heading-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .tasks-heading h1 {
@@ -339,20 +347,4 @@
 .task-empty h2 {
     margin-bottom: 7px;
     color: #334155;
-}
-
-@media (max-width: 760px) {
-    .task-overview {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .task-form-grid,
-    .task-edit-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .tasks-heading {
-        align-items: flex-start;
-        flex-direction: column;
-    }
 }

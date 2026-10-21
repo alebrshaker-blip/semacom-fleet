@@ -16,6 +16,18 @@
 
 .notifications-heading {
     margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.notifications-heading-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.notifications-heading-actions form {
+    margin: 0;
 }
 
 .notifications-heading h1 {
@@ -239,37 +251,4 @@
     font-size: 11px;
     line-height: 16px;
     text-align: center;
-}
-
-@media (max-width: 850px) {
-    .notification-card {
-        flex-wrap: wrap;
-    }
-
-    .notification-actions {
-        width: 100%;
-        max-width: none;
-        padding-right: 54px;
-    }
-}
-
-@media (max-width: 560px) {
-    .notifications-heading {
-        align-items: flex-start;
-        flex-direction: column;
-    }
-
-    .notification-filters label {
-        width: 100%;
-        align-items: flex-start;
-        flex-direction: column;
-    }
-
-    .notification-filters select {
-        width: 100%;
-    }
-
-    .notification-actions {
-        padding-right: 0;
-    }
 }

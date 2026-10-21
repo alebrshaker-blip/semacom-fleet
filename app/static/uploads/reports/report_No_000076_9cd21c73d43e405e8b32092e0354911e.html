@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مذكرة طلب مواد لزوم صيانة المعدات والمركبات - SEMACOM</title>
+    <style>
+        /* نظام الخطوط والتنسيق العام - يعمل أوفلاين 100% */
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 'Traditional Arabic', 'Cairo', sans-serif;
+        }
+
+        body {
+            background-color: #e9ecef;
+            margin: 0;
+            padding: 20px 0;
+            direction: rtl;
+            color: #000000;
+        }
+
+        /* شريط التحكم الخارجي */
+        .action-bar {
+            width: 210mm;
+            margin: 0 auto 15px auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-action {
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-approve { background-color: #28a745; color: #ffffff; }
+        .btn-approve:hover { background-color: #218838; }
+        .btn-print { background-color: #1b365d; color: #ffffff; }
+        .btn-print:hover { background-color: #0f2341; }
+        .btn-back { background-color: #6c757d; color: #ffffff; }
+        .btn-back:hover { background-color: #5a6268; }
+        .btn-active-orientation { background-color: #1b365d; color: #ffffff; }
+        .btn-inactive-orientation { background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; }
+        .btn-inactive-orientation:hover { background-color: #cbd5e1; }
+
+        /* حاوية الورقة A4 الموحدة */
+        .page-container {
+            background: #ffffff;
+            margin: 0 auto;
+            border: 1px solid #dcdcdc;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* نمط A4 العمودي (Portrait) */
+        .page-container.portrait {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm 15mm;
+        }
+
+        /* نمط A4 الأفقي (Landscape) */
+        .page-container.landscape {
+            width: 297mm;
+            min-height: 210mm;
+            padding: 12mm 15mm;
+        }
+
+        .page-container + .page-container {
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px !important;
+            font-weight: 600;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #475569;
+            padding: 7px 8px;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        table th,
+        table thead td {
+            background: #dbe7f2 !important;
+            color: #17324f;
+            font-size: 13px !important;
+            font-weight: 800 !important;
+        }
+
+        table tbody tr:nth-child(even) td {
+            background: #f5f8fb;
+        }
+
+        /* --- 1. الترويسة الرسمية --- */
+        .official-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 6px;
+        }
+
+        .header-right-zone {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-logo-zone img {
+            max-width: 95px;
+            max-height: 80px;
+            object-fit: contain;
+        }
+
+        .header-company-info {
+            text-align: right;
+        }
+
+        .header-company-info .title-ar {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1b365d;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .header-company-info .sub-ar {
+            font-size: 11px;
+            font-weight: bold;
+            color: #222222;
+            margin: 3px 0;
+        }
+
+        .header-company-info .title-en {
+            font-size: 9px;
+            font-weight: bold;
+            color: #1b365d;
+            margin: 0;
+            direction: ltr;
+            text-align: right;
+            letter-spacing: 0.2px;
+        }
+
+        /* المربع الأيسر للـ QR Code */
+        .header-qr-zone {
+            width: 85px;
+            height: 85px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #cbd5e1;
+            border-radius: 4px;
+            background-color: #fafafa;
+        }
+
+        .header-qr-zone img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .header-double-line {
+            border-top: 3px solid #1b365d;
+            border-bottom: 1px solid #1b365d;
+            height: 3px;
+            margin: 6px 0 12px 0;
+        }
+
+        /* --- 2. شريط بيانات المستند --- */
+        .document-meta-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 18px;
+            padding: 0 4px;
+        }
+
+        .meta-right {
+            text-align: right;
+            color: #111827;
+        }
+
+        /* الرقم المرجعي الموحد باللون الأحمر العريض */
+        .meta-left.ref-number-red {
+            color: #dc3545 !important;
+            font-size: 14px;
+            font-weight: bold;
+            direction: ltr;
+            text-align: left;
+        }
+
+        .meta-left.ref-number-red .ref-label {
+            direction: rtl;
+            display: inline-block;
+            margin-right: 4px;
+            color: #111827;
+        }
+
+        /* --- 3. مربع عنوان التقرير --- */
+        .report-title-box {
+            border: 1px solid #000000;
+            border-radius: 8px 0 8px 0;
+            padding: 8px 15px;
+            text-align: center;
+            margin: 0 auto 20px auto;
+            width: 70%;
+            background-color: #ffffff;
+        }
+
+        .report-title-box h2 {
+            margin: 0;
+            font-size: 19px;
+            font-weight: bold;
+            color: #000000;
+        }
+
+        /* --- 4. محتوى التقرير الأساسي --- */
+        .report-content {
+            flex-grow: 1;
+        }
+
+        [contenteditable="true"] {
+            outline: none;
+            transition: background-color 0.2s;
+        }
+
+        [contenteditable="true"]:hover, 
+        [contenteditable="true"]:focus {
+            background-color: #fffde7;
+            box-shadow: inset 0 0 0 1px #fbc02d;
+            border-radius: 2px;
+        }
+
+        /* --- 5. التوقيعات والذيل الرسمي --- */
+        .official-footer {
+            margin-top: 25px;
+            padding-top: 10px;
+        }
+
+        .signatures-grid {
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .signature-box {
+            width: 30%;
+        }
+
+        .signature-space {
+            height: 45px;
+        }
+
+        /* --- 6. النوافذ المنبثقة للأوفلاين (Modals) --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal-box {
+            background: #ffffff;
+            padding: 24px 28px;
+            border-radius: 10px;
+            width: 420px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+            border-top: 6px solid #1b365d;
+            animation: modalFadeIn 0.2s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1b365d;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .modal-desc {
+            font-size: 13.5px;
+            color: #475569;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        /* تنسيق ثابت وتراكمي لعرض المستند في المتصفح وWeasyPrint */
+        body {
+            background-color: #f5f7fa;
+        }
+
+        .page-container {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .page-container + .page-container {
+            margin-top: 18px;
+        }
+
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+
+            html,
+            body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+            }
+
+            .action-bar,
+            .modal-overlay,
+            #approveModal,
+            #successApproveModal,
+            #existingReportModal,
+            #customModalOverlay {
+                display: none !important;
+                visibility: hidden !important;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .print-sheets {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .page-container {
+                margin: 0 !important;
+                border: 0 !important;
+                box-shadow: none !important;
+            }
+
+            .page-container.portrait:not(.handover-document-page) {
+                width: 210mm !important;
+                min-height: 297mm !important;
+            }
+
+            .page-container.landscape:not(.handover-document-page) {
+                width: 297mm !important;
+                min-height: 210mm !important;
+            }
+
+            .page-container + .page-container {
+                margin-top: 0 !important;
+                page-break-before: always;
+                break-before: page;
+            }
+        }
+    </style>
+    
+</head>
+<body class="portrait">
+
+    <!-- شريط الإجراءات العلوي -->
+    <div class="action-bar">
+        <a href="javascript:history.back()" class="btn-action btn-back">← العودة</a>
+
+        
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+            
+            <button id="btn_share_doc" type="button" onclick="shareApprovedReport()" class="btn-action btn-print"
+                    >
+                مشاركة التقرير
+            </button>
+            <button onclick="window.print()" class="btn-action btn-print">🖨️ طباعة المستند</button>
+        </div>
+    </div>
+
+    <div class="print-sheets">
+    
+    <div class="page-container portrait">
+        
+<div>
+    <div class="official-header">
+        <div class="header-right-zone">
+            <div class="header-logo-zone">
+                 <img src="/static/logo.jpg"
+                     alt="شعار الشركة">
+            </div>
+            <div class="header-company-info">
+                <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
+                <div class="sub-ar">شركة ذات مسؤولية محدودة رأس مالها 4,000,000 ريال مدفوعة بالكامل</div>
+                <div class="title-en">SAUDI ELECTRO MECHANICAL & AIR-CONDITIONING INVESTMENT CO.LTD. (SEMACOM)</div>
+            </div>
+        </div>
+
+        <div class="header-qr-zone">
+            
+                <img class="qr_img" src="/static/uploads/qrcodes/qr_No_000076.png" alt="QR Code">
+            
+        </div>
+    </div>
+
+    <div class="header-double-line"></div>
+
+    <div class="document-meta-bar">
+        <div class="meta-right">
+            <span>تاريخ الإصدار: </span>
+            <span contenteditable="false">2026/10/20م</span>
+            
+            <span style="margin-right: 8px;">الموافق: </span>
+            <span contenteditable="false">1448/04/24هـ</span>
+            
+        </div>
+
+        
+        
+        
+        <div class="meta-left ref-number-red document-reference" >
+            <span class="doc_ref_display" contenteditable="false">No.000076</span>
+        </div>
+    </div>
+</div>
+
+        <div class="report-title-box">
+            <h2>
+
+مذكرة طلب مواد لزوم صيانة المعدات والمركبات
+
+</h2>
+        </div>
+
+        <div class="report-content">
+            
+
+
+<div class="workshop-memo">
+    <div class="memo-parties">
+        <div><strong>إلى:</strong> إدارة المستودع</div>
+        <div>
+            <strong>من:</strong>
+            
+            مدير المعدات
+            
+        </div>
+    </div>
+
+    <div class="memo-opening">
+        <p>السلام عليكم ورحمة الله وبركاته، وبعد:</p>
+        <p>نأمل من إدارة المستودع التكرم بالموافقة على صرف المواد الموضحة أدناه من المستودع، وذلك لاستخدامها في:</p>
+        
+        <div class="purpose-text">لاتبءب</div>
+        
+    </div>
+
+    <div class="materials-table-wrap">
+        <table class="materials-table">
+            <thead>
+                <tr>
+                    <th class="sequence">م</th>
+                    <th>بيان المواد المطلوبة</th>
+                    <th class="quantity">الكمية</th>
+                    <th class="unit">الوحدة</th>
+                    <th>ملاحظات</th>
+                    
+                </tr>
+            </thead>
+            <tbody id="materialRows">
+                
+                <tr class="material-row">
+                    <td class="row-number">1</td>
+                    <td>
+                        
+                        <div class="description-text">تبلء</div>
+                        
+                    </td>
+                    <td><input form="workshopMemoForm" name="item_quantity[]" type="number" min="0.001" step="0.001" required value="2" readonly></td>
+                    <td><input form="workshopMemoForm" name="item_unit[]" maxlength="40" required value="قبيلابي" readonly></td>
+                    <td><input form="workshopMemoForm" name="item_notes[]" maxlength="180" value="" readonly></td>
+                    
+                </tr>
+                
+                <tr class="material-row">
+                    <td class="row-number">2</td>
+                    <td>
+                        
+                        <div class="description-text">لبت</div>
+                        
+                    </td>
+                    <td><input form="workshopMemoForm" name="item_quantity[]" type="number" min="0.001" step="0.001" required value="54" readonly></td>
+                    <td><input form="workshopMemoForm" name="item_unit[]" maxlength="40" required value="بال" readonly></td>
+                    <td><input form="workshopMemoForm" name="item_notes[]" maxlength="180" value="" readonly></td>
+                    
+                </tr>
+                
+            </tbody>
+        </table>
+    </div>
+
+    
+
+    <p class="memo-closing">وتقبلوا خالص التحية والتقدير.</p>
+
+    <div class="equipment-manager-signature">
+        <strong>مدير المعدات</strong>
+        
+        <span class="manager-name">مدير النظام</span>
+        
+        <span class="signature-line"></span>
+        
+        <small>تاريخ الاعتماد: 2026-10-20</small>
+        
+    </div>
+
+    
+    <div class="memo-state no-print">
+        <span>الحالة: معتمدة</span>
+        <span>رقم الحفظ: No.000076</span>
+        
+        <a href="/reports/final/No.000076/pdf?download=1">تحميل نسخة PDF</a>
+        
+    </div>
+    
+
+    
+</div>
+
+<style>
+    .workshop-memo { color: #172033; font-size: 13px; line-height: 1.55; }
+    .memo-controls { display: flex; justify-content: flex-end; margin: 0 0 10px; }
+    .memo-button { display: inline-block; border: 0; border-radius: 4px; padding: 8px 14px; color: #fff; background: #1b365d; text-decoration: none; font-weight: 700; cursor: pointer; }
+    .memo-button.secondary { background: #64748b; }
+    .editable-report-title { width: 100%; border: 0; background: transparent; color: inherit; text-align: center; font: inherit; font-weight: 700; }
+    .memo-messages { margin-bottom: 10px; }
+    .memo-message { padding: 7px 10px; border-radius: 4px; background: #e8f5ee; color: #155c38; }
+    .memo-message.danger { background: #fdecec; color: #8a2020; }
+    .memo-parties { display: flex; justify-content: space-between; margin-bottom: 13px; }
+    .sender-input { width: 180px; max-width: 55vw; border: 0; border-bottom: 1px dotted #64748b; padding: 2px 4px; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+    .memo-opening { margin: 0 0 10px; text-align: justify; line-height: 1.7; }
+    .memo-opening p { margin: 0 0 5px; }
+    .purpose-text { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 700; }
+    .purpose-input-wrap { width: 100%; margin-top: 4px; }
+    .purpose-input { display: block; width: 100%; min-height: 100px; border: 1px solid #94a3b8; border-radius: 3px; padding: 7px 9px; font: inherit; line-height: 1.6; resize: vertical; }
+    .materials-table-wrap { width: 100%; }
+    .materials-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px !important; }
+    .materials-table th, .materials-table td { padding: 4px 5px; border: 1px solid #64748b; text-align: center; vertical-align: middle; }
+    .materials-table th { background: #e7edf4 !important; color: #17324f; }
+    .materials-table .sequence { width: 7%; }
+    .materials-table .quantity { width: 13%; }
+    .materials-table .unit { width: 15%; }
+    .materials-table .remove-col { width: 9%; }
+    .materials-table input, .materials-table textarea { width: 100%; min-width: 0; border: 0; padding: 3px; background: transparent; text-align: center; font: inherit; font-weight: 600; }
+    .purpose-input, .manager-name-input { font-weight: 600; }
+    .materials-table input[readonly] { color: #172033; }
+    .materials-table textarea { display: block; min-height: 24px; resize: none; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; line-height: 1.35; }
+    .description-text { overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; text-align: right; }
+    .remove-row { border: 0; border-radius: 3px; width: 25px; height: 25px; color: #fff; background: #a12727; font-size: 19px; line-height: 20px; cursor: pointer; }
+    .material-controls { margin: 8px 0; }
+    .memo-closing { margin: 13px 0 0; }
+    .equipment-manager-signature { width: 34%; min-width: 180px; margin: 10px auto 0 0; text-align: center; display: flex; flex-direction: column; gap: 3px; }
+    .manager-name-input { width: 100%; border: 0; border-bottom: 1px dotted #64748b; padding: 3px; text-align: center; font: inherit; }
+    .manager-name { min-height: 20px; font-weight: 700; }
+    .signature-line { height: 28px; border-bottom: 1px dotted #64748b; }
+    .memo-state { display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; margin-top: 18px; padding-top: 8px; font-size: 11px; color: #475569; }
+    .memo-state a { color: #1b365d; font-weight: 700; }
+    .memo-form-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+    .memo-form-actions span { color: #64748b; font-size: 11px; }
+    .memo-archive { margin: 18px auto; padding: 12px; max-width: 1000px; background: #fff; border: 1px solid #dbe2ea; }
+    .memo-archive h2 { margin: 0 0 10px; color: #1b365d; font-size: 16px; }
+    .archive-wrap { overflow-x: auto; }
+    .archive-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .archive-table th, .archive-table td { border: 1px solid #dbe2ea; padding: 6px; text-align: right; }
+    .archive-table th { background: #f1f5f9; }
+    .archive-actions { display: flex; align-items: center; gap: 8px; }
+    .archive-actions a { color: #1b365d; font-weight: 700; }
+    .delete-memo { border: 0; background: transparent; color: #a12727; text-decoration: underline; cursor: pointer; }
+    @media print {
+        .memo-archive, .no-print, .action-bar,
+        #approveModal, #successApproveModal, #existingReportModal { display: none !important; }
+        .workshop-memo { font-size: 10px; line-height: 1.35; }
+        .memo-parties { margin-bottom: 5px; }
+        .memo-opening { margin-bottom: 5px; line-height: 1.4; }
+        .memo-opening p { margin-bottom: 2px; }
+        .materials-table { font-size: 10px !important; }
+        .materials-table th, .materials-table td { padding: 2px 3px; }
+        .equipment-manager-signature { margin-top: 6px; }
+        .memo-closing { margin-top: 6px; }
+        .report-title-box { margin-bottom: 10px !important; padding: 5px 10px !important; }
+        .report-title-box h2 { font-size: 16px !important; }
+        .page-container.portrait { min-height: 297mm !important; height: 297mm; padding: 7mm 10mm !important; }
+        .page-container { break-inside: avoid !important; page-break-inside: avoid !important; }
+    }
+</style>
+
+
+
+        </div>
+
+        
+    </div>
+    
+    </div>
+
+    <!-- 1. نافذة التأكيد قبل الاعتماد (Modal 1) -->
+    <div id="approveModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                🛡️ تأكيد اعتماد الوثيقة
+            </div>
+            <div class="modal-desc">
+                هل أنت متأكد من اعتماد هذه الوثيقة؟<br>
+                سيتم توليد الرقم المرجعي المتسلسل الرسمي والـ QR Code الخاص بها، ولا يمكن التراجع بعد إتمام الاعتماد.
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-approve" onclick="confirmApproval()">نعم، اعتمد الوثيقة</button>
+                <button type="button" class="btn-action btn-back" onclick="hideApproveModal()">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. نافذة النجاح المنسقة والمستقلة بالكامل أوفلاين (Modal 2) -->
+    <div id="successApproveModal" class="modal-overlay">
+        <div class="modal-box" style="border-top-color: #28a745;">
+            <div style="font-size: 42px; line-height: 1; margin-bottom: 8px;">✅</div>
+            <div class="modal-title" style="color: #28a745;">تم اعتماد الوثيقة بنجاح!</div>
+            <div class="modal-desc">
+                تم تسجيل الوثيقة رسمياً في قاعدة البيانات.<br>
+                الرقم المرجعي المعتمد:
+                <div id="modal_ref_result" style="font-size: 22px; font-weight: bold; color: #dc3545; margin: 12px 0; background-color: #fff5f5; padding: 10px; border-radius: 6px; border: 1px dashed #feb2b2; direction: ltr; font-family: monospace;">
+                    No.000000
+                </div>
+                تم إنشاء رمز الـ QR المخصص وإضافته تلقائياً للترويسة.
+            </div>
+            <div class="modal-actions">
+                <a id="approvedReportLink" class="btn-action btn-print" target="_blank" rel="noopener"
+                   href="/reports/public/view/No.000076">
+                    عرض / طباعة التقرير المعتمد
+                </a>
+                <button type="button" class="btn-action btn-approve" onclick="closeSuccessModal()" style="width: 100%; justify-content: center; font-size: 15px; padding: 10px;">
+                    موافق
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="existingReportModal" class="modal-overlay" role="dialog" aria-modal="true"
+         aria-labelledby="existingReportTitle">
+        <div class="modal-box">
+            <div id="existingReportTitle" class="modal-title">التقرير موجود بالفعل</div>
+            <div class="modal-desc">تم اعتماد هذا التقرير مسبقاً ولا يمكن تعديله. يمكنك عرض النسخة المعتمدة.</div>
+            <div class="modal-actions">
+                <a id="existingReportPrintLink" class="btn-action btn-print" target="_blank" rel="noopener">
+                    طباعة التقرير المعتمد
+                </a>
+                <button type="button" class="btn-action btn-back" onclick="hideExistingReportModal()">
+                    إلغاء
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function changeOrientation(newOrientation) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('orientation', newOrientation);
+            window.location.href = url.toString();
+        }
+
+        function showApproveModal() {
+            document.getElementById('approveModal').style.display = 'flex';
+        }
+
+        function hideApproveModal() {
+            document.getElementById('approveModal').style.display = 'none';
+        }
+
+        function closeSuccessModal() {
+            document.getElementById('successApproveModal').style.display = 'none';
+        }
+
+        function hideExistingReportModal() {
+            document.getElementById('existingReportModal').style.display = 'none';
+        }
+
+        async function shareApprovedReport() {
+            const reportLink = document.getElementById('approvedReportLink');
+            if (!reportLink || !reportLink.href) {
+                alert('اعتمد التقرير أولاً قبل مشاركته.');
+                return;
+            }
+            try {
+                if (navigator.share) {
+                    await navigator.share({ title: document.title, url: reportLink.href });
+                } else {
+                    await navigator.clipboard.writeText(reportLink.href);
+                    alert('تم نسخ رابط التقرير المعتمد.');
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    alert('تعذرت مشاركة التقرير. يمكنك فتحه ونسخ رابطه يدوياً.');
+                }
+            }
+        }
+
+        function confirmApproval() {
+            hideApproveModal();
+            submitApproval('approve');
+        }
+
+        async function submitApproval(action) {
+            const approvalDocType = "workshop_memo";
+            const itemId = "7";
+            const approvalToken = "293d248336e6417890ffef91a41a1ded";
+            const formData = new FormData();
+            formData.append('doc_type', approvalDocType);
+            formData.append('item_id', itemId);
+            formData.append('approval_token', approvalToken);
+            formData.append('action', action);
+            document.querySelectorAll('input[type="file"][name]').forEach(input => {
+                if (input.files && input.files[0]) {
+                    formData.append(input.name, input.files[0]);
+                }
+            });
+
+            try {
+                const response = await fetch("/reports/approve", {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: formData
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 409 && data.already_finalized && data.final_url) {
+                    const printLink = document.getElementById('existingReportPrintLink');
+                    printLink.href = data.final_url;
+                    document.getElementById('existingReportModal').style.display = 'flex';
+                    return;
+                }
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `تعذر اعتماد التقرير (HTTP ${response.status}).`);
+                }
+
+                document.querySelectorAll('.doc_ref_display').forEach(el => {
+                    el.innerText = data.doc_number;
+                    const referenceContainer = el.closest('.document-reference');
+                    if (referenceContainer) referenceContainer.hidden = false;
+                });
+                document.querySelectorAll('.header-qr-zone').forEach(qrContainer => {
+                    qrContainer.innerHTML = `<img class="qr_img" src="${data.qr_code_url}" alt="QR Code">`;
+                });
+
+                const approveBtn = document.getElementById('btn_approve_doc');
+                if (approveBtn) approveBtn.style.display = 'none';
+                document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+                    el.setAttribute('contenteditable', 'false');
+                });
+                document.querySelectorAll('[data-photo-input]').forEach(input => {
+                    input.disabled = true;
+                });
+                document.querySelectorAll('.photo-picker').forEach(picker => {
+                    picker.hidden = true;
+                });
+
+                const approvedReportLink = document.getElementById('approvedReportLink');
+                if (approvedReportLink && data.public_url) {
+                    approvedReportLink.href = data.public_url;
+                    approvedReportLink.hidden = false;
+                }
+                const shareBtn = document.getElementById('btn_share_doc');
+                if (shareBtn) shareBtn.hidden = false;
+                document.getElementById('modal_ref_result').innerText = data.doc_number;
+                document.getElementById('successApproveModal').style.display = 'flex';
+
+                if (approvalDocType === 'handover_document') {
+                    const listWindow = window.opener && !window.opener.closed
+                        ? window.opener
+                        : window;
+                    window.setTimeout(() => listWindow.location.reload(), 800);
+                }
+                if (data.final_url) {
+                    const approvedReportLink = document.getElementById('approvedReportLink');
+                    if (approvedReportLink) approvedReportLink.href = data.final_url;
+                }
+            } catch (error) {
+                console.error('Report approval failed:', error);
+                alert(error.message || 'حدث خطأ أثناء اعتماد التقرير.');
+            }
+        }
+    </script>
+    
+</body>
+</html>

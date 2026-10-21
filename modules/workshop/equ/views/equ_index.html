@@ -13,10 +13,14 @@
     .btn-primary { background-color: #0d6efd; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold; border: none; cursor: pointer; display: inline-block; }
     .btn-primary:hover { background-color: #0b5ed7; }
     .btn-secondary { background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold; display: inline-block; }
+    .btn-excel { background-color: #198754; color: white; padding: 8px 14px; border-radius: 4px; text-decoration: none; font-weight: bold; display: inline-block; }
     .badge { padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; }
     .badge-success { background-color: #d1e7dd; color: #0f5132; }
     .badge-warning { background-color: #fff3cd; color: #664d03; }
     .badge-danger { background-color: #f8d7da; color: #842029; }
+    .row-actions { display: flex; align-items: center; gap: 8px; }
+    .delete-item { width: 32px; height: 32px; border: 1px solid #dc3545; border-radius: 4px; background: #fff; color: #b02a37; cursor: pointer; }
+    .delete-item:hover { background: #f8d7da; }
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
@@ -28,6 +32,7 @@
         <h2><i class="fa-solid fa-screwdriver-wrench ml-2"></i> إدارة أصول ومعدات الورشة</h2>
         <div>
             <a href="{{ url_for('workshop.equ_bp.add_item') }}" class="btn-primary"><i class="fa-solid fa-plus ml-1"></i> إضافة أصل / عدة جديدة</a>
+            <a href="{{ url_for('workshop.equ_bp.export_excel') }}" class="btn-excel"><i class="fa-solid fa-file-excel ml-1"></i> تصدير Excel</a>
             <a href="{{ url_for('workshop.index') }}" class="btn-secondary"><i class="fa-solid fa-arrow-right ml-1"></i> عودة للورشة</a>
         </div>
     </div>
@@ -67,7 +72,11 @@
                     <td>{{ asset.location }}</td>
                     <td>{{ asset.condition_status }}</td>
                     <td>
-                        <a href="#" style="background: #0d6efd; color: white; padding: 5px 10px; border-radius: 3px; text-decoration: none;" title="تعديل"><i class="fa-solid fa-pen"></i></a>
+                        <div class="row-actions">
+                            <form method="post" action="{{ url_for('workshop.equ_bp.delete_item', asset_id=asset.id) }}">
+                                <button type="submit" class="delete-item" data-confirm-delete data-target-name="الأصل {{ asset.name }}" aria-label="حذف {{ asset.name }}" title="حذف"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

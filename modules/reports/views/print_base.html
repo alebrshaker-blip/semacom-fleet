@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}تقرير رسمي{% endblock %} - SEMACOM</title>
     <style>
+        :root {
+            --report-primary: #1b365d;
+            --report-text: #253348;
+            --report-border: #d9e1eb;
+            --report-surface: #ffffff;
+        }
+
         /* نظام الخطوط والتنسيق العام - يعمل أوفلاين 100% */
         * {
             box-sizing: border-box;
@@ -324,85 +331,183 @@
             gap: 12px;
         }
 
-        @media screen and (max-width: 760px) {
-            body { padding: 12px; }
-            .action-bar {
-                width: 100%;
-                flex-wrap: wrap;
-                justify-content: center;
-                gap: 10px;
-                margin-bottom: 12px;
-            }
-            .action-bar > div { flex-wrap: wrap; justify-content: center; }
-            .btn-action { min-height: 46px; }
-            .page-container.portrait,
-            .page-container.landscape {
-                width: 100%;
-                max-width: 100%;
-                min-height: 0;
-                padding: 16px;
-                overflow-x: auto;
-            }
-            .page-container table { min-width: 640px; }
+        /* تنسيق ثابت وتراكمي لعرض المستند في المتصفح وWeasyPrint */
+        body {
+            background-color: #f5f7fa;
         }
 
-        /* ========================================================= */
-        /* 🖨️ إعدادات الطباعة A4 المخصصة للأوفلاين                    */
-        /* ========================================================= */
+        .page-container {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .page-container + .page-container {
+            margin-top: 18px;
+        }
+
         @media print {
-            body {
-                background: white !important;
-                padding: 0 !important;
-                margin: 0 !important;
+            @page {
+                size: A4 {% if orientation == 'landscape' %}landscape{% else %}portrait{% endif %};
+                margin: 0;
             }
 
-            .action-bar, .modal-overlay {
+            html,
+            body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+            }
+
+            .action-bar,
+            .modal-overlay,
+            #approveModal,
+            #successApproveModal,
+            #existingReportModal,
+            #customModalOverlay {
+                display: none !important;
+                visibility: hidden !important;
+            }
+
+            .no-print {
                 display: none !important;
             }
 
-            .page-container {
-                border: none !important;
-                box-shadow: none !important;
-                overflow: visible !important;
-                padding: 0 !important;
+            .print-sheets {
                 margin: 0 !important;
-                width: 100% !important;
-                min-height: 0 !important;
-                height: auto !important;
-                display: flex !important;
-                flex-direction: column !important;
-                page-break-after: always;
-                break-after: page;
+                padding: 0 !important;
             }
 
-            .print-sheets .page-container:last-child {
-                page-break-after: auto;
-                break-after: auto;
+            .page-container {
+                margin: 0 !important;
+                border: 0 !important;
+                box-shadow: none !important;
+            }
+
+            .page-container.portrait:not(.handover-document-page) {
+                width: 210mm !important;
+                min-height: 297mm !important;
+            }
+
+            .page-container.landscape:not(.handover-document-page) {
+                width: 297mm !important;
+                min-height: 210mm !important;
             }
 
             .page-container + .page-container {
                 margin-top: 0 !important;
+                page-break-before: always;
+                break-before: page;
+            }
+        }
+
+        @media screen and (max-width: 760px) {
+            .action-bar {
+                width: auto;
+                margin: 0 10px 12px;
+                align-items: stretch;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .action-bar > *,
+            .action-bar > div {
+                max-width: 100%;
+                flex-wrap: wrap;
+            }
+
+            .btn-action {
+                min-height: 42px;
+                justify-content: center;
+            }
+
+            .page-container,
+            .page-container.portrait,
+            .page-container.landscape {
+                width: auto !important;
+                min-width: 0;
+                min-height: 0;
+                margin: 0 8px;
+                padding: clamp(12px, 4vw, 24px);
+                overflow-wrap: anywhere;
+            }
+
+            .page-container + .page-container {
+                margin-top: 12px;
+            }
+
+            .official-header,
+            .header-right-zone,
+            .document-meta-bar {
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .report-title-box {
+                width: min(100%, 560px);
             }
 
             .header-qr-zone {
-                border: none !important;
-                background: transparent !important;
+                width: 64px;
+                height: 64px;
+                flex: 0 0 64px;
             }
 
-            .page-container > div,
-            .report-content {
-                display: block !important;
+            .signatures-grid {
+                flex-wrap: wrap;
+                gap: 14px;
             }
 
-            [contenteditable="true"]:hover, 
-            [contenteditable="true"]:focus {
-                background: transparent !important;
-                box-shadow: none !important;
+            .signature-box {
+                min-width: 110px;
             }
 
-            @page {
-                size: A4 {% if orientation == 'landscape' %}landscape{% else %}portrait{% endif %};
-                margin: 6mm 10mm;
+            .modal-overlay {
+                padding: max(12px, env(safe-area-inset-top))
+                    max(12px, env(safe-area-inset-right))
+                    max(12px, env(safe-area-inset-bottom))
+                    max(12px, env(safe-area-inset-left));
+            }
+
+            .modal-box {
+                width: min(100%, 420px);
+                max-height: calc(100dvh - 24px);
+                overflow-y: auto;
+                padding: 22px 18px;
+            }
+        }
+
+        @media screen and (max-width: 480px) {
+            body {
+                padding-block: 10px;
+            }
+
+            .action-bar {
+                flex-direction: column;
+            }
+
+            .action-bar > div {
+                width: 100%;
+            }
+
+            .page-container,
+            .page-container.portrait,
+            .page-container.landscape {
+                margin-inline: 5px;
+                padding: 12px;
+            }
+
+            table {
+                font-size: 11px !important;
+            }
+
+            table th,
+            table td {
+                padding: 5px 6px;
+            }
+
+            .modal-actions {
+                flex-wrap: wrap;
             }
         }
     </style>
@@ -412,7 +517,7 @@
 
     <!-- شريط الإجراءات العلوي -->
     <div class="action-bar">
-        <a href="javascript:history.back()" class="btn-action btn-back">← العودة</a>
+        <a href="{{ url_for('reports.index') }}" class="btn-action btn-back" onclick="return navigateBack(event)">← العودة</a>
 
         {% if allow_orientation is not defined or allow_orientation %}
         <div style="display: flex; gap: 8px; align-items: center;">
@@ -523,7 +628,48 @@
         </div>
     </div>
 
+    <div id="existingReportModal" class="modal-overlay" role="dialog" aria-modal="true"
+         aria-labelledby="existingReportTitle">
+        <div class="modal-box">
+            <div id="existingReportTitle" class="modal-title">التقرير موجود بالفعل</div>
+            <div class="modal-desc">تم اعتماد هذا التقرير مسبقاً ولا يمكن تعديله. يمكنك عرض النسخة المعتمدة.</div>
+            <div class="modal-actions">
+                <a id="existingReportPrintLink" class="btn-action btn-print" target="_blank" rel="noopener">
+                    طباعة التقرير المعتمد
+                </a>
+                <button type="button" class="btn-action btn-back" onclick="hideExistingReportModal()">
+                    إلغاء
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="approvalErrorModal" class="modal-overlay" role="alertdialog" aria-modal="true"
+         aria-labelledby="approvalErrorTitle" aria-describedby="approvalErrorMessage">
+        <div class="modal-box" style="border-top-color: #dc3545;">
+            <div style="font-size: 36px; line-height: 1; margin-bottom: 8px; color: #dc3545;">!</div>
+            <div id="approvalErrorTitle" class="modal-title" style="color: #a12727;">تعذر اعتماد الوثيقة</div>
+            <div id="approvalErrorMessage" class="modal-desc"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn-action btn-back" onclick="closeApprovalErrorModal()">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function navigateBack(event) {
+            const referrer = document.referrer;
+            if (!referrer) return true;
+
+            const referrerUrl = new URL(referrer);
+            if (referrerUrl.origin !== window.location.origin) return true;
+
+            event.preventDefault();
+            if (window.history.length > 1) window.history.back();
+            else window.location.assign(referrerUrl.href);
+            return false;
+        }
+
         function changeOrientation(newOrientation) {
             const url = new URL(window.location.href);
             url.searchParams.set('orientation', newOrientation);
@@ -540,6 +686,19 @@
 
         function closeSuccessModal() {
             document.getElementById('successApproveModal').style.display = 'none';
+        }
+
+        function hideExistingReportModal() {
+            document.getElementById('existingReportModal').style.display = 'none';
+        }
+
+        function showApprovalError(message) {
+            document.getElementById('approvalErrorMessage').textContent = message;
+            document.getElementById('approvalErrorModal').style.display = 'flex';
+        }
+
+        function closeApprovalErrorModal() {
+            document.getElementById('approvalErrorModal').style.display = 'none';
         }
 
         async function shareApprovedReport() {
@@ -564,31 +723,45 @@
 
         function confirmApproval() {
             hideApproveModal();
-            
+            submitApproval('approve');
+        }
+
+        async function submitApproval(action) {
             const approvalDocType = {{ (approval_doc_type or 'accident_single')|tojson }};
             const itemId = {{ (approval_item_id or (accident.get('id') or accident.get('accident_number') or '1' if accident is defined and accident else '1'))|tojson }};
             const approvalToken = {{ (approval_token or '')|tojson }};
-            
-            fetch({{ url_for('reports.approve_document_api')|tojson }}, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    doc_type: approvalDocType,
-                    item_id: itemId,
-                    approval_token: approvalToken
-                })
-            })
-            .then(async res => {
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.success) {
-                    throw new Error(data.message || `تعذر اعتماد التقرير (HTTP ${res.status}).`);
+            const formData = new FormData();
+            formData.append('doc_type', approvalDocType);
+            formData.append('item_id', itemId);
+            formData.append('approval_token', approvalToken);
+            formData.append('action', action);
+            document.querySelectorAll('input[type="file"][name]').forEach(input => {
+                if (input.files && input.files[0]) {
+                    formData.append(input.name, input.files[0]);
                 }
-                return data;
-            })
-            .then(data => {
+            });
+
+            try {
+                const response = await fetch({{ url_for('reports.approve_document_api')|tojson }}, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body: formData
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 409 && data.already_finalized && data.final_url) {
+                    const printLink = document.getElementById('existingReportPrintLink');
+                    printLink.href = data.final_url;
+                    document.getElementById('existingReportModal').style.display = 'flex';
+                    return;
+                }
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || `تعذر اعتماد التقرير (HTTP ${response.status}).`);
+                }
+
                 document.querySelectorAll('.doc_ref_display').forEach(el => {
                     el.innerText = data.doc_number;
+                    const referenceContainer = el.closest('.document-reference');
+                    if (referenceContainer) referenceContainer.hidden = false;
                 });
                 document.querySelectorAll('.header-qr-zone').forEach(qrContainer => {
                     qrContainer.innerHTML = `<img class="qr_img" src="${data.qr_code_url}" alt="QR Code">`;
@@ -596,6 +769,25 @@
 
                 const approveBtn = document.getElementById('btn_approve_doc');
                 if (approveBtn) approveBtn.style.display = 'none';
+                document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+                    el.setAttribute('contenteditable', 'false');
+                });
+                document.querySelectorAll('[data-photo-input]').forEach(input => {
+                    input.disabled = true;
+                });
+                document.querySelectorAll('.photo-picker').forEach(picker => {
+                    picker.hidden = true;
+                });
+                if (approvalDocType === 'general_memo') {
+                    document.querySelectorAll('.memo-actions, .memo-save, .field-settings').forEach(control => {
+                        control.hidden = true;
+                    });
+                    document.querySelectorAll('#generalMemoForm input, #generalMemoForm textarea, #generalMemoForm select, [form="generalMemoForm"]').forEach(control => {
+                        if (control.type === 'hidden') return;
+                        if ('readOnly' in control) control.readOnly = true;
+                        else control.disabled = true;
+                    });
+                }
 
                 const approvedReportLink = document.getElementById('approvedReportLink');
                 if (approvedReportLink && data.public_url) {
@@ -606,11 +798,21 @@
                 if (shareBtn) shareBtn.hidden = false;
                 document.getElementById('modal_ref_result').innerText = data.doc_number;
                 document.getElementById('successApproveModal').style.display = 'flex';
-            })
-            .catch(error => {
+
+                if (approvalDocType === 'handover_document') {
+                    const listWindow = window.opener && !window.opener.closed
+                        ? window.opener
+                        : window;
+                    window.setTimeout(() => listWindow.location.reload(), 800);
+                }
+                if (data.final_url) {
+                    const approvedReportLink = document.getElementById('approvedReportLink');
+                    if (approvedReportLink) approvedReportLink.href = data.final_url;
+                }
+            } catch (error) {
                 console.error('Report approval failed:', error);
-                alert(error.message || 'حدث خطأ أثناء اعتماد التقرير.');
-            });
+                showApprovalError(error.message || 'حدث خطأ أثناء اعتماد التقرير.');
+            }
         }
     </script>
     {% block extra_js %}{% endblock %}

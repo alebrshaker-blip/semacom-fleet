@@ -2,7 +2,7 @@ from datetime import date
 
 from flask import flash, redirect, render_template, request, session, url_for
 
-from modules.notifications.services.notifications_service import NotificationsService
+from modules.notifications.services.notifications_service import CATEGORIES, NotificationsService
 from modules.tasks.services.tasks_service import (
     PRIORITIES,
     STATUSES,
@@ -67,6 +67,12 @@ class TasksController:
 
     @staticmethod
     def from_notification(notification_id):
+        category = request.args.get("category", "all")
+        if category not in CATEGORIES:
+            category = "all"
+        read_filter = request.args.get("read", "all")
+        if read_filter not in {"all", "read", "unread"}:
+            read_filter = "all"
         user_id = _current_user_id()
         notification = next(
             (
@@ -101,6 +107,9 @@ class TasksController:
             today=date.today().isoformat(),
             new_task=default_task,
             source_notification_id=notification_id,
+            notification_return_url=url_for(
+                "notifications_bp.index", category=category, read=read_filter
+            ),
             duplicate_source=False,
         )
 

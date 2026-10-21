@@ -1,10 +1,15 @@
 import os
-import sqlite3
-import uuid
+from core import database as dbapi
 import qrcode
+import math
+import mimetypes
+import warnings
+import base64
 from datetime import datetime
-from flask import request
-from core.database import DB_PATH
+from urllib.parse import unquote, urlparse
+from PIL import Image, ImageOps, UnidentifiedImageError
+from flask import request, url_for
+from config import settings
 
 # تحديد المسار الرئيسي للمشروع (SEMACOM_Fleet_System)
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
@@ -19,81 +24,95 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
 def init_report_counter_db():
-    """إنشاء جدول التسلسل وجدول المستندات المعتمدة في قاعدة البيانات"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # جدول التسلسل العام للرقم المرجعي
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS document_sequence (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            last_number INTEGER NOT NULL DEFAULT 0
-        )
-    ''')
-    
-    # ضمان وجود سجل ابتدائي
-    cursor.execute('SELECT COUNT(*) FROM document_sequence')
-    if cursor.fetchone()[0] == 0:
-        cursor.execute('INSERT INTO document_sequence (last_number) VALUES (0)')
-        
-    # جدول المستندات والوثائق المعتمدة
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS approved_documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            doc_number TEXT UNIQUE NOT NULL,
-            doc_type TEXT NOT NULL,
-            item_id TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            file_path TEXT,
-            approval_token TEXT UNIQUE
-        )
-    ''')
+    """إنشاء جداول التقارير والتسلسل والمستندات المعتمدة من نماذج ORM"""
+    from sqlalchemy import select, text
 
-    columns = {
-        row[1] for row in cursor.execute("PRAGMA table_info(approved_documents)")
-    }
-    if "approval_token" not in columns:
-        cursor.execute("ALTER TABLE approved_documents ADD COLUMN approval_token TEXT")
-    cursor.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_approved_documents_approval_token "
-        "ON approved_documents (approval_token) WHERE approval_token IS NOT NULL"
+    from core.database import engine, get_session, sync_columns
+    from modules.reports.models.report_orm import (
+        ApprovedDocument,
+        DocumentSequence,
+        GeneratedReport,
+        ReportTemplate,
     )
-    
-    conn.commit()
-    conn.close()
+
+    for model in (DocumentSequence, ApprovedDocument, GeneratedReport, ReportTemplate):
+        model.__table__.create(bind=engine, checkfirst=True)
+    sync_columns()
+
+    with get_session() as session:
+        if session.scalars(select(DocumentSequence.id).limit(1)).first() is None:
+            session.add(DocumentSequence(id=1, last_number=0))
+            # explicit id: advance the SERIAL so later inserts don't collide
+            session.flush()
+            session.execute(text(
+                "SELECT setval(pg_get_serial_sequence('document_sequence', 'id'), "
+                "GREATEST((SELECT MAX(id) FROM document_sequence), 1))"
+            ))
+
+        session.execute(text(
+            "UPDATE approved_documents SET reference_number = doc_number "
+            "WHERE reference_number IS NULL AND is_finalized = 1"
+        ))
+        session.execute(text(
+            "UPDATE generated_reports SET is_finalized = 1, reference_number = doc_number "
+            "WHERE doc_number IN (SELECT doc_number FROM approved_documents WHERE is_finalized = 1)"
+        ))
 
 
 def generate_reference_number() -> str:
     """
     الدالة الأولى: توليد رقم مرجعي تسلسلي موحد بتركيب No.000000
     """
+    from sqlalchemy import select
+
+    from core.database import get_session
+    from modules.reports.models.report_orm import DocumentSequence
+
     init_report_counter_db()
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('UPDATE document_sequence SET last_number = last_number + 1 WHERE id = 1')
-    cursor.execute('SELECT last_number FROM document_sequence WHERE id = 1')
-    row = cursor.fetchone()
-    seq_num = row[0] if row else 1
-    
-    conn.commit()
-    conn.close()
-    
+    with get_session() as session:
+        # row lock makes the increment atomic across concurrent requests
+        sequence = session.scalars(
+            select(DocumentSequence).where(DocumentSequence.id == 1).with_for_update()
+        ).first()
+        if sequence is None:
+            sequence = DocumentSequence(id=1, last_number=0)
+            session.add(sequence)
+        sequence.last_number = (sequence.last_number or 0) + 1
+        seq_num = sequence.last_number
+
     # صياغة الرقم المرجعي المتسلسل الموحد: No.000001
     return f"No.{seq_num:06d}"
 
 
-def generate_document_qr(doc_number: str, doc_type: str = "general", item_id: str = "1") -> str:
+def generate_document_qr(
+    doc_number: str,
+    doc_type: str = "general",
+    item_id: str = "1",
+    access_token: str = None
+) -> str:
     """
     الدالة الثانية: توليد QR Code وحفظه في app/static/uploads/qrcodes/
     """
     try:
         host_url = request.host_url.rstrip('/')
     except RuntimeError:
-        host_url = "http://localhost:5000"
+        host_url = settings.DEFAULT_BASE_URL
 
-    # رابط المستند عند مسح الـ QR بواسطة الجوال
-    target_url = f"{host_url}/reports/public/view/{doc_number}"
+    try:
+        if access_token:
+            target_url = url_for(
+                'reports.public_view_document', doc_number=doc_number,
+                token=access_token, _external=True
+            )
+        else:
+            target_url = url_for(
+                'reports.final_report', doc_number=doc_number, _external=True
+            )
+    except RuntimeError:
+        target_url = (
+            f"{host_url}/reports/public/view/{doc_number}?token={access_token}"
+            if access_token else f"{host_url}/reports/final/{doc_number}"
+        )
     
     qr = qrcode.QRCode(
         version=1,
@@ -114,6 +133,80 @@ def generate_document_qr(doc_number: str, doc_type: str = "general", item_id: st
     
     # إرجاع المسار النسبي المستعمل في قوالب Flask
     return f"/static/uploads/qrcodes/{filename}"
+
+
+def merge_report_images(image_sources, output_path, canvas_size=(1800, 1100)):
+    """Create one full-bleed image from the final image sources selected in preview."""
+    images = []
+    valid_sources = image_sources or []
+
+    for source in valid_sources:
+        if not source or not os.path.exists(source):
+            continue
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', Image.DecompressionBombWarning)
+                with Image.open(source) as image:
+                    if image.width * image.height > 40_000_000:
+                        raise ValueError('حجم أبعاد الصورة يتجاوز الحد المسموح')
+                    image.load()
+                    images.append(ImageOps.exif_transpose(image).convert('RGB'))
+        except (FileNotFoundError, UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+            continue
+        except Image.DecompressionBombWarning:
+            continue
+
+    if not images:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        placeholder = Image.new('RGB', canvas_size, 'white')
+        placeholder.save(output_path, format='JPEG', quality=92, optimize=True)
+        return output_path
+
+    width, height = canvas_size
+    columns = 1 if len(images) == 1 else 2
+    rows = math.ceil(len(images) / columns)
+    cell_width = width // columns
+    cell_height = height // rows
+    canvas = Image.new('RGB', (width, height), 'white')
+    for index, image in enumerate(images):
+        last_odd_image = columns == 2 and len(images) % 2 == 1 and index == len(images) - 1
+        x = 0 if last_odd_image else (index % columns) * cell_width
+        y = (index // columns) * cell_height
+        target_width = width if last_odd_image or columns == 1 else cell_width
+        target_height = height - y if index // columns == rows - 1 else cell_height
+        fitted = ImageOps.fit(
+            image,
+            (target_width, target_height),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5)
+        )
+        canvas.paste(fitted, (x, y))
+        image.close()
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    canvas.save(output_path, format='JPEG', quality=92, optimize=True)
+    return output_path
+
+
+def render_report_pdf(html, output_path, base_url):
+    try:
+        from weasyprint import HTML
+    except Exception as error:
+        raise RuntimeError(
+            'WeasyPrint is installed, but its native Pango/GTK libraries are unavailable'
+        ) from error
+
+    try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        pdf_bytes = HTML(
+            string=html,
+            base_url=base_url
+        ).write_pdf()
+        with open(output_path, 'wb') as pdf_file:
+            pdf_file.write(pdf_bytes)
+    except Exception as error:
+        raise RuntimeError(f'تعذر تجهيز ملف PDF: {error}') from error
+    return output_path
 
 
 class ReportsService:

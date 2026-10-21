@@ -1,16 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}الفحص الشامل للأسطول - SEMACOM{% endblock %}
+{% block title %}الفحص الشامل للمركبات والمعدات - SEMACOM{% endblock %}
 
 {% block content %}
 <div class="container" style="max-width: 1300px; margin: 0 auto; direction: rtl;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2><i class="fa-solid fa-clipboard-check"></i> قسم الفحص الشامل للأسطول والمعدات</h2>
+        <h2><i class="fa-solid fa-clipboard-check"></i> قسم الفحص الشامل للمركبات والمعدات</h2>
         <a href="{{ url_for('workshop.comp_inspection.add') }}" class="btn btn-primary" style="background: #0d6efd; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold;">
             إجراء فحص شامل جديد +
         </a>
     </div>
-
     <div class="card" style="background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px;">
         <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">
             <thead>
@@ -30,7 +29,7 @@
                 <tr>
                     <td style="padding: 10px; border: 1px solid #dee2e6;">{{ loop.index }}</td>
                     <td style="padding: 10px; border: 1px solid #dee2e6; font-weight: bold;">{{ ins.vehicle_plate }}</td>
-                    <td style="padding: 10px; border: 1px solid #dee2e6;">{{ ins.inspector_name }}</td>
+                    <td style="padding: 10px; border: 1px solid #dee2e6;">{{ ins.inspector_names }}</td>
                     <td style="padding: 10px; border: 1px solid #dee2e6;">{{ ins.inspection_date }}</td>
                     <td style="padding: 10px; border: 1px solid #dee2e6;">{{ ins.current_mileage or '---' }} كم</td>
                     <td style="padding: 10px; border: 1px solid #dee2e6; color: #084298; font-weight: bold;">{{ ins.oil_change_mileage or '---' }} كم</td>
@@ -43,6 +42,11 @@
                         <a href="{{ url_for('workshop.comp_inspection.print_report', id=ins.id) }}" target="_blank" class="btn btn-info" style="padding: 4px 10px; background: #0dcaf0; color: #000; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">
                             <i class="fa-solid fa-print"></i> طباعة A4
                         </a>
+                        <form method="POST" action="{{ url_for('workshop.comp_inspection.delete', id=ins.id) }}" style="display: inline;">
+                            <button type="submit" class="btn btn-danger" data-confirm-delete data-target-name="سجل الفحص الشامل" style="padding: 4px 10px; background: #dc3545; color: white; border: 0; border-radius: 4px; font-size: 11px; font-weight: bold;">
+                                حذف
+                            </button>
+                        </form>
                     </td>
                 </tr>
                 {% else %}

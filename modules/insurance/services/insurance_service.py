@@ -1,27 +1,21 @@
 import os
-from flask import current_app
-from werkzeug.utils import secure_filename
 from modules.insurance.models.insurance_model import InsuranceModel
+from core import storage
+
+UPLOAD_FOLDER = 'insurance'
+
 
 class InsuranceService:
 
     @staticmethod
     def get_upload_folder():
-        """دالة مركزية لضمان استخدام المسار الصحيح حصرياً داخل app/static/uploads/insurance"""
-        if current_app:
-            base_dir = current_app.static_folder  # يشير إلى app/static
-        else:
-            # مسار احتياطي في حال تم استدعاء الخدمة خارج سياق الـ request
-            base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'app', 'static')
-        
-        return os.path.join(base_dir, 'uploads', 'insurance')
+        """Legacy local folder, kept only so old attachments can still be served."""
+        from flask import current_app
+        return os.path.join(current_app.static_folder, 'uploads', 'insurance')
 
     @staticmethod
     def init_module():
         InsuranceModel.create_table()
-        folder = InsuranceService.get_upload_folder()
-        if not os.path.exists(folder):
-            os.makedirs(folder, exist_ok=True)
 
     @staticmethod
     def get_all_policies(tab='active'):
@@ -29,16 +23,12 @@ class InsuranceService:
 
     @staticmethod
     def add_policy(form_data, file_attachment):
-        filename = None
-        upload_folder = InsuranceService.get_upload_folder()
-        
-        if file_attachment and file_attachment.filename:
-            filename = secure_filename(file_attachment.filename)
-            os.makedirs(upload_folder, exist_ok=True)
-            file_path = os.path.join(upload_folder, filename)
-            file_attachment.save(file_path)
-            
-        InsuranceModel.add_policy(form_data, filename)
+        url = storage.upload_file(file_attachment, UPLOAD_FOLDER)
+        try:
+            InsuranceModel.add_policy(form_data, url)
+        except Exception:
+            storage.delete_files(url)
+            raise
 
     @staticmethod
     def expire_policy(policy_id):

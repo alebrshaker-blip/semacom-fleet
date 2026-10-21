@@ -96,6 +96,11 @@
             </div>
             <button type="submit" class="btn-login">تسجيل الدخول</button>
         </form>
+        {% if email_reset_enabled|default(true) %}
+        <p style="text-align:center; margin-top:16px;">
+            <a href="{{ url_for('settings.forgot_password') }}">نسيت كلمة المرور؟</a>
+        </p>
+        {% endif %}
     </div>
 
 </body>

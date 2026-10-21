@@ -1,11 +1,14 @@
 import json
-import sqlite3
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+import math
+from core import database as dbapi
+from core import storage
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash, current_app
 from pathlib import Path
-
-from core.database import DB_PATH
+from sqlalchemy.exc import SQLAlchemyError
+from modules.vehicles import repository
 from modules.vehicles.controller.vehicles_controller import VehiclesController
 from modules.vehicles.public_access import (
+    IMMUTABLE_PUBLIC_FIELDS,
     THANK_YOU_MESSAGE,
     create_vehicle_qr,
     ensure_public_tables,
@@ -17,9 +20,36 @@ from modules.vehicles.public_access import (
     read_field_settings,
     save_submission,
     validate_and_save_photos,
+    validate_and_save_video,
+)
+
+try:
+    from utils.excel_export import generate_semacom_excel
+except ImportError:
+    generate_semacom_excel = None
+
+from modules.settings.reference_lists import (
+    load_reference_lists,
 )
 
 vehicles_bp = Blueprint("vehicles", __name__, url_prefix="/vehicles")
+
+
+@vehicles_bp.route('/check-unique')
+def check_vehicle_unique():
+    field = request.args.get('field', '')
+    value = (request.args.get('value') or '').strip()
+    labels = {'vehicle_code': 'كود المركبة', 'plate_number': 'رقم اللوحة'}
+    if field not in labels:
+        return jsonify({'duplicate': False, 'message': ''}), 400
+    if not value:
+        return jsonify({'duplicate': False, 'message': ''})
+
+    exists = repository.is_duplicate(field, value)
+    return jsonify({
+        'duplicate': exists,
+        'message': f'{labels[field]} مسجل مسبقًا، يرجى إدخال قيمة مختلفة.' if exists else '',
+    })
 
 
 @vehicles_bp.route("/")
@@ -31,6 +61,191 @@ def vehicles_index():
     fields = controller.get_all_fields()
 
     return render_template("vehicles/views/index.html", vehicles=data, fields=fields)
+
+
+@vehicles_bp.route("/archive")
+def vehicle_archive_index():
+    search_query = request.args.get("q", "").strip()
+    archived_vehicles = get_archived_vehicles(search_query)
+    return render_template(
+        "vehicles/views/archive.html",
+        archived_vehicles=archived_vehicles,
+        search_query=search_query,
+    )
+
+
+def get_archived_vehicles(search_query=""):
+    return repository.list_archived(search_query)
+
+
+@vehicles_bp.route("/archive/export")
+def export_vehicle_archive():
+    if not generate_semacom_excel:
+        current_app.logger.error("Excel export helper is unavailable for vehicle archive.")
+        return "خدمة تصدير Excel غير متاحة حاليًا.", 500
+
+    archived_vehicles = get_archived_vehicles(request.args.get("q", "").strip())
+    headers = [
+        "#", "كود المركبة", "رقم اللوحة", "النوع", "الموديل", "سبب الإخراج",
+        "اسم المشتري", "قيمة البيع", "تاريخ التسليم", "تاريخ الأرشفة", "الملاحظات",
+    ]
+    rows = []
+    for index, vehicle in enumerate(archived_vehicles, start=1):
+        rows.append([
+            index,
+            vehicle["vehicle_code"] or "-",
+            vehicle["plate_number"] or "-",
+            vehicle["vehicle_type"] or "-",
+            vehicle["model"] or "-",
+            vehicle["reason"] or "-",
+            vehicle["buyer_name"] or "-",
+            vehicle["sale_value"] if vehicle["sale_value"] is not None else "-",
+            vehicle["handover_date"] or "-",
+            vehicle["archived_at"] or "-",
+            vehicle["notes"] or "-",
+        ])
+    return generate_semacom_excel("أرشيف_المركبات_الخارجة_عن_الخدمة", headers, rows)
+
+
+@vehicles_bp.route("/archive/<int:vehicle_id>", methods=["GET", "POST"])
+def archive_vehicle(vehicle_id):
+    connection = dbapi.connect()  # only used for the reference-lists helper
+    try:
+        vehicle = repository.get_vehicle(vehicle_id)
+        if not vehicle:
+            flash("المركبة غير موجودة.", "danger")
+            return redirect(url_for("vehicles.vehicles_index"))
+        if repository.is_archived(vehicle_id):
+            flash("هذه المركبة مؤرشفة بالفعل.", "warning")
+            return redirect(url_for("vehicles.vehicle_archive_index"))
+
+        if request.method == "GET":
+            archive_reasons = load_reference_lists(connection)["vehicle_archive_reasons"]
+            return render_template(
+                "vehicles/views/archive_form.html",
+                vehicle=vehicle,
+                archive_reasons=archive_reasons,
+            )
+
+        reason = (request.form.get("reason") or "").strip()
+        archive_reasons = load_reference_lists(connection)["vehicle_archive_reasons"]
+        buyer_name = (request.form.get("buyer_name") or "").strip()
+        sale_value_raw = (request.form.get("sale_value") or "").strip()
+        handover_date = (request.form.get("handover_date") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        if reason not in archive_reasons:
+            return render_template(
+                "vehicles/views/archive_form.html",
+                vehicle=vehicle,
+                archive_reasons=archive_reasons,
+                form_data=request.form,
+                error="يرجى اختيار سبب صحيح لإخراج المركبة من الخدمة.",
+            ), 400
+
+        sale_value = None
+        if reason == "بيع":
+            if not buyer_name or not sale_value_raw or len(buyer_name) > 200:
+                return render_template(
+                    "vehicles/views/archive_form.html",
+                    vehicle=vehicle,
+                    archive_reasons=archive_reasons,
+                    form_data=request.form,
+                    error="اسم المشتري (بحد أقصى 200 حرف) وقيمة البيع مطلوبان عند اختيار سبب البيع.",
+                ), 400
+            try:
+                sale_value = float(sale_value_raw)
+                if not math.isfinite(sale_value) or sale_value < 0:
+                    raise ValueError
+            except ValueError:
+                return render_template(
+                    "vehicles/views/archive_form.html",
+                    vehicle=vehicle,
+                    archive_reasons=archive_reasons,
+                    form_data=request.form,
+                    error="يرجى إدخال قيمة بيع صحيحة لا تقل عن صفر.",
+                ), 400
+        else:
+            buyer_name = ""
+        if handover_date:
+            try:
+                date.fromisoformat(handover_date)
+            except ValueError:
+                return render_template(
+                    "vehicles/views/archive_form.html",
+                    vehicle=vehicle,
+                    archive_reasons=archive_reasons,
+                    form_data=request.form,
+                    error="يرجى إدخال تاريخ تسليم صحيح.",
+                ), 400
+        if len(notes) > 2000:
+            return render_template(
+                "vehicles/views/archive_form.html",
+                vehicle=vehicle,
+                archive_reasons=archive_reasons,
+                form_data=request.form,
+                error="يجب ألا تتجاوز الملاحظات 2000 حرف.",
+            ), 400
+
+        outcome = repository.archive_vehicle(
+            vehicle_id, reason, buyer_name, sale_value, handover_date, notes
+        )
+        if outcome == "active_handover":
+            flash(
+                "لا يمكن أرشفة المركبة قبل إرجاع عهدتها النشطة.",
+                "warning",
+            )
+            return redirect(url_for("vehicles.vehicles_index"))
+        if outcome == "not_found":
+            flash("المركبة غير موجودة.", "danger")
+            return redirect(url_for("vehicles.vehicles_index"))
+        if outcome == "conflict":
+            flash("تعذر أرشفة المركبة؛ قد تكون مؤرشفة مسبقًا.", "warning")
+            return redirect(url_for("vehicles.vehicle_archive_index"))
+        flash("تم إخراج المركبة من الخدمة وأرشفتها بنجاح.", "success")
+        return redirect(url_for("vehicles.vehicle_archive_index"))
+    finally:
+        connection.close()
+
+
+@vehicles_bp.route("/archive/<int:vehicle_id>/restore", methods=["POST"])
+def restore_archived_vehicle(vehicle_id):
+    try:
+        outcome = repository.restore_vehicle(vehicle_id)
+    except SQLAlchemyError:
+        current_app.logger.exception("Failed to restore archived vehicle %s", vehicle_id)
+        flash("تعذر استعادة المركبة الآن. يرجى مراجعة سجل النظام.", "danger")
+        return redirect(url_for("vehicles.vehicle_archive_index"))
+    if outcome == "no_archive":
+        flash("سجل الأرشفة غير موجود.", "warning")
+        return redirect(url_for("vehicles.vehicle_archive_index"))
+    if outcome == "no_vehicle":
+        flash("تعذر استعادة المركبة لأن سجلها غير موجود.", "danger")
+        return redirect(url_for("vehicles.vehicle_archive_index"))
+
+    flash("تمت استعادة المركبة إلى سجل المركبات النشطة.", "success")
+    return redirect(url_for("vehicles.vehicles_index"))
+
+
+@vehicles_bp.route("/archive/<int:vehicle_id>/delete", methods=["POST"])
+def delete_vehicle_archive(vehicle_id):
+    try:
+        deleted = repository.delete_archive_record(vehicle_id)
+    except SQLAlchemyError:
+        current_app.logger.exception(
+            "Failed to delete archive record for vehicle %s", vehicle_id
+        )
+        flash("تعذر حذف سجل الأرشفة. يرجى مراجعة سجل النظام.", "danger")
+        return redirect(url_for("vehicles.vehicle_archive_index"))
+    if not deleted:
+        flash("سجل الأرشفة غير موجود أو تمت إزالته مسبقًا.", "warning")
+        return redirect(url_for("vehicles.vehicle_archive_index"))
+
+    flash(
+        "تم حذف سجل الأرشفة فقط؛ بقي سجل المركبة وبياناتها بحالة خارج الخدمة.",
+        "success",
+    )
+    return redirect(url_for("vehicles.vehicle_archive_index"))
 
 
 @vehicles_bp.route("/info/<int:vehicle_id>", methods=["GET", "POST"])
@@ -46,7 +261,7 @@ def vehicle_information(vehicle_id):
 
         token = ensure_vehicle_token(connection, vehicle_id)
         access = connection.execute(
-            "SELECT field_settings FROM vehicle_public_access WHERE vehicle_id = ?",
+            "SELECT field_settings, inquiries_enabled FROM vehicle_public_access WHERE vehicle_id = ?",
             (vehicle_id,),
         ).fetchone()
         definitions = get_field_definitions(connection, vehicle)
@@ -59,11 +274,21 @@ def vehicle_information(vehicle_id):
                 editable = request.form.get(f"editable:{key}") == "on"
                 submitted_settings[key] = {
                     "visible": visible,
-                    "editable": editable and visible,
+                    "editable": (
+                        editable and visible and key not in IMMUTABLE_PUBLIC_FIELDS
+                    ),
                 }
             connection.execute(
-                "UPDATE vehicle_public_access SET field_settings = ? WHERE vehicle_id = ?",
-                (json.dumps(submitted_settings, ensure_ascii=False), vehicle_id),
+                """
+                UPDATE vehicle_public_access
+                SET field_settings = ?, inquiries_enabled = ?
+                WHERE vehicle_id = ?
+                """,
+                (
+                    json.dumps(submitted_settings, ensure_ascii=False),
+                    int(request.form.get("inquiries_enabled") == "on"),
+                    vehicle_id,
+                ),
             )
             connection.commit()
             flash("تم حفظ إعدادات المعلومات العامة للمركبة.", "success")
@@ -80,6 +305,7 @@ def vehicle_information(vehicle_id):
                 for field in definitions
             ],
             settings=settings,
+            inquiries_enabled=bool(access["inquiries_enabled"]),
             qr_path=qr_path,
             public_url=public_url,
         )
@@ -99,6 +325,7 @@ def public_landing(token):
             "vehicles/views/public_portal.html",
             mode="welcome",
             token=token,
+            inquiries_enabled=bool(profile["inquiries_enabled"]),
             vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
     finally:
@@ -130,6 +357,7 @@ def public_information(token):
             mode="information",
             token=token,
             fields=fields,
+            inquiries_enabled=bool(profile["inquiries_enabled"]),
             vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
     finally:
@@ -185,10 +413,13 @@ def public_issue_form(token):
         profile = get_public_profile(connection, token)
         if not profile:
             return render_template("vehicles/views/public_not_found.html"), 404
+        if not profile["inquiries_enabled"]:
+            return "إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً.", 403
         return render_template(
             "vehicles/views/public_portal.html",
             mode="issue",
             token=token,
+            inquiries_enabled=True,
             vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
     finally:
@@ -204,13 +435,16 @@ def public_submit_issue(token):
         if not profile:
             return render_template("vehicles/views/public_not_found.html"), 404
         vehicle_label = f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -")
-        if request.content_length and request.content_length > 11 * 1024 * 1024:
+        if not profile["inquiries_enabled"]:
+            return "إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً.", 403
+        if request.content_length and request.content_length > 31 * 1024 * 1024:
             return render_template(
                 "vehicles/views/public_portal.html",
                 mode="issue",
                 token=token,
                 vehicle_label=vehicle_label,
-                error="إجمالي حجم الصور والبلاغ يتجاوز الحد المسموح.",
+                inquiries_enabled=True,
+                error="إجمالي حجم المرفقات والبلاغ يتجاوز الحد المسموح.",
             ), 413
         message = (request.form.get("message") or "").strip()
         if not message:
@@ -219,26 +453,34 @@ def public_submit_issue(token):
                 mode="issue",
                 token=token,
                 vehicle_label=vehicle_label,
+                inquiries_enabled=True,
                 error="يرجى كتابة وصف المشكلة أو الاستفسار.",
             ), 400
         uploads = request.files.getlist("photos")
-        if len(uploads) > 2:
+        if len(uploads) > 1:
             return render_template(
                 "vehicles/views/public_portal.html",
                 mode="issue",
                 token=token,
                 vehicle_label=vehicle_label,
-                error="يمكن إرفاق صورتين كحد أقصى.",
+                inquiries_enabled=True,
+                error="يمكن إرفاق صورة واحدة فقط.",
             ), 400
-        photos = validate_and_save_photos(uploads + [None] * (2 - len(uploads)))
+        photos = validate_and_save_photos(uploads)
+        video = None
         try:
+            video = validate_and_save_video(request.files.get("video"))
             save_submission(
                 profile["vehicle_id"],
                 "استفسار أو بلاغ مشكلة",
                 message[:4000],
                 photos=photos,
+                video=video,
             )
-        except sqlite3.Error:
+        except (OSError, ValueError, storage.StorageError):
+            storage.delete_files(*photos, video)
+            raise
+        except dbapi.Error:
             current_app.logger.exception("Failed to save a vehicle QR submission")
             raise
         return render_template(
@@ -246,6 +488,7 @@ def public_submit_issue(token):
             mode="thanks",
             token=token,
             message=THANK_YOU_MESSAGE,
+            inquiries_enabled=True,
             vehicle_label=vehicle_label,
         )
     except ValueError as error:
@@ -254,8 +497,19 @@ def public_submit_issue(token):
             mode="issue",
             token=token,
             vehicle_label=vehicle_label,
+            inquiries_enabled=True,
             error=str(error),
         ), 400
+    except storage.StorageError:
+        current_app.logger.exception("Vehicle QR report upload failed")
+        return render_template(
+            "vehicles/views/public_portal.html",
+            mode="issue",
+            token=token,
+            vehicle_label=vehicle_label,
+            inquiries_enabled=True,
+            error="تعذر رفع المرفقات حالياً؛ حاول مرة أخرى لاحقاً.",
+        ), 503
     finally:
         connection.close()
 
@@ -290,6 +544,36 @@ def public_submissions():
         connection.close()
 
 
+@vehicles_bp.route("/public/<token>/submissions")
+def public_vehicle_submissions(token):
+    connection = get_connection()
+    try:
+        ensure_public_tables(connection)
+        profile = get_public_profile(connection, token)
+        if not profile:
+            return render_template("vehicles/views/public_not_found.html"), 404
+        rows = connection.execute(
+            """
+            SELECT id, submission_type, message, response, status, submitted_at,
+                   photo_1, video_1
+            FROM vehicle_public_submissions
+            WHERE vehicle_id = ? AND submission_type = 'استفسار أو بلاغ مشكلة'
+            ORDER BY submitted_at DESC, id DESC
+            """,
+            (profile["vehicle_id"],),
+        ).fetchall()
+        return render_template(
+            "vehicles/views/public_portal.html",
+            mode="submissions",
+            token=token,
+            inquiries_enabled=bool(profile["inquiries_enabled"]),
+            submissions=[dict(row) for row in rows],
+            vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
+        )
+    finally:
+        connection.close()
+
+
 @vehicles_bp.route("/public-submissions/<int:submission_id>/review", methods=["POST"])
 def review_public_submission(submission_id):
     connection = get_connection()
@@ -307,6 +591,57 @@ def review_public_submission(submission_id):
             return "البلاغ غير موجود.", 404
         connection.commit()
         flash("تم تحديث حالة البلاغ إلى تمت المراجعة.", "success")
+        return redirect(url_for("vehicles.public_submissions"))
+    finally:
+        connection.close()
+
+
+@vehicles_bp.route("/public-submissions/<int:submission_id>/reply", methods=["POST"])
+def reply_public_submission(submission_id):
+    response = (request.form.get("response") or "").strip()
+    if not response:
+        flash("يرجى كتابة الرد قبل إرساله.", "error")
+        return redirect(url_for("vehicles.public_submissions"))
+    connection = get_connection()
+    try:
+        ensure_public_tables(connection)
+        cursor = connection.execute(
+            """
+            UPDATE vehicle_public_submissions
+            SET response = ?, status = 'تمت المراجعة', reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND submission_type = 'استفسار أو بلاغ مشكلة'
+            """,
+            (response[:4000], submission_id),
+        )
+        if cursor.rowcount == 0:
+            return "البلاغ غير موجود.", 404
+        connection.commit()
+        flash("تم حفظ الرد وإتاحته للزائر.", "success")
+        return redirect(url_for("vehicles.public_submissions"))
+    finally:
+        connection.close()
+
+
+@vehicles_bp.route("/public-submissions/<int:submission_id>/delete", methods=["POST"])
+def delete_public_submission(submission_id):
+    connection = get_connection()
+    try:
+        ensure_public_tables(connection)
+        submission = connection.execute(
+            """
+            SELECT photo_1, photo_2, video_1
+            FROM vehicle_public_submissions WHERE id = ?
+            """,
+            (submission_id,),
+        ).fetchone()
+        if not submission:
+            return "البلاغ غير موجود.", 404
+        connection.execute(
+            "DELETE FROM vehicle_public_submissions WHERE id = ?", (submission_id,)
+        )
+        connection.commit()
+        storage.delete_files(*submission)
+        flash("تم حذف البلاغ والرد والمرفقات المرتبطة به.", "success")
         return redirect(url_for("vehicles.public_submissions"))
     finally:
         connection.close()
@@ -343,9 +678,6 @@ def save_vehicle():
     custom_requireds = request.form.getlist("custom_required[]")
 
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cur = conn.cursor()
-
         for i in range(len(custom_names)):
             c_name = custom_names[i].strip()
             c_label = custom_labels[i].strip()
@@ -353,20 +685,8 @@ def save_vehicle():
             c_req = custom_requireds[i] if i < len(custom_requireds) else 0
 
             if c_name:
-                try:
-                    cur.execute(f'ALTER TABLE vehicles ADD COLUMN "{c_name}" TEXT')
-                except sqlite3.OperationalError:
-                    pass
-
-                cur.execute(
-                    "INSERT OR IGNORE INTO vehicle_fields (name, label, required) VALUES (?, ?, ?)",
-                    (c_name, c_label, c_req),
-                )
-
+                repository.add_custom_field(c_name, c_label, c_req)
                 data[c_name] = c_val
-
-        conn.commit()
-        conn.close()
 
         controller.add(data)
 
@@ -378,23 +698,13 @@ def save_vehicle():
 
 @vehicles_bp.route("/delete/<int:vehicle_id>", methods=["POST"])
 def delete_vehicle(vehicle_id):
-    conn = sqlite3.connect(str(DB_PATH))
-    cur = conn.cursor()
-
-    try:
-        cur.execute("DELETE FROM vehicles WHERE id = ?", (vehicle_id,))
-        conn.commit()
-    except Exception as e:
-        print("Error deleting vehicle:", e)
-    finally:
-        conn.close()
-
-    return redirect("/vehicles")
+    flash("تم إيقاف الحذف الدائم حفاظًا على السجلات. استخدم أرشفة المركبة لإخراجها من الخدمة.", "warning")
+    return redirect(url_for("vehicles.vehicles_index"))
 
 
 @vehicles_bp.route("/export")
 def export_vehicles_excel():
-    """🌟 مسار تصدير سجل المركبات والأسطول إلى Excel مع دعم البحث"""
+    """🌟 مسار تصدير سجل المركبات والمعدات إلى Excel مع دعم البحث"""
     controller = VehiclesController()
     search_query = request.args.get("q", "").strip()
     return controller.export_excel(search_query if search_query else None)

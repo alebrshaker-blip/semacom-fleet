@@ -238,6 +238,9 @@ label {
             <button class="nav-tab" onclick="switchTab(event, 'tab-lookups')">
                 القوائم المرجعية
             </button>
+            <button class="nav-tab" onclick="switchTab(event, 'tab-users')">
+                إدارة المستخدمين
+            </button>
         </div>
 
         <!-- محتوى التبويبات -->
@@ -293,8 +296,126 @@ label {
 
             <!-- تبويب 2: البريد و Google Drive -->
             <div id="tab-cloud-smtp" class="tab-pane">
-                <h3>إعدادات البريد وربط Google Drive API</h3>
+                <h3>إعدادات البريد الإلكتروني وGoogle Drive</h3>
                 <form id="cloudSmtpForm">
+                <h4>وظائف البريد الإلكتروني</h4>
+                <p>يمكنك التحكم بكل وظيفة على حدة. إيقاف SMTP يوقف الإرسال الفعلي لجميع الوظائف، وتبقى إعدادات كل وظيفة محفوظة.</p>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label for="smtpEnabled">إرسال البريد من النظام</label>
+                        <select id="smtpEnabled" name="smtp_enabled" class="form-control">
+                            <option value="0" {% if settings.smtp.smtp_enabled|default('0') == '0' %}selected{% endif %}>متوقف</option>
+                            <option value="1" {% if settings.smtp.smtp_enabled|default('0') == '1' %}selected{% endif %}>مفعّل</option>
+                        </select>
+                        <small>رسالة الاختبار تعمل حتى عند إيقاف الإرسال الفعلي.</small>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="emailReportsEnabled">إرسال التقارير المعتمدة بالبريد</label>
+                        <select id="emailReportsEnabled" name="email_reports_enabled" class="form-control">
+                            <option value="0" {% if settings.smtp.email_reports_enabled|default('1') == '0' %}selected{% endif %}>متوقف</option>
+                            <option value="1" {% if settings.smtp.email_reports_enabled|default('1') == '1' %}selected{% endif %}>مفعّل للمدير</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="emailPasswordResetEnabled">استعادة كلمة المرور عبر البريد</label>
+                        <select id="emailPasswordResetEnabled" name="email_password_reset_enabled" class="form-control">
+                            <option value="0" {% if settings.smtp.email_password_reset_enabled|default('1') == '0' %}selected{% endif %}>متوقف</option>
+                            <option value="1" {% if settings.smtp.email_password_reset_enabled|default('1') == '1' %}selected{% endif %}>مفعّل</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="emailFleetDigestEnabled">ملخص تنبيهات المركبات والمعدات</label>
+                        <select id="emailFleetDigestEnabled" name="email_fleet_digest_enabled" class="form-control">
+                            <option value="0" {% if settings.smtp.email_fleet_digest_enabled|default('1') == '0' %}selected{% endif %}>متوقف</option>
+                            <option value="1" {% if settings.smtp.email_fleet_digest_enabled|default('1') == '1' %}selected{% endif %}>مفعّل</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="emailFleetDigestDay">يوم إرسال الملخص الأسبوعي</label>
+                        {% set digest_day = settings.smtp.email_fleet_digest_day|default('0')|int %}
+                        <select id="emailFleetDigestDay" name="email_fleet_digest_day" class="form-control">
+                            <option value="0" {% if digest_day == 0 %}selected{% endif %}>الإثنين</option>
+                            <option value="1" {% if digest_day == 1 %}selected{% endif %}>الثلاثاء</option>
+                            <option value="2" {% if digest_day == 2 %}selected{% endif %}>الأربعاء</option>
+                            <option value="3" {% if digest_day == 3 %}selected{% endif %}>الخميس</option>
+                            <option value="4" {% if digest_day == 4 %}selected{% endif %}>الجمعة</option>
+                            <option value="5" {% if digest_day == 5 %}selected{% endif %}>السبت</option>
+                            <option value="6" {% if digest_day == 6 %}selected{% endif %}>الأحد</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="emailFleetDigestHour">ساعة إرسال الملخص (توقيت الخادم)</label>
+                        <select id="emailFleetDigestHour" name="email_fleet_digest_hour" class="form-control">
+                            {% for hour in range(24) %}
+                            <option value="{{ hour }}" {% if settings.smtp.email_fleet_digest_hour|default('9')|int == hour %}selected{% endif %}>
+                                {{ '%02d:00'|format(hour) }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label>مستلمو ملخص المركبات والمعدات</label>
+                        <input type="text" class="form-control" value="المدراء النشطون الذين لديهم بريد إلكتروني مسجل" readonly>
+                        <small>عدّل بريد المدير من تبويب إدارة المستخدمين/بيانات الحساب.</small>
+                    </div>
+                </div>
+                <hr>
+                <h4>خادم البريد الصادر (SMTP)</h4>
+                <p>احفظ الإعدادات ثم أرسل رسالة اختبار للتحقق من الاتصال وكلمة المرور.</p>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                            <label for="smtpFromName">اسم المرسل</label>
+                            <input id="smtpFromName" type="text" name="smtp_from_name" class="form-control" maxlength="120"
+                                   value="{{ settings.smtp.smtp_from_name|default(settings.general.company_name|default('SEMACOM')) }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="smtpServer">خادم SMTP</label>
+                            <input id="smtpServer" type="text" name="smtp_server" class="form-control" required
+                                   autocomplete="url" placeholder="smtp.gmail.com"
+                                   value="{{ settings.smtp.smtp_server|default('smtp.gmail.com') }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="smtpPort">المنفذ</label>
+                            <input id="smtpPort" type="number" name="smtp_port" class="form-control" min="1" max="65535" required
+                                   value="{{ settings.smtp.smtp_port|default('587') }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="smtpEmail">بريد الإرسال</label>
+                            <input id="smtpEmail" type="email" name="smtp_email" class="form-control" required autocomplete="username"
+                                   value="{{ settings.smtp.smtp_email|default('') }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="smtpUsername">اسم مستخدم SMTP (إن اختلف عن البريد)</label>
+                            <input id="smtpUsername" type="text" name="smtp_username" class="form-control" autocomplete="username"
+                                   value="{{ settings.smtp.smtp_username|default('') }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="smtpSecurity">التشفير</label>
+                            <select id="smtpSecurity" name="smtp_security" class="form-control">
+                                <option value="starttls" {% if settings.smtp.smtp_security|default('starttls') == 'starttls' %}selected{% endif %}>STARTTLS (عادةً المنفذ 587)</option>
+                                <option value="ssl" {% if settings.smtp.smtp_security|default('starttls') == 'ssl' %}selected{% endif %}>SSL/TLS (عادةً المنفذ 465)</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="smtpPassword">كلمة مرور البريد أو كلمة مرور التطبيق</label>
+                            <input id="smtpPassword" type="password" name="smtp_password" class="form-control"
+                                   autocomplete="new-password" placeholder="{% if smtp_password_configured %}اتركها فارغة للإبقاء على كلمة المرور المحفوظة{% else %}أدخل كلمة المرور أو App Password{% endif %}">
+                            {% if smtp_password_configured %}<small>كلمة المرور محفوظة ولا تُعرض لأسباب أمنية.</small>{% endif %}
+                        </div>
+                    </div>
+                    <div class="form-row" style="align-items: end;">
+                        <div class="form-group col-md-6">
+                            <label for="smtpTestRecipient">إرسال رسالة اختبار إلى</label>
+                            <input id="smtpTestRecipient" type="email" class="form-control" autocomplete="email"
+                                   placeholder="name@example.com" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <button type="button" class="btn btn-success" onclick="sendSmtpTestEmail()">إرسال رسالة اختبار</button>
+                            <span id="smtpTestStatus" role="status" aria-live="polite"></span>
+                        </div>
+                    </div>
+                    <hr>
+                    <h4>الربط مع Google Drive</h4>
                     <div class="form-group">
                         <label>معرّف مجلد النسخ الاحتياطي (Folder ID)</label>
                         <input type="text" name="gdrive_folder_id" class="form-control" value="{{ settings.gdrive.gdrive_folder_id if settings.gdrive else '' }}">
@@ -309,7 +430,7 @@ label {
                             <input type="password" name="gdrive_client_secret" class="form-control" value="{{ settings.gdrive.gdrive_client_secret if settings.gdrive else '' }}">
                         </div>
                     </div>
-                    <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ إعدادات البريد والـ Drive</button>
+                    <button type="button" class="btn btn-primary" onclick="saveCloudSmtpSettings()" style="margin-top: 15px;">حفظ إعدادات البريد وDrive</button>
                 </form>
             </div>
 
@@ -326,6 +447,13 @@ label {
                         <div class="form-group col-md-6">
                             <label>العملة الافتراضية</label>
                             <input type="text" name="currency" class="form-control" value="{{ settings.general.currency if settings.general else 'ر.س' }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="appPublicUrl">الرابط العام للنظام</label>
+                            <input id="appPublicUrl" type="url" name="app_public_url" class="form-control"
+                                   placeholder="https://fleet.example.com"
+                                   value="{{ settings.general.app_public_url|default('') }}">
+                            <small>يُستخدم في روابط استعادة كلمة المرور ومشاركة التقارير بالبريد. أدخل عنوان الموقع الأساسي دون مسار.</small>
                         </div>
                     </div>
                     <h4 class="appearance-title">مظهر النظام</h4>
@@ -362,12 +490,40 @@ label {
                     <h3>حدود التنبيهات وقواعد المركبات والمعدات</h3>
                     <div class="form-row">
                         <div class="form-group col-md-6">
-                            <label>التنبيه بانتهاء التأمين قبل (يوم)</label>
-                            <input type="number" name="insurance_alert_days" class="form-control" value="{{ settings.fleet.insurance_alert_days if settings.fleet else 30 }}">
+                            <label>تنبيه انتهاء رخص القيادة</label>
+                            <select name="license_alert_enabled" class="form-control">
+                                <option value="1" {% if settings.fleet.license_alert_enabled|default('1') == '1' %}selected{% endif %}>مفعّل</option>
+                                <option value="0" {% if settings.fleet.license_alert_enabled|default('1') == '0' %}selected{% endif %}>معطّل</option>
+                            </select>
+                            <input type="number" min="0" max="365" name="license_alert_days" class="form-control" aria-label="عدد أيام تنبيه الرخص" value="{{ settings.fleet.license_alert_days|default('30') }}">
                         </div>
                         <div class="form-group col-md-6">
-                            <label>حد تغيير زيت المحرك (كم)</label>
-                            <input type="number" name="oil_change_interval_km" class="form-control" value="{{ settings.fleet.oil_change_interval_km if settings.fleet else 5000 }}">
+                            <label>تنبيه انتهاء الفحص الدوري</label>
+                            <select name="inspection_alert_enabled" class="form-control">
+                                <option value="1" {% if settings.fleet.inspection_alert_enabled|default('1') == '1' %}selected{% endif %}>مفعّل</option>
+                                <option value="0" {% if settings.fleet.inspection_alert_enabled|default('1') == '0' %}selected{% endif %}>معطّل</option>
+                            </select>
+                            <input type="number" min="0" max="365" name="inspection_alert_days" class="form-control" aria-label="عدد أيام تنبيه الفحص الدوري" value="{{ settings.fleet.inspection_alert_days|default('30') }}">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>تنبيه انتهاء التأمين</label>
+                            <select name="insurance_alert_enabled" class="form-control">
+                                <option value="1" {% if settings.fleet.insurance_alert_enabled|default('1') == '1' %}selected{% endif %}>مفعّل</option>
+                                <option value="0" {% if settings.fleet.insurance_alert_enabled|default('1') == '0' %}selected{% endif %}>معطّل</option>
+                            </select>
+                            <input type="number" min="0" max="365" name="insurance_alert_days" class="form-control" value="{{ settings.fleet.insurance_alert_days|default('30') }}" aria-label="عدد أيام تنبيه التأمين">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>تنبيه تغيير الزيوت</label>
+                            <select name="oil_alert_enabled" class="form-control">
+                                <option value="1" {% if settings.fleet.oil_alert_enabled|default('1') == '1' %}selected{% endif %}>مفعّل</option>
+                                <option value="0" {% if settings.fleet.oil_alert_enabled|default('1') == '0' %}selected{% endif %}>معطّل</option>
+                            </select>
+                            <small>تعتمد مواعيد التنبيه على قواعد الكيلومترات أو المدة المحددة لكل سجل.</small>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>حد تغيير زيت المحرك الافتراضي (كم)</label>
+                            <input type="number" min="1" name="oil_change_interval_km" class="form-control" value="{{ settings.fleet.oil_change_interval_km|default('5000') }}">
                         </div>
                     </div>
                     <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
@@ -396,9 +552,14 @@ label {
                 <!-- تبويب 7: القوائم المرجعية -->
                 <div id="tab-lookups" class="tab-pane">
                     <h3>إدارة خيارات القوائم المنسدلة</h3>
-                    <div class="form-group">
-                        <label>الورش الخارجية المعتمَدة</label>
-                        <textarea name="external_workshops" class="form-control" rows="3">ورشة المحرك الذهبي, مركز الفحص الشامل</textarea>
+                    <p>عدّل الخيارات سطرًا بسطر. تؤثر التغييرات على النماذج التي تستخدم كل قائمة، ولا تغيّر السجلات السابقة.</p>
+                    <div class="form-row">
+                        {% for name, definition in reference_list_definitions.items() %}
+                        <div class="form-group col-md-6">
+                            <label>{{ definition.label }}</label>
+                            <textarea name="{{ definition.setting_key }}" class="form-control" rows="4">{% for item in reference_lists[name] %}{{ item }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</textarea>
+                        </div>
+                        {% endfor %}
                     </div>
                     <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
                 </div>
@@ -420,6 +581,47 @@ label {
                 </div>
             </div>
 
+            <div id="tab-users" class="tab-pane">
+                <h3>إضافة مستخدم جديد</h3>
+                <div class="form-row">
+                    <div class="form-group col-md-3">
+                        <label for="newUsername">اسم المستخدم</label>
+                        <input id="newUsername" class="form-control" autocomplete="username">
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="newFullName">الاسم الكامل</label>
+                        <input id="newFullName" class="form-control">
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="newPassword">كلمة المرور</label>
+                        <input id="newPassword" type="password" class="form-control" autocomplete="new-password">
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="newRole">الصلاحية</label>
+                        <select id="newRole" class="form-control">
+                            <option value="visitor">زائر - قراءة فقط</option>
+                            <option value="admin">أدمن - كامل الصلاحيات</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="createSystemUser()">إضافة المستخدم</button>
+                <h3 style="margin-top: 24px;">المستخدمون الحاليون</h3>
+                <ul class="list-group">
+                    {% for user in users %}
+                    <li class="list-group-item">
+                        <span>{{ user.full_name or user.username }} <small>({{ user.username }})</small></span>
+                        <span>
+                            <select id="userRole{{ user.id }}" class="form-control" style="display:inline-block;width:auto">
+                                <option value="visitor" {% if user.role != 'admin' %}selected{% endif %}>زائر</option>
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>أدمن</option>
+                            </select>
+                            <button type="button" class="btn btn-primary" onclick="updateSystemUserRole({{ user.id }})">حفظ الصلاحية</button>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
         </div>
     </div>
 </div>
@@ -438,6 +640,16 @@ function switchTab(evt, tabId) {
 function saveAllSettings() {
     const form = document.getElementById('settingsForm');
     const data = Object.fromEntries(new FormData(form).entries());
+    saveSettingsData(data);
+}
+
+function saveCloudSmtpSettings() {
+    const form = document.getElementById('cloudSmtpForm');
+    const data = Object.fromEntries(new FormData(form).entries());
+    saveSettingsData(data);
+}
+
+function saveSettingsData(data) {
     fetch('/settings/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -448,6 +660,32 @@ function saveAllSettings() {
         await sysAlert(result.message || 'تم حفظ الإعدادات بنجاح', 'الإعدادات', 'success');
         window.location.reload();
     }).catch(error => sysAlert(error.message, 'تعذر الحفظ', 'danger'));
+}
+
+async function sendSmtpTestEmail() {
+    const form = document.getElementById('cloudSmtpForm');
+    if (!form.reportValidity()) return;
+
+    const button = document.querySelector('#cloudSmtpForm button[onclick="sendSmtpTestEmail()"]');
+    const status = document.getElementById('smtpTestStatus');
+    button.disabled = true;
+    status.textContent = 'جارٍ إرسال رسالة الاختبار...';
+    try {
+        const response = await fetch('/settings/email/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipient: document.getElementById('smtpTestRecipient').value })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'تعذر إرسال رسالة الاختبار');
+        status.textContent = result.message;
+        status.style.color = 'var(--success-color)';
+    } catch (error) {
+        status.textContent = error.message || 'تعذر الاتصال بالخادم';
+        status.style.color = 'var(--danger-color)';
+    } finally {
+        button.disabled = false;
+    }
 }
 
 function saveAccountSettings(e) {
@@ -462,6 +700,44 @@ function saveAccountSettings(e) {
         if (!response.ok) throw new Error(result.message || 'تعذر تحديث الحساب');
         sysAlert(result.message || 'تم تحديث الحساب بنجاح', 'الحساب', 'success');
     }).catch(error => sysAlert(error.message, 'تعذر التحديث', 'danger'));
+}
+
+async function createSystemUser() {
+    try {
+        const response = await fetch('/settings/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: document.getElementById('newUsername').value,
+                full_name: document.getElementById('newFullName').value,
+                password: document.getElementById('newPassword').value,
+                role: document.getElementById('newRole').value
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'تعذر إضافة المستخدم');
+        await sysAlert(result.message, 'المستخدمون', 'success');
+        window.location.reload();
+    } catch (error) {
+        sysAlert(error.message || 'تعذر الاتصال بالخادم', 'المستخدمون', 'danger');
+    }
+}
+
+async function updateSystemUserRole(userId) {
+    try {
+        const role = document.getElementById(`userRole${userId}`).value;
+        const response = await fetch(`/settings/users/${userId}/role`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'تعذر تحديث الصلاحية');
+        await sysAlert(result.message, 'المستخدمون', 'success');
+        window.location.reload();
+    } catch (error) {
+        sysAlert(error.message || 'تعذر الاتصال بالخادم', 'المستخدمون', 'danger');
+    }
 }
 
 const appearanceThemeColors = {

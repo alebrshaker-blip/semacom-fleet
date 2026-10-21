@@ -183,10 +183,9 @@
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: bold;">حالة / سبب التسوية: *</label>
                 <select name="closure_reason" required style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
-                    <option value="تم الإصلاح والتسوية">تم الإصلاح والتسوية</option>
-                    <option value="تعويض تأميني">تعويض تأميني</option>
-                    <option value="تحمل السائق">تحمل السائق</option>
-                    <option value="حفظ لعدم الأهمية">حفظ لعدم الأهمية</option>
+                    {% for reason in reference_lists.accident_closure_reasons %}
+                    <option value="{{ reason }}">{{ reason }}</option>
+                    {% endfor %}
                 </select>
             </div>
 

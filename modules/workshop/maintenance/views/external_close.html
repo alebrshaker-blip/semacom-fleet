@@ -258,11 +258,9 @@
                         <div class="form-group">
                             <label class="info-label">حالة الإنجاز / سبب الإقفال (closure_reason) <span class="text-danger">*</span></label>
                             <select name="closure_reason" class="form-control-custom" required>
-                                <option value="تم الاصلاح بالكامل واستلام المركبة" selected>تم الاصلاح بالكامل واستلام المركبة</option>
-                                <option value="تم الاصلاح جزئياً">تم الاصلاح جزئياً</option>
-                                <option value="تعذر الاصلاح لعدم توفر قطع الغيار">تعذر الاصلاح لعدم توفر قطع الغيار</option>
-                                <option value="سحب المركبة لورشة أخرى">سحب المركبة لورشة أخرى</option>
-                                <option value="إلغاء أمر الصيانة الخارجي">إلغاء أمر الصيانة الخارجي</option>
+                                {% for reason in reference_lists.external_maintenance_closure_reasons %}
+                                <option value="{{ reason }}" {% if loop.first %}selected{% endif %}>{{ reason }}</option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>

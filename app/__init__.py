@@ -1,12 +1,21 @@
+import logging
 import os
 import re
 import secrets
-import sqlite3
+from core import database as dbapi
+import sys
 from contextlib import closing
 from pathlib import Path
 from flask import Flask, render_template, Blueprint, redirect, url_for, session, request
+from config import settings
+
+if sys.platform == 'win32':
+    gtk_path = settings.GTK_PATH
+    if os.path.exists(gtk_path):
+        if hasattr(os, 'add_dll_directory'):
+            os.add_dll_directory(gtk_path)
+        os.environ['PATH'] = gtk_path + os.pathsep + os.environ.get('PATH', '')
 from jinja2 import ChoiceLoader, FileSystemLoader
-from core.database import DB_PATH
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # استيراد بلوبرنت المهام والإشعارات
@@ -24,23 +33,19 @@ from modules.reports.routers import reports_bp
 
 
 def init_db():
-    db_path = DB_PATH
     schema_path = PROJECT_ROOT / "database" / "schema.sql"
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(str(db_path))
+    dbapi.ensure_compat_views()
+    dbapi.init_orm_schema()
+    conn = dbapi.connect()
     cursor = conn.cursor()
     
     # 1. تنفيذ ملف السكيما المحدث إن وجد
     if schema_path.exists():
-        try:
-            with open(str(schema_path), "r", encoding="utf-8") as f:
-                script_content = f.read().strip()
-                if script_content:
-                    conn.executescript(script_content)
-        except sqlite3.OperationalError as e:
-            print(f"تحذير أثناء قراءة schema.sql: {e}")
+        with open(str(schema_path), "r", encoding="utf-8") as f:
+            script_content = f.read().strip()
+            if script_content:
+                conn.executescript(script_content)
             
     # 2. التأكد من إنشاء جدول المركبات الأساسي بكافة الحقول
     cursor.execute("""
@@ -60,6 +65,21 @@ def init_db():
             ownership TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_archive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id INTEGER NOT NULL UNIQUE,
+            reason TEXT NOT NULL,
+            buyer_name TEXT,
+            sale_value REAL CHECK (sale_value IS NULL OR sale_value >= 0),
+            handover_date TEXT,
+            notes TEXT,
+            previous_status TEXT,
+            previous_workshop_status TEXT,
+            archived_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE RESTRICT
+        )
+    """)
     for column_name, column_type in (
         ("status", "TEXT DEFAULT 'متاحة'"),
         ("workshop_status", "TEXT DEFAULT 'متاحة'"),
@@ -67,9 +87,48 @@ def init_db():
     ):
         try:
             cursor.execute(f'ALTER TABLE vehicles ADD COLUMN "{column_name}" {column_type}')
-        except sqlite3.OperationalError as e:
+        except dbapi.OperationalError as e:
             if "duplicate column name" not in str(e).lower():
                 raise
+    cursor.executescript("""
+        CREATE TRIGGER IF NOT EXISTS vehicles_unique_identity_insert
+        BEFORE INSERT ON vehicles
+        WHEN (
+            NEW.vehicle_code IS NOT NULL AND TRIM(NEW.vehicle_code) != '' AND EXISTS (
+                SELECT 1 FROM vehicles
+                WHERE vehicle_code IS NOT NULL AND TRIM(vehicle_code) != ''
+                  AND LOWER(TRIM(vehicle_code)) = LOWER(TRIM(NEW.vehicle_code))
+            )
+        ) OR (
+            NEW.plate_number IS NOT NULL AND TRIM(NEW.plate_number) != '' AND EXISTS (
+                SELECT 1 FROM vehicles
+                WHERE plate_number IS NOT NULL AND TRIM(plate_number) != ''
+                  AND LOWER(TRIM(plate_number)) = LOWER(TRIM(NEW.plate_number))
+            )
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'vehicle code or plate already exists');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS vehicles_unique_identity_update
+        BEFORE UPDATE OF vehicle_code, plate_number ON vehicles
+        WHEN (
+            NEW.vehicle_code IS NOT NULL AND TRIM(NEW.vehicle_code) != '' AND EXISTS (
+                SELECT 1 FROM vehicles
+                WHERE id != NEW.id AND vehicle_code IS NOT NULL AND TRIM(vehicle_code) != ''
+                  AND LOWER(TRIM(vehicle_code)) = LOWER(TRIM(NEW.vehicle_code))
+            )
+        ) OR (
+            NEW.plate_number IS NOT NULL AND TRIM(NEW.plate_number) != '' AND EXISTS (
+                SELECT 1 FROM vehicles
+                WHERE id != NEW.id AND plate_number IS NOT NULL AND TRIM(plate_number) != ''
+                  AND LOWER(TRIM(plate_number)) = LOWER(TRIM(NEW.plate_number))
+            )
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'vehicle code or plate already exists');
+        END;
+    """)
     cursor.execute(
         "UPDATE vehicles SET workshop_status = 'تحت الصيانة', status = 'متاحة' "
         "WHERE status = 'تحت الصيانة' "
@@ -88,8 +147,8 @@ def init_db():
         ('order_no', 'TEXT'),
         ('type', 'TEXT'),
         ('order_type', 'TEXT'),
-        ('status', 'TEXT DEFAULT "open"'),
-        ('vehicle_id', 'TEXT'),
+        ('status', "TEXT DEFAULT 'open'"),
+        ('vehicle_id', 'INTEGER'),
         ('vehicle_code', 'TEXT'),
         ('plate_number', 'TEXT'),
         ('driver_id', 'TEXT'),
@@ -169,18 +228,19 @@ def init_db():
             try:
                 cursor.execute(f"ALTER TABLE maintenance_orders ADD COLUMN {col_name} {col_type};")
                 print(f"✅ تم إضافة العمود الناقص ({col_name}) إلى جدول maintenance_orders بنجاح.")
-            except sqlite3.OperationalError as e:
-                print(f"تنبيه أثناء إضافة {col_name}: {e}")
+            except dbapi.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
 
-    # 6. إنشاء جداول الفحص الشامل والتشغيلي للأسطول والمعدات
+    # 6. إنشاء جداول الفحص الشامل والتشغيلي للمركبات والمعدات
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS comprehensive_inspections (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             vehicle_plate TEXT NOT NULL,
             inspector_name TEXT NOT NULL,
             inspection_date TEXT NOT NULL,
-            current_mileage TEXT,
-            oil_change_mileage TEXT,
+            current_mileage INTEGER CHECK (current_mileage IS NULL OR current_mileage >= 0),
+            oil_change_mileage INTEGER CHECK (oil_change_mileage IS NULL OR oil_change_mileage >= 0),
             overall_status TEXT,
             notes TEXT,
             document_number TEXT DEFAULT 'No.000000',
@@ -207,12 +267,12 @@ def init_db():
     vehicle_plate TEXT NOT NULL,
     technician_name TEXT NOT NULL,
     service_date TEXT NOT NULL,
-    current_mileage TEXT,
-    last_oil_mileage TEXT,
-    distance_interval INTEGER DEFAULT 5000,
-    time_interval_months INTEGER DEFAULT 3,
-    distance_alert_threshold INTEGER DEFAULT 1000, -- حد التنبيه بالمسافة المخصص
-    time_alert_threshold INTEGER DEFAULT 15,       -- حد التنبيه بالوقت بالأيام المخصص
+    current_mileage INTEGER CHECK (current_mileage IS NULL OR current_mileage >= 0),
+    last_oil_mileage INTEGER CHECK (last_oil_mileage IS NULL OR last_oil_mileage >= 0),
+    distance_interval INTEGER DEFAULT 5000 CHECK (distance_interval IS NULL OR distance_interval > 0),
+    time_interval_months INTEGER DEFAULT 3 CHECK (time_interval_months IS NULL OR time_interval_months > 0),
+    distance_alert_threshold INTEGER DEFAULT 1000 CHECK (distance_alert_threshold IS NULL OR distance_alert_threshold >= 0),
+    time_alert_threshold INTEGER DEFAULT 15 CHECK (time_alert_threshold IS NULL OR time_alert_threshold >= 0),
     tracking_mode TEXT DEFAULT 'distance',
     overall_status TEXT DEFAULT 'سليم',
     notes TEXT,
@@ -245,8 +305,18 @@ def init_db():
 
     cursor.execute("PRAGMA table_info(generated_reports)")
     generated_report_columns = [column[1] for column in cursor.fetchall()]
-    if 'local_report_path' not in generated_report_columns:
-        cursor.execute("ALTER TABLE generated_reports ADD COLUMN local_report_path TEXT")
+    generated_report_migrations = {
+        'local_report_path': 'TEXT',
+        'is_finalized': 'INTEGER NOT NULL DEFAULT 0',
+        'final_pdf_path': 'TEXT',
+        'reference_number': 'TEXT',
+        'qr_code_path': 'TEXT',
+    }
+    for column_name, column_type in generated_report_migrations.items():
+        if column_name not in generated_report_columns:
+            cursor.execute(
+                f'ALTER TABLE generated_reports ADD COLUMN "{column_name}" {column_type}'
+            )
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS report_templates (
@@ -296,6 +366,27 @@ def init_db():
     print("✅ تم فحص وتهيئة قاعدة البيانات بنجاح مع إضافة جداول الفحص الشامل ومتابعة الزيوت ومركز التقارير.")
 
 
+def configure_logging(app):
+    logs_dir = Path(__file__).resolve().parent.parent / 'logs'
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    log_file = logs_dir / 'fleet_system.log'
+    formatter = logging.Formatter(
+        '%(asctime)s %(levelname)s %(name)s %(message)s'
+    )
+
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+
+    app.logger.handlers.clear()
+    app.logger.setLevel(logging.INFO)
+    app.logger.addHandler(file_handler)
+    app.logger.propagate = False
+
+    return app.logger
+
+
 def create_app():
     # 1. إنشاء التطبيق وتهيئة الإعدادات الأساسية أولاً
     app = Flask(
@@ -304,16 +395,16 @@ def create_app():
         static_folder=str(Path(__file__).parent / "static"),
     )
 
-    is_production = os.environ.get("APP_ENV", "development").strip().lower() == "production"
-    secret_key = os.environ.get("SECRET_KEY")
-    if is_production and not secret_key:
+    configure_logging(app)
+
+    if settings.IS_PRODUCTION and not settings.SECRET_KEY:
         raise RuntimeError("SECRET_KEY must be set when APP_ENV=production.")
-    app.secret_key = secret_key or secrets.token_hex(32)
+    app.secret_key = settings.SECRET_KEY or secrets.token_hex(32)
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=is_production,
-        MAX_CONTENT_LENGTH=32 * 1024 * 1024,
+        SESSION_COOKIE_SECURE=settings.SESSION_COOKIE_SECURE,
+        MAX_CONTENT_LENGTH=settings.MAX_CONTENT_LENGTH,
     )
 
     # تحديث الـ ChoiceLoader ليشمل مسارات الـ views لكل موديول (بما فيها الفحص الشامل ومتابعة الزيوت ومركز التقارير)
@@ -372,7 +463,7 @@ def create_app():
         # تهيئة جداول الحسابات والأمان
         SettingsService.init_security_and_users()
 
-        # زراعة إعدادات أسطول سيماكم التلقائية
+        # زراعة إعدادات المركبات والمعدات لسيماكم
         try:
             seed_fleet_initial_settings()
         except Exception as e:
@@ -401,31 +492,84 @@ def create_app():
             'settings.login',
             'static',
             'reports.public_view_document',
+            'reports.public_view_pdf',
             'vehicles.public_landing',
             'vehicles.public_information',
             'vehicles.public_request_update',
             'vehicles.public_issue_form',
             'vehicles.public_submit_issue',
+            'vehicles.public_vehicle_submissions',
         ]
         
         # السماح بصفحة تسجيل الدخول والملفات الثابتة (css/js/images)
-        if request.endpoint in allowed_endpoints or request.endpoint.startswith('static.'):
+        if request.endpoint.startswith('static.'):
+            return
+        if request.endpoint in allowed_endpoints and not (
+            'user_id' in session and request.method not in {'GET', 'HEAD', 'OPTIONS'}
+        ):
             return
 
         # إعادة التوجيه إلى تسجيل الدخول إن لم تكن هناك جلسة
         if 'user_id' not in session:
             return redirect(url_for('settings.login'))
 
+        try:
+            with closing(dbapi.connect()) as connection:
+                user = connection.execute(
+                    "SELECT role, is_active FROM users WHERE id = ?",
+                    (session['user_id'],),
+                ).fetchone()
+        except dbapi.Error as error:
+            app.logger.error("Unable to verify the current user: %s", error)
+            return "تعذر التحقق من صلاحيات المستخدم", 503
+
+        if not user or not user[1]:
+            session.clear()
+            return redirect(url_for('settings.login'))
+
+        role = 'admin' if user[0] == 'admin' else 'visitor'
+        session['role'] = role
+        if role != 'admin':
+            if request.endpoint.startswith('settings.') and request.endpoint != 'settings.logout':
+                return "هذه الصفحة متاحة لمدير النظام فقط", 403
+            read_only_methods = {'GET', 'HEAD', 'OPTIONS'}
+            mutation_endpoint = re.compile(
+                r'(^|_)(add|create|delete|remove|update|edit|close|save|toggle|mark|'
+                r'approve|restore|upload|submit|action|import|reset|complete|resolve|'
+                r'cancel|activate|deactivate|archive|assign|clear)(_|$)'
+            )
+            endpoint_name = request.endpoint.rsplit('.', 1)[-1]
+            if request.method not in read_only_methods or mutation_endpoint.search(endpoint_name):
+                return "صلاحية الزائر للقراءة فقط", 403
+
+    @app.context_processor
+    def inject_storage_aware_url_for():
+        from flask import url_for as flask_url_for
+        from core.storage import is_url
+
+        def storage_url_for(endpoint, **values):
+            # Uploads are stored as Supabase public URLs; legacy rows still hold local names.
+            candidate = values.get('filename')
+            if isinstance(candidate, str) and (
+                endpoint == 'static' or endpoint.endswith('view_attachment')
+            ):
+                match = re.search(r'https?://', candidate)
+                if match and is_url(candidate[match.start():]):
+                    return candidate[match.start():]
+            return flask_url_for(endpoint, **values)
+
+        return {'url_for': storage_url_for}
+
     @app.context_processor
     def inject_appearance_settings():
         try:
-            with closing(sqlite3.connect(str(DB_PATH))) as connection:
+            with closing(dbapi.connect()) as connection:
                 rows = connection.execute(
                     "SELECT key, value FROM system_settings WHERE key IN "
                     "('appearance_theme', 'appearance_font_size', 'appearance_primary_color')"
                 ).fetchall()
             saved = dict(rows)
-        except sqlite3.Error as error:
+        except dbapi.Error as error:
             app.logger.error("Unable to load appearance settings: %s", error)
             saved = {}
         themes = {
@@ -458,6 +602,17 @@ def create_app():
         }
 
     @app.context_processor
+    def inject_reference_lists():
+        try:
+            from modules.settings.reference_lists import load_reference_lists
+            with closing(dbapi.connect()) as connection:
+                connection.row_factory = dbapi.Row
+                return {"reference_lists": load_reference_lists(connection)}
+        except dbapi.Error as error:
+            app.logger.error("Unable to load reference lists: %s", error)
+            return {"reference_lists": {}}
+
+    @app.context_processor
     def inject_notification_count():
         user_id = session.get("user_id")
         if not user_id:
@@ -466,7 +621,7 @@ def create_app():
 
         try:
             unread_count = NotificationsService.unread_count(user_id)
-        except sqlite3.Error as error:
+        except dbapi.Error as error:
             app.logger.error("Unable to load notification count: %s", error)
             unread_count = 0
         return {"notification_unread_count": unread_count}

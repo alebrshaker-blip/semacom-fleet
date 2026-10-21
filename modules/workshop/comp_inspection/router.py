@@ -11,6 +11,10 @@ def list():
 def add():
     return CompInspectionController.add_inspection()
 
+@comp_inspection_bp.route('/delete/<int:id>', methods=['POST'])
+def delete(id):
+    return CompInspectionController.delete_inspection(id)
+
 @comp_inspection_bp.route('/print/<int:id>', methods=['GET'])
 def print_report(id):
     return CompInspectionController.print_inspection(id)

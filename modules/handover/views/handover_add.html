@@ -42,25 +42,6 @@
             </div>
 
             <div class="row">
-                <div class="col-md-4">
-                    <label class="form-label">الغرض:</label>
-                    <select name="purpose" class="form-select" required>
-                        <option value="صرف">صرف</option>
-                        <option value="مهمة عمل">مهمة عمل</option>
-                        <option value="أخرى">أخرى</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">القسم التابع له:</label>
-                    <input type="text" name="department" class="form-control" required>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">الوصف:</label>
-                    <input type="text" name="description" class="form-control" required>
-                </div>
-            </div>
-
-            <div class="row">
                 <!-- اختيار المركبة -->
                 <div class="col-md-6">
                     <label class="form-label">المركبة أو المعدة:</label>
@@ -79,18 +60,35 @@
             </div>
 
             <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">الغرض:</label>
+                    <select name="purpose" id="purpose" class="form-select" required>
+                        {% for purpose in reference_lists.handover_purposes %}
+                        <option value="{{ purpose }}">{{ purpose }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">القسم التابع له:</label>
+                    <input type="text" name="department" id="department" class="form-control" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الوصف:</label>
+                    <input type="text" name="description" id="description" class="form-control" required>
+                </div>
+            </div>
+
+            <div class="row">
                 <div class="col-md-6">
                     <label class="form-label">قراءة عداد الكيلومترات (Odometer):</label>
-                    <input type="text" name="odometer" class="form-control" placeholder="مثال: 45000 كم" required>
+                    <input type="text" name="odometer" id="odometer" class="form-control" placeholder="مثال: 45000 كم" required>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">مستوى الوقود:</label>
                     <select name="fuel_level" class="form-select" required>
-                        <option value="ممتلئ (Full)">ممتلئ (Full)</option>
-                        <option value="3/4 ثلاثة ارباع">3/4 ثلاثة أرباع</option>
-                        <option value="1/2 نصف">1/2 نصف</option>
-                        <option value="1/4 ربع">1/4 ربع</option>
-                        <option value="فارغ (Empty)">فارغ (Empty)</option>
+                        {% for level in reference_lists.handover_fuel_levels %}
+                        <option value="{{ level }}">{{ level }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>
@@ -161,13 +159,25 @@
     // بيانات القوالب المنقولة من البايثون
     const availableVehicles = [
         {% for v in available_vehicles %}
-            { "id": "{{ v.id }}", "name": "{{ (v.vehicle_code|default('', true)) ~ ' - ' ~ (v.plate_number|default(v.name, true)) }}" },
+            {
+                "id": {{ v.id|string|tojson }},
+                "name": {{ ((v.vehicle_code|default('', true)) ~ ' - ' ~ (v.plate_number|default(v.name, true)))|tojson }},
+                "latestMileage": {{ v.latest_mileage|tojson }}
+            },
         {% endfor %}
     ];
 
     const assignedHandovers = [
         {% for item in assigned_vehicles %}
-            { "id": "{{ item.vehicle_id }}", "vehicle": "{{ item.vehicle_info }}", "driver": "{{ item.driver_info }}" },
+            {
+                "id": {{ item.vehicle_id|string|tojson }},
+                "vehicle": {{ item.vehicle_info|tojson }},
+                "driver": {{ item.driver_info|tojson }},
+                "purpose": {{ item.purpose|tojson }},
+                "department": {{ item.department|tojson }},
+                "description": {{ item.description|tojson }},
+                "latestMileage": {{ item.latest_mileage|tojson }}
+            },
         {% endfor %}
     ];
 
@@ -184,6 +194,10 @@
         
         vehicleSelect.innerHTML = '<option value="">-- اختر المركبة --</option>';
         driverSelect.innerHTML = '<option value="">-- اختر السائق --</option>';
+        document.getElementById('odometer').value = '';
+        document.getElementById('purpose').value = 'صرف';
+        document.getElementById('department').value = '';
+        document.getElementById('description').value = '';
 
         if (type === 'تسليم عهدة') {
             // تعبئة المركبات المتاحة فقط
@@ -221,12 +235,21 @@
     // الربط التلقائي عند اختيار المركبة أو السائق في حالة الإرجاع
     function onVehicleChange() {
         const type = document.getElementById('handoverType').value;
+        const selectedVehicle = document.getElementById('vehicleSelect').value;
+        const odometerInput = document.getElementById('odometer');
+
         if (type === 'إرجاع عهدة') {
-            const selectedVehicle = document.getElementById('vehicleSelect').value;
             const match = assignedHandovers.find(i => i.id === selectedVehicle);
             if (match) {
                 document.getElementById('driverSelect').value = match.driver;
+                document.getElementById('purpose').value = match.purpose || 'صرف';
+                document.getElementById('department').value = match.department || '';
+                document.getElementById('description').value = match.description || '';
             }
+            odometerInput.value = match && match.latestMileage != null ? match.latestMileage : '';
+        } else {
+            const match = availableVehicles.find(v => v.id === selectedVehicle);
+            odometerInput.value = match && match.latestMileage != null ? match.latestMileage : '';
         }
     }
 
@@ -237,6 +260,7 @@
             const match = assignedHandovers.find(i => i.driver === selectedDriver);
             if (match) {
                 document.getElementById('vehicleSelect').value = match.id;
+                onVehicleChange();
             }
         }
     }

@@ -1,0 +1,164 @@
+{% extends "print_base.html" %}
+{% set data = memo_data or {} %}
+
+{% block title %}مذكرة رسمية{% endblock %}
+
+{% block report_title %}
+{% if is_finalized %}{{ data.get('document_title') or 'مذكرة رسمية' }}
+{% else %}<input form="generalMemoForm" name="document_title" class="document-title-field" value="{{ data.get('document_title', 'مذكرة رسمية') }}" maxlength="180" required aria-label="عنوان الوثيقة">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="memo-page">
+    {% if not is_finalized %}
+    <div class="memo-actions no-print">
+        <a href="{{ url_for('reports.index') }}">العودة للتقارير</a>
+        <a href="{{ url_for('reports.general_memo_form') }}">قائمة المذكرات</a>
+        <a href="{{ url_for('reports.general_memo_form', new=1) }}">مذكرة جديدة</a>
+    </div>
+    {% endif %}
+
+    <form id="generalMemoForm" method="post" class="memo-form">
+        {% if memo_id %}<input type="hidden" name="memo_id" value="{{ memo_id }}">{% endif %}
+        {% if not is_finalized %}<input type="hidden" name="submission_key" value="{{ memo_token }}">{% endif %}
+        {% set fields = [
+            ('recipient', 'التوجيه', 'input'),
+            ('subject', 'الموضوع', 'input'),
+            ('salutation', 'التقديم', 'textarea'),
+            ('body', 'المتن', 'textarea'),
+            ('recommendations', 'التوصيات', 'textarea'),
+            ('requests', 'الطلبات', 'textarea'),
+            ('conclusion', 'الخاتمة', 'textarea'),
+            ('signature', 'التوقيع', 'signature'),
+        ] %}
+        {% set field_options = data.get('field_options', {}) %}
+        {% for key, default_title, kind in fields %}
+        {% set option = field_options.get(key, {}) %}
+        {% set included = option.get('included', true) %}
+        <section class="memo-section {% if key == 'signature' %}signature-section{% endif %}" data-memo-field="{{ key }}">
+            {% if not is_finalized %}
+            <div class="field-settings no-print">
+                <label><input type="checkbox" name="include_{{ key }}" value="1" {% if included %}checked{% endif %}> تضمين البند</label>
+                <label><input class="show-title-toggle" type="checkbox" name="show_title_{{ key }}" value="1" {% if option.get('show_title', true) %}checked{% endif %}> إظهار العنوان</label>
+                <input class="field-title-input" name="title_{{ key }}" value="{{ option.get('title', default_title) }}" maxlength="80" aria-label="عنوان بند {{ default_title }}">
+            </div>
+            {% endif %}
+            {% if is_finalized %}
+                {% if included %}
+                {% if option.get('show_title', true) %}<h2>{{ option.get('title') or default_title }}</h2>{% endif %}
+                {% if kind == 'signature' %}
+                <div class="signature-grid">
+                    {% for name, label in [('signer_name', 'الاسم'), ('signer_title', 'الوظيفة'), ('signature', 'التوقيع'), ('signature_date', 'التاريخ')] %}
+                    <div class="signature-value"><strong>{{ label }}</strong><span>{{ data.get(name) or '—' }}</span></div>
+                    {% endfor %}
+                </div>
+                {% else %}<div class="memo-copy">{{ data.get(key) or '—' }}</div>{% endif %}
+                {% endif %}
+            {% else %}
+                <div class="field-content" {% if not included %}hidden{% endif %}>
+                    {% if option.get('show_title', true) %}<h2 data-field-title>{{ option.get('title', default_title) }}</h2>{% endif %}
+                    {% if kind == 'textarea' %}
+                    <textarea name="{{ key }}" rows="{% if key == 'body' %}5{% else %}2{% endif %}" maxlength="{% if key == 'body' %}5000{% else %}2000{% endif %}" {% if key == 'body' %}required{% endif %}>{{ data.get(key, '') }}</textarea>
+                    {% elif kind == 'signature' %}
+                    <div class="signature-grid">
+                        <label><strong>الاسم</strong><input name="signer_name" value="{{ data.get('signer_name', '') }}" maxlength="180"></label>
+                        <label><strong>الوظيفة</strong><input name="signer_title" value="{{ data.get('signer_title', '') }}" maxlength="180"></label>
+                        <label><strong>التوقيع</strong><input name="signature" value="{{ data.get('signature', '') }}" maxlength="180"></label>
+                        <label><strong>التاريخ</strong><input type="date" name="signature_date" value="{{ data.get('signature_date', current_date) }}"></label>
+                    </div>
+                    {% else %}<input name="{{ key }}" value="{{ data.get(key, '') }}" maxlength="180" {% if key in ['recipient', 'subject'] and included %}required{% endif %}>{% endif %}
+                </div>
+            {% endif %}
+        </section>
+        {% endfor %}
+
+        {% if not is_finalized %}
+        <div class="memo-save no-print">
+            <button id="memoSaveButton" type="submit" name="action" value="save">حفظ المسودة</button>
+            {% if memo_id %}<span>اعتمد المذكرة من الشريط العلوي لإصدار رقمها المرجعي ونسخة PDF.</span>{% endif %}
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<style>
+    .memo-page { color: #172033; font-family: Tahoma, Arial, sans-serif; font-size: 15px; line-height: 1.5; }
+    .memo-actions, .memo-save { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .memo-actions a, .memo-save button { padding: 6px 12px; border: 1px solid #1b365d; border-radius: 4px; background: #1b365d; color: #fff; text-decoration: none; font: inherit; font-weight: 700; cursor: pointer; }
+    .memo-save button:disabled { opacity: .65; cursor: wait; }
+    .memo-save span { color: #64748b; font-size: 12px; }
+        .document-title-field { width: 100%; border: 0; background: transparent; color: #1b365d; text-align: center; font: inherit; font-size: 19px; font-weight: 700; }
+    .memo-section { margin: 0 0 9px; break-inside: avoid; page-break-inside: avoid; }
+    .memo-section h2 { margin: 0 0 4px; padding: 3px 7px; border-right: 4px solid #1b365d; background: #edf2f7; color: #17324f; font-size: 16px; font-weight: 700; }
+    .field-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 14px; margin: 0 0 4px; padding: 4px 6px; background: #f1f5f9; color: #334155; font-size: 12px; }
+    .field-settings label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .field-settings input[type="checkbox"] { width: auto; margin: 0; accent-color: #1b365d; }
+    .field-settings input:not([type="checkbox"]) { min-width: 140px; flex: 1; padding: 3px 6px; border: 1px solid #cbd5e1; border-radius: 3px; font: inherit; }
+    .memo-form textarea, .memo-form input:not([type="checkbox"]), .memo-form input[type="date"] { width: 100%; border: 1px solid #94a3b8; border-radius: 3px; padding: 5px 8px; color: #172033; background: #fff; font: inherit; font-weight: 600; resize: vertical; }
+    .memo-form textarea { display: block; min-height: 42px; }
+    .memo-copy { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; }
+    .signature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .signature-grid label, .signature-value { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+    .signature-grid strong { flex: 0 0 auto; font-weight: 700; }
+    .signature-grid input, .signature-value span { min-width: 0; flex: 1; }
+    .signature-value span { min-height: 24px; border-bottom: 1px solid #64748b; }
+    @media print {
+        @page { size: A4 portrait; margin: 0; }
+        .memo-actions, .memo-save, .no-print, .action-bar, .modal-overlay { display: none !important; }
+        .page-container.portrait { padding: 8mm 12mm !important; }
+        .field-settings { display: none !important; }
+        .memo-section { margin-bottom: 6px; }
+        .memo-section h2 { padding: 2px 6px; }
+        .memo-copy { font-size: 15px; }
+        .memo-form textarea, .memo-form input:not([type="checkbox"]), .memo-form input[type="date"] { border: 0; padding: 0; background: transparent; resize: none; }
+    }
+</style>
+{% endblock %}
+{% block footer %}{% endblock %}
+{% block extra_js %}
+{% if not is_finalized %}
+<script>
+document.querySelectorAll('.memo-section').forEach(section => {
+    const includeToggle = section.querySelector('input[name^="include_"]');
+    const titleToggle = section.querySelector('.show-title-toggle');
+    const titleInput = section.querySelector('.field-title-input');
+    const content = section.querySelector('.field-content');
+    if (!includeToggle || !content) return;
+
+    const requiredFields = [...content.querySelectorAll('[required]')];
+    requiredFields.forEach(field => {
+        field.dataset.memoRequired = 'true';
+        field.required = includeToggle.checked;
+    });
+
+    includeToggle.addEventListener('change', () => {
+        content.hidden = !includeToggle.checked;
+        requiredFields.forEach(field => {
+            field.required = includeToggle.checked && field.dataset.memoRequired === 'true';
+        });
+    });
+
+    const heading = content.querySelector('[data-field-title]');
+    if (titleToggle && heading) {
+        titleToggle.addEventListener('change', () => {
+            heading.hidden = !titleToggle.checked;
+        });
+    }
+    if (titleInput && heading) {
+        titleInput.addEventListener('input', () => {
+            heading.textContent = titleInput.value;
+        });
+    }
+});
+
+document.getElementById('generalMemoForm')?.addEventListener('submit', () => {
+    const saveButton = document.getElementById('memoSaveButton');
+    if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = 'جار الحفظ...';
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

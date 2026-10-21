@@ -3,9 +3,8 @@
     <div class="official-header">
         <div class="header-right-zone">
             <div class="header-logo-zone">
-                <img src="{{ url_for('static', filename='logo.png') }}"
-                     alt="شعار الشركة"
-                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='logo.jpg') }}';">
+                 <img src="{{ url_for('static', filename='logo.jpg') }}"
+                     alt="شعار الشركة">
             </div>
             <div class="header-company-info">
                 <div class="title-ar">الشركة السعودية للكهرباء والتبريد للإستثمار (سيماكم)</div>
@@ -27,15 +26,19 @@
 
     <div class="document-meta-bar">
         <div class="meta-right">
-            <span>تاريخ إصدار التقرير: </span>
-            <span contenteditable="true">{{ report_date_gregorian or '2026/10/07' }}م</span>
+            <span>تاريخ الإصدار: </span>
+            <span contenteditable="{{ 'false' if is_certified|default(false) else 'true' }}">{{ report_date_gregorian or '2026/10/07' }}م</span>
+            {% if show_hijri_date is not defined or show_hijri_date %}
             <span style="margin-right: 8px;">الموافق: </span>
-            <span contenteditable="true">{{ report_date_hijri or '1448/04/24' }}هـ</span>
+            <span contenteditable="{{ 'false' if is_certified|default(false) else 'true' }}">{{ report_date_hijri or '1448/04/24' }}هـ</span>
+            {% endif %}
         </div>
 
-        <div class="meta-left ref-number-red">
-            <span class="ref-label">الرقم المرجعي: </span>
-            <span class="doc_ref_display" contenteditable="true">{{ page_document_number or document_number or 'No.000000' }}</span>
+        {% set reference_number = page_document_number or document_number %}
+        {% set approved_qr_code_url = page_qr_code_url or qr_code_url %}
+        {% set has_approved_reference = reference_number and reference_number != 'No.000000' and approved_qr_code_url and not (suppress_reference_number|default(false)) %}
+        <div class="meta-left ref-number-red document-reference" {% if not has_approved_reference %}hidden{% endif %}>
+            <span class="doc_ref_display" contenteditable="false">{{ reference_number if has_approved_reference else '' }}</span>
         </div>
     </div>
 </div>

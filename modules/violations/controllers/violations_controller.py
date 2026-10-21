@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import jsonify, render_template, request, redirect, url_for, flash
 from modules.violations.services.violations_service import ViolationsService
-from core.database import Database
+from modules.vehicles import repository as vehicles_repository
 from utils.excel_export import generate_semacom_excel  # استيراد الدالة الموحدة الصحيحة من مجلد utils
 from modules.handover.services.handover_service import get_driver_at_datetime
 
@@ -20,9 +20,7 @@ class ViolationsController:
             ViolationsService.add_violation(request.form, file_att)
             flash('تم تسجيل المخالفة واختيار السائق بنجاح', 'success')
             return redirect(url_for('violations.index'))
-        db = Database()
-        vehicles = db.fetch_all("SELECT * FROM vehicles")
-        db.close()
+        vehicles = vehicles_repository.list_active()
         return render_template('violation_add.html', vehicles=vehicles)
 
     @staticmethod

@@ -252,10 +252,9 @@
                         <div class="form-group">
                             <label class="info-label">حالة المعالجة / سبب الإقفال <span class="text-danger">*</span></label>
                             <select name="closure_reason" class="form-control-custom" required>
-                                <option value="تمت المعالجة كلياً" selected>تمت المعالجة كلياً</option>
-                                <option value="تمت المعالجة جزئياً">تمت المعالجة جزئياً</option>
-                                <option value="تم الإلغاء لعدم الحاجة">تم الإلغاء لعدم الحاجة</option>
-                                <option value="تحويل لورشة خارجية">تحويل لورشة خارجية</option>
+                                {% for reason in reference_lists.maintenance_closure_reasons %}
+                                <option value="{{ reason }}" {% if loop.first %}selected{% endif %}>{{ reason }}</option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>

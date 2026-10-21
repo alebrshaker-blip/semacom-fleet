@@ -10,12 +10,16 @@
     .form-group { margin-bottom: 15px; }
     .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #2c3e50; font-size: 14px; }
     .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+    .unique-feedback { display: block; margin-top: 5px; color: #b02a37; font-size: 13px; font-weight: 700; }
+    .unique-feedback[hidden] { display: none; }
+    .form-control.unique-invalid { border-color: #dc3545; }
     .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
     .btn { display: inline-block; padding: 8px 16px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 4px; cursor: pointer; border: none; transition: background 0.2s; }
     .btn-primary { background-color: #0d6efd; color: white; }
     .btn-primary:hover { background-color: #0b5ed7; }
     .btn-secondary { background-color: #6c757d; color: white; }
     .btn-secondary:hover { background-color: #5c636a; }
+    .alert-danger { margin-bottom: 16px; padding: 10px 12px; border: 1px solid #f5c2c7; border-radius: 4px; background: #f8d7da; color: #842029; }
 </style>
 {% endblock %}
 
@@ -27,14 +31,17 @@
     </div>
 
     <form action="{{ url_for('drivers.add') }}" method="POST">
+        {% if error %}<div class="alert-danger" role="alert">{{ error }}</div>{% endif %}
         <div class="form-row">
             <div class="form-group">
                 <label>اسم الموظف / السائق <span style="color: red;">*</span></label>
-                <input type="text" name="name" class="form-control" required placeholder="الاسم الرباعي">
+                <input type="text" name="name" class="form-control" value="{{ form_data.get('name', '') if form_data else '' }}" data-unique-check="{{ url_for('drivers.check_duplicate') }}" data-unique-field="name" data-unique-feedback="driverNameFeedback" autocomplete="off" required placeholder="الاسم الرباعي">
+                <small id="driverNameFeedback" class="unique-feedback" aria-live="polite" hidden></small>
             </div>
             <div class="form-group">
                 <label>رقم الهوية / الإقامة <span style="color: red;">*</span></label>
-                <input type="text" name="national_id" class="form-control" required placeholder="رقم الهوية الوطنية أو الإقامة">
+                <input type="text" name="national_id" class="form-control" value="{{ form_data.get('national_id', '') if form_data else '' }}" data-unique-check="{{ url_for('drivers.check_duplicate') }}" data-unique-field="national_id" data-unique-feedback="driverNationalIdFeedback" autocomplete="off" required placeholder="رقم الهوية الوطنية أو الإقامة">
+                <small id="driverNationalIdFeedback" class="unique-feedback" aria-live="polite" hidden></small>
             </div>
         </div>
 
@@ -95,4 +102,8 @@
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/unique_field_validator.js') }}"></script>
 {% endblock %}

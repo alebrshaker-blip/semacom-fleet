@@ -107,6 +107,7 @@ document.addEventListener('click', async (event) => {
 
     const deleteButton = event.target.closest('[data-confirm-delete]');
     if (deleteButton) {
+        event.preventDefault();
         const targetName = deleteButton.dataset.targetName || 'السجل المحدد';
         const confirmed = await sysConfirm(
             `هل تريد حذف ${targetName}؟ لا يمكن التراجع عن هذا الإجراء.`,
@@ -114,6 +115,13 @@ document.addEventListener('click', async (event) => {
             'danger',
             'نعم، احذف'
         );
-        if (confirmed) window.location.assign(deleteButton.dataset.confirmDelete);
+        if (confirmed) {
+            const form = deleteButton.closest('form');
+            if (form) {
+                form.requestSubmit();
+            } else {
+                window.location.assign(deleteButton.dataset.confirmDelete);
+            }
+        }
     }
 });

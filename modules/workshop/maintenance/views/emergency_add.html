@@ -46,11 +46,9 @@
                     <div class="col-md-6">
                         <label class="form-label fw-semibold">درجة الخطورة <span class="text-danger">*</span></label>
                         <select name="severity" class="form-select" required>
-                            <option value="لا يوجد">لا يوجد</option>
-                            <option value="منخفضة">منخفضة</option>
-                            <option value="متوسطة" selected>متوسطة</option>
-                            <option value="عالية">عالية</option>
-                            <option value="حرجة">حرجة</option>
+                            {% for severity in reference_lists.emergency_severities %}
+                            <option value="{{ severity }}" {% if severity == 'متوسطة' %}selected{% endif %}>{{ severity }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-6">

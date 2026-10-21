@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}إخلاء طرف العهدة{% endblock %}
+
+{% block content %}
+<section class="clearance-index">
+    <header class="index-heading">
+        <div>
+            <p>التقارير / إخلاء العهدة</p>
+            <h1>نماذج إخلاء طرف العهدة</h1>
+        </div>
+        <div class="clearance-actions">
+            <a class="back-reports" href="{{ url_for('reports.index') }}">العودة للتقارير</a>
+            <a class="new-clearance" href="{{ url_for('reports.custody_clearance_form', new=1) }}">إنشاء نموذج جديد</a>
+        </div>
+    </header>
+
+    <section class="index-section">
+        <h2>المسودات <span>{{ drafts|length }}</span></h2>
+        {% if drafts %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>الاسم</th><th>القسم</th><th>تاريخ الإخلاء</th><th>آخر تحديث</th><th>إجراء</th></tr></thead>
+                <tbody>
+                    {% for entry in drafts %}
+                    <tr>
+                        <td>{{ entry.data.get('person_name') or 'مسودة #' ~ entry.id }}</td>
+                        <td>{{ entry.data.get('department') or '—' }}</td>
+                        <td>{{ entry.data.get('clearance_date') or '—' }}</td>
+                        <td>{{ entry.updated_at[:10] if entry.updated_at else '—' }}</td>
+                        <td class="row-actions">
+                            <a href="{{ url_for('reports.custody_clearance_form', id=entry.id) }}">فتح المسودة</a>
+                            <form method="post" action="{{ url_for('reports.delete_custody_clearance', clearance_id=entry.id) }}">
+                                <button type="submit" data-confirm-delete data-target-name="نموذج إخلاء العهدة رقم {{ entry.id }}">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">لا توجد مسودات محفوظة.</p>{% endif %}
+    </section>
+
+    <section class="index-section">
+        <h2>الأرشيف المعتمد <span>{{ archived|length }}</span></h2>
+        {% if archived %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>الرقم المرجعي</th><th>الاسم</th><th>القسم</th><th>تاريخ الاعتماد</th><th>إجراء</th></tr></thead>
+                <tbody>
+                    {% for entry in archived %}
+                    <tr>
+                        <td>{{ entry.reference_number }}</td>
+                        <td>{{ entry.data.get('person_name') or '—' }}</td>
+                        <td>{{ entry.data.get('department') or '—' }}</td>
+                        <td>{{ entry.approved_at[:10] if entry.approved_at else '—' }}</td>
+                        <td class="archive-actions">
+                            <a href="{{ url_for('reports.final_report', doc_number=entry.reference_number) }}">عرض</a>
+                            <a href="{{ url_for('reports.final_report_pdf', doc_number=entry.reference_number, download=1) }}">تنزيل PDF</a>
+                            <form method="post" action="{{ url_for('reports.delete_custody_clearance', clearance_id=entry.id) }}">
+                                <button type="submit" data-confirm-delete data-target-name="نموذج إخلاء العهدة {{ entry.reference_number }}">حذف</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">لا توجد نماذج معتمدة في الأرشيف.</p>{% endif %}
+    </section>
+</section>
+
+<style>
+    .clearance-index { max-width: 1120px; margin: 0 auto; color: #172033; }
+    .index-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #1b365d; }
+    .index-heading p { margin: 0 0 5px; color: #64748b; font-size: 13px; }
+    .index-heading h1 { margin: 0; color: #1b365d; font-size: 23px; }
+    .new-clearance { padding: 10px 15px; border-radius: 4px; background: #1b365d; color: #fff; text-decoration: none; font-weight: 700; }
+    .clearance-actions { display: flex; align-items: center; gap: 9px; }
+    .back-reports { padding: 9px 13px; border: 1px solid #64748b; border-radius: 4px; color: #334155; text-decoration: none; font-weight: 700; }
+    .index-section { margin-bottom: 26px; }
+    .index-section h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 10px; color: #1b365d; font-size: 17px; }
+    .index-section h2 span { padding: 2px 8px; border-radius: 12px; background: #e7edf4; font-size: 12px; }
+    .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #dbe2ea; }
+    .clearance-index table { width: 100%; min-width: 650px; border-collapse: collapse; }
+    .clearance-index th, .clearance-index td { padding: 9px 11px; border-bottom: 1px solid #e2e8f0; text-align: right; font-size: 13px; }
+    .clearance-index th { background: #edf2f7; color: #17324f; }
+    .clearance-index td a { color: #1b5b88; font-weight: 700; text-decoration: none; }
+    .archive-actions { display: flex; gap: 12px; }
+    .row-actions { display: flex; align-items: center; gap: 12px; }
+    .row-actions form, .archive-actions form { margin: 0; }
+    .row-actions button, .archive-actions button { padding: 0; border: 0; color: #a12727; background: transparent; font: inherit; cursor: pointer; }
+    .empty { padding: 14px; border-right: 3px solid #cbd5e1; color: #64748b; background: #fff; }
+    @media (max-width: 650px) { .index-heading { align-items: flex-start; flex-direction: column; } .clearance-actions { width: 100%; flex-direction: column; } .new-clearance, .back-reports { width: 100%; text-align: center; } }
+</style>
+{% endblock %}

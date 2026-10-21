@@ -3,7 +3,7 @@ from flask import render_template, request, redirect, url_for, flash, send_from_
 from modules.inspection.services.inspection_service import InspectionService
 from modules.inspection.models.inspection_model import InspectionModel
 from utils.excel_export import generate_semacom_excel
-import sqlite3
+from modules.vehicles import repository as vehicles_repository
 
 class InspectionController:
 
@@ -11,13 +11,10 @@ class InspectionController:
     def get_vehicles_list():
         """جلب قائمة لوحات المركبات من جدول المركبات الرئيسي لربطها بالفحص"""
         try:
-            conn = sqlite3.connect(InspectionModel.DB_PATH)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT plate_number, vehicle_type, model FROM vehicles")
-            vehicles = [dict(row) for row in cursor.fetchall()]
-            conn.close()
-            return vehicles
+            return [
+                {'plate_number': v['plate_number'], 'vehicle_type': v.get('vehicle_type'), 'model': v.get('model')}
+                for v in vehicles_repository.list_active()
+            ]
         except Exception:
             return []
 

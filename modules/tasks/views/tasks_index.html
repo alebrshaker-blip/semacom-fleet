@@ -13,9 +13,26 @@
             <h1><i class="fa-solid fa-list-check"></i> سجل المهام</h1>
             <p>جدولة المهام وترتيبها حسب الأولوية ومتابعة إنجازها وأرشفتها.</p>
         </div>
-        <a class="task-button secondary" href="{{ url_for('notifications_bp.index') }}">
-            <i class="fa-solid fa-bell"></i> مركز الإشعارات
-        </a>
+        <div class="tasks-heading-actions">
+            {% if source_notification_id %}
+            <a class="task-button secondary" href="{{ notification_return_url }}">
+                <i class="fa-solid fa-arrow-right"></i> العودة إلى الإشعارات
+            </a>
+            {% elif selected_archived %}
+            <a class="task-button secondary" href="{{ url_for('tasks_bp.index') }}">
+                <i class="fa-solid fa-arrow-right"></i> العودة إلى المهام النشطة
+            </a>
+            {% else %}
+            <a class="task-button secondary" href="{{ url_for('home') }}">
+                <i class="fa-solid fa-arrow-right"></i> العودة إلى الصفحة الرئيسية
+            </a>
+            {% endif %}
+            {% if not source_notification_id %}
+            <a class="task-button secondary" href="{{ url_for('notifications_bp.index') }}">
+                <i class="fa-solid fa-bell"></i> مركز الإشعارات
+            </a>
+            {% endif %}
+        </div>
     </header>
 
     {% if source_notification_id %}
@@ -165,10 +182,10 @@
                     <button class="task-button secondary" type="submit"><i class="fa-solid fa-box-archive"></i> أرشفة</button>
                 </form>
                 {% endif %}
-                <form method="post" action="{{ url_for('tasks_bp.delete', task_id=task.id) }}"
-                      onsubmit="return confirm('هل تريد حذف هذه المهمة نهائياً؟');">
+                <form method="post" action="{{ url_for('tasks_bp.delete', task_id=task.id) }}">
                     <input type="hidden" name="archived" value="{{ 1 if selected_archived else 0 }}">
-                    <button class="task-button danger" type="submit"><i class="fa-solid fa-trash"></i> حذف</button>
+                    <button class="task-button danger" type="submit" data-confirm-delete
+                            data-target-name="المهمة: {{ task.title }}"><i class="fa-solid fa-trash"></i> حذف</button>
                 </form>
             </div>
         </article>

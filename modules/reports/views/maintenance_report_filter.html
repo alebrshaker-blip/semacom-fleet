@@ -10,6 +10,7 @@
             <div class="text-muted">فلترة أوامر الصيانة ومعاينة التقرير قبل الطباعة أو الاعتماد</div>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-secondary" href="{{ url_for('reports.index') }}">العودة إلى التقارير</a>
             <a class="btn btn-outline-primary" href="{{ url_for('workshop.maintenance.maintenance_all') }}">جدول جميع أوامر الصيانة</a>
             <a class="btn btn-outline-secondary" href="{{ url_for('workshop.maintenance.maintenance_index') }}">أقسام الصيانة</a>
         </div>
@@ -20,7 +21,7 @@
         <div class="card-body p-4">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold" for="maintenance-type">نوع الصيانة</label>
+                    <label class="form-label fw-semibold" for="maintenance-type">فئة الصيانة</label>
                     <select class="form-select" id="maintenance-type" name="type">
                         <option value="all" {{ 'selected' if filters.type == 'all' }}>جميع الأنواع</option>
                         {% for type_key, type_title in type_titles.items() %}

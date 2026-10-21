@@ -106,10 +106,9 @@
                     <div class="form-group">
                         <label>جهة الإصدار:</label>
                         <select name="issuer">
-                            <option value="مرور">مرور</option>
-                            <option value="ساهر">ساهر</option>
-                            <option value="أمن الطرق">أمن الطرق</option>
-                            <option value="أخرى">أخرى</option>
+                            {% for issuer in reference_lists.violation_issuers %}
+                            <option value="{{ issuer }}">{{ issuer }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
@@ -133,9 +132,9 @@
                     <div class="form-group">
                         <label>الحالة:</label>
                         <select name="status_type">
-                            <option value="معلقة">معلقة</option>
-                            <option value="حتمية">حتمية</option>
-                            <option value="قيد الاعتراض">قيد الاعتراض</option>
+                            {% for status in reference_lists.violation_statuses %}
+                            <option value="{{ status }}">{{ status }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>

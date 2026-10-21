@@ -10,9 +10,24 @@ class OilTrackingController:
         return render_template('oil_tracking_list.html', records=records, active_tab='oil_tracking')
 
     @staticmethod
+    def delete_record(id):
+        try:
+            if OilTrackingService.delete_record(id):
+                flash('تم حذف سجل تغيير الزيت بنجاح.', 'success')
+            else:
+                flash('سجل تغيير الزيت المطلوب غير موجود.', 'warning')
+        except Exception as error:
+            flash(f'تعذر حذف سجل تغيير الزيت: {error}', 'danger')
+        return redirect(url_for('workshop.oil_tracking.list'))
+
+    @staticmethod
     def add_record():
         if request.method == 'POST':
-            OilTrackingService.create_record(request.form)
+            try:
+                OilTrackingService.create_record(request.form)
+            except ValueError as error:
+                flash(str(error), 'danger')
+                return redirect(url_for('workshop.oil_tracking.add'))
             flash('تم حفظ سجل تغيير الزيت بنجاح', 'success')
             return redirect(url_for('workshop.oil_tracking.list'))
 

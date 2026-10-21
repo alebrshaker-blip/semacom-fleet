@@ -15,39 +15,93 @@
 {% macro maintenance_fields(order) %}
 {% set fields = [
     ('رقم الأمر', order.order_no or order.id),
-    ('نوع الصيانة', type_titles.get(order.type, order.type)),
+    ('فئة الصيانة', type_titles.get(order.type, order.type)),
     ('الحالة', 'مفتوح' if order.status == 'open' else 'مغلق / مؤرشف'),
     ('كود المركبة', order.disp_code or order.vehicle_code or order.vehicle_id),
-    ('رقم اللوحة', order.disp_plate or order.plate_number),
-    ('اسم السائق', order.disp_driver or order.driver_name),
-    ('درجة الخطورة', order.severity)
+    ('رقم اللوحة', order.disp_plate or order.plate_number)
 ] %}
-{% if order.type in ['internal', 'external'] %}
-    {% set fields = fields + [('نوع العمل', order.maintenance_type), ('وصف العطل', order.fault_description), ('سبب العطل', order.fault_cause)] %}
-{% endif %}
 {% if order.type == 'internal' %}
-    {% set fields = fields + [('الفني المسؤول', order.technician_name), ('الوقت المتوقع للإنجاز', order.expected_completion_time), ('تاريخ فتح الأمر', order.order_date)] %}
+    {% set fields = fields + [
+        ('نوع الصيانة', order.maintenance_type),
+        ('وصف العطل', order.fault_description),
+        ('سبب العطل', order.fault_cause),
+        ('الأولوية', order.severity),
+        ('الفني المستلم', order.technician_name),
+        ('الوقت المتوقع للإنجاز', order.expected_completion_time),
+        ('تاريخ أمر العمل', order.order_date)
+    ] %}
 {% elif order.type == 'external' %}
-    {% set fields = fields + [('الورشة الخارجية', order.workshop_name), ('هاتف الورشة', order.workshop_phone), ('موقع الورشة', order.workshop_location), ('سبب الإرسال', order.send_reason), ('تاريخ الإرسال', order.send_datetime), ('المسؤول', order.responsible_person), ('التكلفة المتوقعة', order.expected_cost), ('الوقت المتوقع', order.expected_time), ('ملاحظات الفتح', order.notes)] %}
+    {% set fields = fields + [
+        ('نوع الصيانة', order.maintenance_type),
+        ('وصف العطل', order.fault_description),
+        ('سبب العطل', order.fault_cause),
+        ('درجة الخطورة', order.severity),
+        ('اسم الورشة', order.workshop_name),
+        ('رقم الورشة', order.workshop_phone),
+        ('موقع الورشة', order.workshop_location),
+        ('سبب الإرسال', order.send_reason),
+        ('وقت الإرسال', order.send_datetime),
+        ('المسؤول', order.responsible_person),
+        ('التكلفة المتوقعة', order.expected_cost),
+        ('الوقت المتوقع', order.expected_time),
+        ('ملاحظات', order.notes)
+    ] %}
 {% elif order.type == 'emergency' %}
-    {% set fields = fields + [('اسم المُبلغ', order.reporter_name), ('الفني المتابع', order.technician_name), ('وصف الحالة', order.case_description), ('سبب العطل', order.fault_cause), ('هل توجد إصابات؟', order.has_injuries), ('هل المركبة قابلة للحركة؟', order.is_drivable), ('هل تم إبلاغ جهة رسمية؟', order.official_notified), ('تاريخ الواقعة', order.incident_datetime)] %}
+    {% set fields = fields + [
+        ('السائق', order.disp_driver or order.driver_name),
+        ('درجة الخطورة', order.severity),
+        ('التاريخ', order.incident_datetime),
+        ('الموقع', order.emergency_location),
+        ('هل يوجد إصابة؟', order.has_injuries),
+        ('هل المركبة قابلة للحركة؟', order.is_drivable),
+        ('الجهة الحكومية المبلغة', order.official_notified),
+        ('وصف الحالة', order.case_description),
+        ('سبب العطل', order.fault_cause)
+    ] %}
 {% elif order.type == 'exceptional' %}
-    {% set fields = fields + [('تاريخ الواقعة', order.incident_datetime), ('الموضوع', order.subject), ('الوصف', order.description), ('الأسباب', order.causes), ('تفاصيل أخرى', order.other_details)] %}
+    {% set fields = fields + [
+        ('التاريخ', order.incident_datetime),
+        ('الموضوع', order.subject),
+        ('الوصف', order.description),
+        ('الأسباب', order.causes),
+        ('تفاصيل أخرى', order.other_details)
+    ] %}
 {% endif %}
 {% if order.status == 'closed' %}
-    {% set fields = fields + [
-        ('تاريخ الإقفال', order.closure_date or order.closure_datetime),
-        ('تاريخ الاستلام', order.receipt_datetime),
-        ('سبب الإقفال', order.closure_reason),
-        ('الإجراء المتخذ', order.action_taken),
-        ('هل تم سحب المركبة؟', order.is_towed),
-        ('جهة السحب', order.towing_party),
-        ('تفاصيل المعالجة', order.treatment_details),
-        ('قطع الغيار', order.spare_parts),
-        ('التكلفة النهائية', order.final_cost),
-        ('التوصية', order.recommendation),
-        ('ملاحظات الإقفال', order.closing_notes)
-    ] %}
+    {% if order.type == 'internal' %}
+        {% set fields = fields + [
+            ('تاريخ الإقفال', order.closure_date),
+            ('سبب الإقفال', order.closure_reason),
+            ('قطع الغيار المستخدمة', order.spare_parts),
+            ('التكلفة النهائية', order.final_cost),
+            ('التوصيات', order.recommendation)
+        ] %}
+    {% elif order.type == 'external' %}
+        {% set fields = fields + [
+            ('تاريخ الإقفال', order.closure_date),
+            ('تاريخ الاستلام', order.receipt_datetime),
+            ('سبب الإقفال', order.closure_reason),
+            ('قطع الغيار المستخدمة', order.spare_parts),
+            ('التوصيات', order.recommendation),
+            ('ملاحظات الإقفال', order.closing_notes)
+        ] %}
+    {% elif order.type == 'emergency' %}
+        {% set fields = fields + [
+            ('الإجراءات الفورية', order.action_taken),
+            ('هل تم السحب؟', order.is_towed),
+            ('جهة السحب', order.towing_party),
+            ('فريق التدخل', order.intervention_team),
+            ('التكلفة النهائية', order.final_cost),
+            ('قطع الغيار المستخدمة', order.spare_parts),
+            ('التوصيات النهائية', order.recommendation)
+        ] %}
+    {% elif order.type == 'exceptional' %}
+        {% set fields = fields + [
+            ('الإجراءات المتخذة', order.action_taken),
+            ('التكلفة', order.final_cost),
+            ('التوصيات', order.recommendation)
+        ] %}
+    {% endif %}
 {% endif %}
 <table class="maintenance-details-table">
     <tbody>
@@ -67,7 +121,7 @@
 </table>
 {% endmacro %}
 
-{% macro attachment_card(title, filename) %}
+{% macro attachment_card(title, filename, field_name, order_id) %}
 {% set source = attachment_url(filename) %}
 <div class="attachment-card" data-maintenance-photo>
     <h3>{{ title }}</h3>
@@ -79,10 +133,13 @@
         <span class="empty-photo">لا توجد صورة</span>
         {% endif %}
     </div>
+    {% if not is_finalized|default(false) %}
     <label class="photo-picker no-print">
         اختيار صورة
-        <input type="file" accept="image/*" data-photo-input>
+        <input type="file" accept="image/*" data-photo-input
+               name="maintenance_photo_{{ field_name }}_{{ order_id }}">
     </label>
+    {% endif %}
 </div>
 {% endmacro %}
 
@@ -100,37 +157,42 @@
     }
     .maintenance-details-table th { width: 15%; background: #dbe7f2; text-align: right; font-weight: 800; }
     .maintenance-details-table td { width: 35%; }
-    .attachment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .attachment-card { min-width: 0; border: 1px solid #64748b; padding: 8px; text-align: center; break-inside: avoid; }
+    .attachment-page { height: 210mm; min-height: 210mm; justify-content: flex-start; }
+    .attachment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; align-items: stretch; }
+    .attachment-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid #64748b; padding: 8px; text-align: center; break-inside: avoid; page-break-inside: avoid; }
     .attachment-card h3 { margin: 0 0 6px; font-size: 13px; }
-    .attachment-image { height: 82mm; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc; }
-    .attachment-image img { width: 100%; height: 100%; object-fit: contain; }
+    .attachment-image { flex: 1 1 118mm; height: 118mm; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc; }
+    .attachment-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .photo-picker { display: inline-flex; margin-top: 8px; padding: 5px 12px; border-radius: 4px; background: #1b365d; color: white; cursor: pointer; }
     .photo-picker input { display: none; }
     .empty-photo { color: #64748b; }
     .maintenance-report-title { margin: 0 auto 10px; text-align: center; font-size: 17px; }
     @media print {
-        .maintenance-details-table th, .maintenance-details-table td { padding: 5px 7px; font-size: 11px; }
-        .attachment-grid {
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 8mm;
-            align-items: start;
-        }
-        .attachment-card { border: 0; padding: 0; }
-        .attachment-image { height: 76mm; max-height: 76mm; background: transparent; }
-        .attachment-image img { max-height: 76mm; }
         .attachment-page {
-            height: 210mm;
-            min-height: 210mm;
-            max-height: 210mm;
-            overflow: hidden;
-            break-inside: avoid;
-            break-after: page;
-            page-break-inside: avoid;
-            page-break-after: always;
+            height: 210mm !important;
+            min-height: 210mm !important;
+            max-height: 210mm !important;
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
         }
-        .empty-photo { display: none; }
+        .attachment-grid,
+        .attachment-card,
+        .attachment-image {
+            min-height: 0 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+        .attachment-card {
+            height: 100% !important;
+        }
+        .attachment-image {
+            flex: 1 1 118mm !important;
+            height: 118mm !important;
+        }
+        .attachment-image img {
+            object-fit: cover !important;
+        }
     }
 </style>
 {% endblock %}
@@ -147,8 +209,8 @@
         {% include '_print_header.html' %}
         <h2 class="maintenance-report-title">{{ report_title_text }} | مرفقات أمر الصيانة</h2>
         <div class="attachment-grid">
-            {{ attachment_card('صورة قبل الصيانة', order.photo_before) }}
-            {{ attachment_card('صورة بعد الصيانة', order.photo_after) }}
+            {{ attachment_card('صورة قبل الصيانة', order.photo_before, 'before', order.id) }}
+            {{ attachment_card('صورة بعد الصيانة', order.photo_after, 'after', order.id) }}
         </div>
     </section>
     {% endfor %}

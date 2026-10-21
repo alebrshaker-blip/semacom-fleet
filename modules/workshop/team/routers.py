@@ -1,10 +1,9 @@
 import sys
-import os
 from pathlib import Path
-from flask import Blueprint, render_template, request, redirect, url_for
-import sqlite3
+from flask import Blueprint, flash, jsonify, render_template, request, redirect
+import logging
 from utils.expiry_status import get_expiry_status
-from core.database import DB_PATH
+from modules.workshop.team import team_service
 
 # 🌟 إضافة المسار الجذري لاستيراد مكتبة التصدير الموحدة لسيماكم
 base_dir_path = Path(__file__).parent.parent.parent.parent
@@ -27,53 +26,8 @@ team_bp = Blueprint(
     template_folder=str(template_dir)
 )
 
-def get_db_connection():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn, DB_PATH
 
-# إنشاء الجداول تلقائياً إذا لم تكن موجودة
-def init_team_db():
-    conn, _ = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS team_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            full_name TEXT,
-            national_id TEXT,
-            nationality TEXT,
-            phone TEXT,
-            job_title TEXT,
-            qualification TEXT,
-            specialization TEXT,
-            license_number TEXT,
-            license_type TEXT,
-            license_issue_date TEXT,
-            license_expiry_date TEXT,
-            license_status TEXT DEFAULT 'غير محدد'
-        )
-    """)
-    columns = {row["name"] for row in cur.execute("PRAGMA table_info(team_members)")}
-    for name, column_type in (
-        ("license_type", "TEXT"),
-        ("license_status", "TEXT DEFAULT 'غير محدد'"),
-    ):
-        if name not in columns:
-            cur.execute(f'ALTER TABLE team_members ADD COLUMN "{name}" {column_type}')
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS team_fields (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            label TEXT,
-            required INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_team_db()
-
-def apply_license_status(members, conn):
+def apply_license_status(members):
     updated_members = []
     for row in members:
         member = dict(row)
@@ -81,51 +35,38 @@ def apply_license_status(members, conn):
             member["license_expiry_date"], "ساري", "قارب على الانتهاء", "منتهية"
         )
         member["license_status"] = status
-        conn.execute(
-            "UPDATE team_members SET license_status = ? WHERE id = ?",
-            (status, member["id"]),
-        )
         updated_members.append(member)
-    conn.commit()
     return updated_members
 
 @team_bp.route("/")
 def team_index():
-    conn, _ = get_db_connection()
-    cur = conn.cursor()
-    
     search_query = request.args.get("q", "").strip()
-    
-    # جلب الحقول الديناميكية الإضافية إن وجدت
-    cur.execute("SELECT * FROM team_fields")
-    fields = cur.fetchall()
-    
-    if search_query:
-        like_pattern = f"%{search_query}%"
-        cur.execute("""
-            SELECT * FROM team_members 
-            WHERE full_name LIKE ? OR national_id LIKE ? OR phone LIKE ? OR license_number LIKE ? OR license_type LIKE ? OR specialization LIKE ?
-        """, (like_pattern, like_pattern, like_pattern, like_pattern, like_pattern, like_pattern))
-    else:
-        cur.execute("SELECT * FROM team_members")
-        
-    members = cur.fetchall()
-    members = apply_license_status(members, conn)
-    conn.close()
-    
+    fields = team_service.list_fields()
+    members = apply_license_status(team_service.list_members(search_query))
+
     # تم التحديث إلى team_index.html لتفادي التداخل
     return render_template("team_index.html", members=members, fields=fields)
 
 @team_bp.route("/add")
 def add_member():
-    conn, _ = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM team_fields")
-    fields = cur.fetchall()
-    conn.close()
-    
     # تم التحديث إلى team_add.html لتفادي التداخل
-    return render_template("team_add.html", fields=fields)
+    return render_template("team_add.html", fields=team_service.list_fields())
+
+
+@team_bp.route('/check-duplicate')
+def check_duplicate_member():
+    field = request.args.get('field', '')
+    value = (request.args.get('value') or '').strip()
+    labels = {'full_name': 'الاسم الكامل', 'national_id': 'رقم الهوية'}
+    if field not in labels:
+        return jsonify({'duplicate': False, 'message': ''}), 400
+    if not value:
+        return jsonify({'duplicate': False, 'message': ''})
+    duplicate = team_service.is_duplicate(field, value)
+    return jsonify({
+        'duplicate': duplicate,
+        'message': f'{labels[field]} مسجل مسبقًا.' if duplicate else '',
+    })
 
 @team_bp.route("/save", methods=["POST"])
 def save_member():
@@ -144,6 +85,8 @@ def save_member():
     ]
 
     data = {bf: request.form.get(bf) for bf in base_fields}
+    data['full_name'] = str(data.get('full_name') or '').strip()
+    data['national_id'] = str(data.get('national_id') or '').strip()
     data["license_status"] = get_expiry_status(
         data.get("license_expiry_date"), "ساري", "قارب على الانتهاء", "منتهية"
     )
@@ -154,57 +97,43 @@ def save_member():
     custom_values = request.form.getlist("custom_value[]")
     custom_requireds = request.form.getlist("custom_required[]")
 
-    conn, _ = get_db_connection()
-    cur = conn.cursor()
+    if not data['full_name'] or not data['national_id']:
+        return render_template(
+            'team_add.html', fields=team_service.list_fields(),
+            error='الاسم الكامل ورقم الهوية مطلوبان.', form_data=data
+        )
+
+    custom_fields = []
+    for i in range(len(custom_names)):
+        c_name = custom_names[i].strip()
+        if not c_name:
+            continue
+        c_label = custom_labels[i].strip() if i < len(custom_labels) else c_name
+        c_val = custom_values[i].strip() if i < len(custom_values) else ''
+        c_req = custom_requireds[i] if i < len(custom_requireds) else 0
+        custom_fields.append((c_name, c_label, c_val, c_req))
 
     try:
-        for i in range(len(custom_names)):
-            c_name = custom_names[i].strip()
-            c_label = custom_labels[i].strip()
-            c_val = custom_values[i].strip()
-            c_req = custom_requireds[i] if i < len(custom_requireds) else 0
-
-            if c_name:
-                try:
-                    cur.execute(f'ALTER TABLE team_members ADD COLUMN "{c_name}" TEXT')
-                except sqlite3.OperationalError:
-                    pass
-
-                cur.execute(
-                    "INSERT OR IGNORE INTO team_fields (name, label, required) VALUES (?, ?, ?)",
-                    (c_name, c_label, c_req),
-                )
-
-                data[c_name] = c_val
-
-        # بناء جملة الإدخال الديناميكي
-        keys = list(data.keys())
-        values = list(data.values())
-        columns_str = ", ".join([f'"{k}"' for k in keys])
-        placeholders_str = ", ".join(["?" for _ in keys])
-
-        query = f"INSERT INTO team_members ({columns_str}) VALUES ({placeholders_str})"
-        cur.execute(query, values)
-        conn.commit()
-
-    except Exception as ex:
-        print("Error saving team member:", ex)
-    finally:
-        conn.close()
+        team_service.add_member(data, custom_fields)
+    except team_service.DuplicateMemberError as ex:
+        message = 'الاسم الكامل مسجل مسبقًا.' if ex.field == 'full_name' else 'رقم الهوية مسجل مسبقًا.'
+        return render_template(
+            'team_add.html', fields=team_service.list_fields(), error=message, form_data=data
+        )
+    except Exception:
+        logging.exception("Unable to save team member")
+        flash('تعذر حفظ بيانات عضو فريق العمل. تحقق من البيانات وحاول مجددًا.', 'danger')
 
     return redirect("/workshop/team")
 
 @team_bp.route("/delete/<int:member_id>", methods=["POST"])
 def delete_member(member_id):
-    conn, _ = get_db_connection()
-    cur = conn.cursor()
     try:
-        cur.execute("DELETE FROM team_members WHERE id = ?", (member_id,))
-        conn.commit()
-    except Exception as e:
-        print("Error deleting team member:", e)
-    finally:
-        conn.close()
+        if not team_service.delete_member(member_id):
+            flash('عضو فريق العمل المطلوب غير موجود.', 'warning')
+    except Exception:
+        logging.exception("Unable to delete team member %s", member_id)
+        flash('تعذر حذف عضو فريق العمل. حاول مجددًا.', 'danger')
 
     return redirect("/workshop/team")
 
@@ -212,23 +141,8 @@ def delete_member(member_id):
 def export_team_excel():
     """🌟 مسار تصدير بيانات فريق الورشة والصيانة إلى ملف Excel مع دعم البحث"""
     search_query = request.args.get("q", "").strip()
-    
-    conn, _ = get_db_connection()
-    cur = conn.cursor()
-    
-    if search_query:
-        like_pattern = f"%{search_query}%"
-        cur.execute("""
-            SELECT * FROM team_members 
-            WHERE full_name LIKE ? OR national_id LIKE ? OR phone LIKE ? OR license_number LIKE ? OR license_type LIKE ? OR specialization LIKE ?
-        """, (like_pattern, like_pattern, like_pattern, like_pattern, like_pattern, like_pattern))
-    else:
-        cur.execute("SELECT * FROM team_members")
-        
-    members = cur.fetchall()
-    members = apply_license_status(members, conn)
-    conn.close()
-    
+    members = apply_license_status(team_service.list_members(search_query))
+
     if not generate_semacom_excel:
         return "مكتبة توليد الإكسل غير متوفرة", 500
         
