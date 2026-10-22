@@ -1,9 +1,23 @@
-.venv/
-venv/
+# Python bytecode
 __pycache__/
 *.py[cod]
-.env
-.env.*
-!.env.example
+*$py.class
+
+# Local Databases
 *.db
-*.sqlite3
+*.sqlite
+database.db
+lighting_system.db
+instance/
+
+# Environment variables
+.env
+.env.local
+
+# Logs and temporary files
+logs/
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
