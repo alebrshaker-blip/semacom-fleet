@@ -33,9 +33,9 @@ class VehiclesController:
     def __init__(self):
         pass
 
-    def get_all(self, search_query=None):
+    def get_all(self, search_query=None, page=None, page_size=50):
         """جلب جميع المركبات النشطة مع دعم البحث الشامل"""
-        return repository.list_active(search_query)
+        return repository.list_active(search_query, page=page, page_size=page_size)
 
     def get_all_fields(self):
         """الحقول الأساسية مضافًا إليها الحقول الديناميكية المسجلة"""
@@ -43,7 +43,13 @@ class VehiclesController:
         existing_names = {field["name"] for field in fields}
         for custom in repository.list_custom_fields():
             if custom["name"] not in existing_names:
-                fields.append({"name": custom["name"], "label": custom["label"]})
+                fields.append(
+                    {
+                        "name": custom["name"],
+                        "label": custom["label"],
+                        "is_custom": True,
+                    }
+                )
         return fields
 
     def add(self, data):

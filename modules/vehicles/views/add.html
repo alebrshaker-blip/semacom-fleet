@@ -47,7 +47,7 @@
         .btn-danger:hover { background-color: #bb2d3b; }
         .btn-secondary { background-color: #6c757d; color: white; }
         
-        /* صف الحقل المضاف (أربعة مربعات متجانبة) */
+        /* صف الحقل المضاف */
         .custom-field-row {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -55,7 +55,7 @@
             padding: 15px;
             margin-bottom: 12px;
             display: grid;
-            grid-template-columns: 2fr 2fr 2fr 1.5fr auto;
+            grid-template-columns: 2fr 2fr 1.5fr auto;
             gap: 12px;
             align-items: end;
         }
@@ -91,7 +91,7 @@
 
                         <div class="mb-3">
                             <label for="plate_number" class="form-label">رقم اللوحة <span style="color:red">*</span></label>
-                            <input type="text" class="form-control" id="plate_number" name="plate_number" value="{{ form_data.get('plate_number', '') if form_data else '' }}" data-unique-check="{{ url_for('vehicles.check_vehicle_unique') }}" data-unique-field="plate_number" data-unique-feedback="plateNumberFeedback" autocomplete="off" required>
+                            <input type="text" class="form-control" id="plate_number" name="plate_number" value="{{ form_data.get('plate_number', '') if form_data else '' }}" data-unique-check="{{ url_for('vehicles.check_vehicle_unique') }}" data-unique-field="plate_number" data-unique-feedback="plateNumberFeedback" placeholder="مثال: أ ب ج 5643" dir="ltr" autocomplete="off" required>
                             <small id="plateNumberFeedback" class="unique-feedback" aria-live="polite" hidden></small>
                         </div>
 
@@ -144,7 +144,7 @@
                     <!-- قسم الحقول الإضافية الديناميكية (يمكن إضافة أكثر من حقل) -->
                     <div class="custom-fields-section">
                         <div class="section-title">
-                            <span>الحقول الإضافية (اختياري)</span>
+                            <span>الحقول الإضافية (اختياري) — ينشئ النظام رقم الحقل تلقائيًا</span>
                             <button type="button" class="btn btn-primary" onclick="addCustomFieldRow()">+ إضافة حقل</button>
                         </div>
                         <div id="custom-fields-container">
@@ -172,20 +172,16 @@
             row.className = 'custom-field-row';
             row.innerHTML = `
                 <div>
-                    <label class="form-label" style="font-size: 12px;">اسم الحقل (إنجليزي):</label>
-                    <input type="text" class="form-control" name="custom_name[]" placeholder="مثال: gps_no" required>
-                </div>
-                <div>
                     <label class="form-label" style="font-size: 12px;">عنوان الحقل (عربي):</label>
                     <input type="text" class="form-control" name="custom_label[]" placeholder="مثال: رقم الـ GPS" required>
                 </div>
                 <div>
                     <label class="form-label" style="font-size: 12px;">بيانات الحقل (القيمة):</label>
-                    <input type="text" class="form-control" name="custom_value[]" placeholder="القيمة لهذه المركبة" required>
+                    <input type="text" class="form-control" name="custom_value[]" placeholder="القيمة لهذه المركبة">
                 </div>
                 <div>
                     <label class="form-label" style="font-size: 12px;">هل اختياري أم إلزامي:</label>
-                    <select class="form-select" name="custom_required[]">
+                    <select class="form-select" name="custom_required[]" onchange="this.closest('.custom-field-row').querySelector('[name=&quot;custom_value[]&quot;]').required = this.value === '1'">
                         <option value="0">اختياري</option>
                         <option value="1">إلزامي</option>
                     </select>
@@ -196,6 +192,71 @@
             `;
             container.appendChild(row);
         }
+    </script>
+    <script>
+        (() => {
+            const plateInput = document.getElementById('plate_number');
+            const plateLetterPattern = /^[A-Za-z\u0621-\u064A\u066E-\u06D3\u06FA-\u06FC]$/;
+            const plateDigitPattern = /^[0-9\u0660-\u0669\u06F0-\u06F9]$/;
+
+            function formatPlateNumber(value) {
+                let letters = '';
+                let letterCount = 0;
+                let digits = '';
+
+                for (const character of value) {
+                    if (plateDigitPattern.test(character)) {
+                        digits += character;
+                    } else if (plateLetterPattern.test(character) && letterCount < 3) {
+                        letters += /[a-z]/i.test(character) ? character.toUpperCase() : character;
+                        letterCount++;
+                    }
+                }
+                return [...letters].join(' ') + (digits ? `${letters ? ' ' : ''}${digits}` : '');
+            }
+
+            function acceptedPlateCharacters(value) {
+                let letters = 0;
+                let accepted = 0;
+
+                for (const character of value) {
+                    if (plateDigitPattern.test(character)) {
+                        accepted++;
+                    } else if (plateLetterPattern.test(character) && letters < 3) {
+                        letters++;
+                        accepted++;
+                    }
+                }
+                return accepted;
+            }
+
+            function plateCaretPosition(value, acceptedCount) {
+                if (!acceptedCount) return 0;
+
+                let accepted = 0;
+                for (let index = 0; index < value.length; index++) {
+                    if (plateLetterPattern.test(value[index]) || plateDigitPattern.test(value[index])) {
+                        accepted++;
+                        if (accepted === acceptedCount) return index + 1;
+                    }
+                }
+                return value.length;
+            }
+
+            if (plateInput) {
+                plateInput.value = formatPlateNumber(plateInput.value);
+                plateInput.addEventListener('input', () => {
+                    const start = acceptedPlateCharacters(plateInput.value.slice(0, plateInput.selectionStart));
+                    const end = acceptedPlateCharacters(plateInput.value.slice(0, plateInput.selectionEnd));
+                    const formatted = formatPlateNumber(plateInput.value);
+                    plateInput.value = formatted;
+                    plateInput.setSelectionRange(
+                        plateCaretPosition(formatted, start),
+                        plateCaretPosition(formatted, end),
+                    );
+                });
+            }
+        })();
     </script>
     <script src="{{ url_for('static', filename='js/unique_field_validator.js') }}"></script>
 </body>

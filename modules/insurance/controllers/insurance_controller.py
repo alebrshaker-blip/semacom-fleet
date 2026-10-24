@@ -14,7 +14,7 @@ class InsuranceController:
     @staticmethod
     def add_get():
         from modules.vehicles import repository as vehicles_repository
-        vehicles = vehicles_repository.list_active()
+        vehicles = vehicles_repository.list_active_summaries()
         return render_template('insurance/views/insurance_add.html', vehicles=vehicles)
 
     @staticmethod

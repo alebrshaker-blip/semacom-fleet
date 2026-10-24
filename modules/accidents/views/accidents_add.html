@@ -11,6 +11,10 @@
     .btn-container { display: flex; gap: 15px; justify-content: flex-start; align-items: center; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
     .drop-zone { border: 2px dashed #0d6efd; padding: 20px; text-align: center; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
     .drop-zone:hover { background: #e9ecef; }
+    .drop-zone.is-dragging { border-color: #198754; background: #eaf7ef; }
+    .accident-image-preview { display: block; max-width: 220px; max-height: 160px; margin: 12px auto 0; border-radius: 6px; object-fit: contain; }
+    .accident-image-preview[hidden] { display: none; }
+    .accident-file-name { margin: 8px 0 0; color: #198754; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
@@ -87,22 +91,24 @@
 
             <div class="form-group">
                 <label>مرفق الحادث (تقرير المرور أو صور الأضرار):</label>
-                <div class="drop-zone" onclick="document.getElementById('accidentFile').click();">
+                <div class="drop-zone" data-accident-upload-zone>
                     <i class="fa-solid fa-cloud-arrow-up fa-2x" style="color: #1F4E78; margin-bottom: 5px;"></i>
-                    <p style="margin: 0; font-size: 13px; color: #6c757d;">انقر لاختيار الملف أو الصق صورة مباشرة (Ctrl+V)</p>
+                    <p style="margin: 0; font-size: 13px; color: #6c757d;">انقر لاختيار ملف، أو اسحب وأفلت، أو الصق صورة (Ctrl+V)</p>
                     <input type="file" id="accidentFile" name="accident_attachment" accept="image/*,.pdf" style="display: none;">
+                    <img class="accident-image-preview" alt="معاينة مصغرة لمرفق الحادث" hidden>
+                    <p class="accident-file-name" aria-live="polite"></p>
                 </div>
-                <div id="addFileInfo" style="margin-top: 5px; font-size: 12px; color: #198754; font-weight: bold; text-align: center;"></div>
             </div>
 
             <div class="form-group">
                 <label>الصورة الثانية للحادث:</label>
-                <div class="drop-zone" onclick="document.getElementById('accidentFile2').click();">
+                <div class="drop-zone" data-accident-upload-zone>
                     <i class="fa-solid fa-image fa-2x" style="color: #1F4E78; margin-bottom: 5px;"></i>
-                    <p style="margin: 0; font-size: 13px; color: #6c757d;">انقر لاختيار صورة إضافية</p>
+                    <p style="margin: 0; font-size: 13px; color: #6c757d;">انقر لاختيار صورة، أو اسحب وأفلت، أو الصق صورة (Ctrl+V)</p>
                     <input type="file" id="accidentFile2" name="accident_attachment_2" accept="image/*" style="display: none;">
+                    <img class="accident-image-preview" alt="معاينة مصغرة للصورة الثانية للحادث" hidden>
+                    <p class="accident-file-name" aria-live="polite"></p>
                 </div>
-                <div id="addFileInfo2" style="margin-top: 5px; font-size: 12px; color: #198754; font-weight: bold; text-align: center;"></div>
             </div>
 
             <div class="btn-container">
@@ -120,17 +126,82 @@
 
 {% block extra_js %}
 <script>
-    const addFileInput = document.getElementById('accidentFile');
-    const addFileInput2 = document.getElementById('accidentFile2');
-    addFileInput.addEventListener('change', function() {
-        if (addFileInput.files.length > 0) {
-            document.getElementById('addFileInfo').innerText = `تم اختيار الملف: ${addFileInput.files[0].name}`;
+    const accidentUploadZones = [...document.querySelectorAll('[data-accident-upload-zone]')];
+    let activeAccidentUploadZone = accidentUploadZones[0];
+
+    function setAccidentUploadFile(zone, file) {
+        const input = zone.querySelector('input[type="file"]');
+        const isImage = file.type.startsWith('image/');
+        const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+        if (!isImage && !(input.id === 'accidentFile' && isPdf)) {
+            alert(input.id === 'accidentFile'
+                ? 'يرجى اختيار صورة أو ملف PDF صالح.'
+                : 'يرجى اختيار ملف صورة صالح.');
+            return;
         }
+
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    accidentUploadZones.forEach(zone => {
+        const input = zone.querySelector('input[type="file"]');
+        const preview = zone.querySelector('.accident-image-preview');
+        const fileName = zone.querySelector('.accident-file-name');
+
+        zone.addEventListener('click', event => {
+            if (event.target !== input) input.click();
+        });
+        zone.addEventListener('focusin', () => {
+            activeAccidentUploadZone = zone;
+        });
+        zone.addEventListener('dragover', event => {
+            event.preventDefault();
+            activeAccidentUploadZone = zone;
+            zone.classList.add('is-dragging');
+        });
+        zone.addEventListener('dragleave', event => {
+            if (!zone.contains(event.relatedTarget)) zone.classList.remove('is-dragging');
+        });
+        zone.addEventListener('drop', event => {
+            event.preventDefault();
+            zone.classList.remove('is-dragging');
+            const file = event.dataTransfer.files[0];
+            if (file) setAccidentUploadFile(zone, file);
+        });
+        input.addEventListener('change', () => {
+            const file = input.files[0];
+            if (!file) return;
+
+            fileName.textContent = `تم اختيار الملف: ${file.name}`;
+            if (file.type.startsWith('image/')) {
+                if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+                preview.dataset.objectUrl = URL.createObjectURL(file);
+                preview.src = preview.dataset.objectUrl;
+                preview.hidden = false;
+            } else {
+                if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+                delete preview.dataset.objectUrl;
+                preview.removeAttribute('src');
+                preview.hidden = true;
+            }
+        });
     });
-    addFileInput2.addEventListener('change', function() {
-        if (addFileInput2.files.length > 0) {
-            document.getElementById('addFileInfo2').innerText = `تم اختيار الصورة: ${addFileInput2.files[0].name}`;
-        }
+
+    document.addEventListener('paste', event => {
+        const pastedImage = [...(event.clipboardData?.items || [])]
+            .find(item => item.kind === 'file' && item.type.startsWith('image/'));
+        const file = pastedImage?.getAsFile();
+        if (!file) return;
+
+        const focusedZone = document.activeElement?.closest('[data-accident-upload-zone]');
+        const zone = focusedZone || activeAccidentUploadZone || accidentUploadZones[0];
+        if (!zone) return;
+
+        event.preventDefault();
+        setAccidentUploadFile(zone, file);
     });
 
     async function updateDriver() {
@@ -154,19 +225,5 @@
     }
     document.querySelector('[name="vehicle_plate"]').addEventListener('change', updateDriver);
     document.querySelector('[name="accident_datetime"]').addEventListener('change', updateDriver);
-
-    window.addEventListener('paste', function(e) {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let index in items) {
-            let item = items[index];
-            if (item.kind === 'file') {
-                let blob = item.getAsFile();
-                let container = new DataTransfer();
-                container.items.add(blob);
-                addFileInput.files = container.files;
-                document.getElementById('addFileInfo').innerText = `تم لصق صورة التقرير بنجاح`;
-            }
-        }
-    });
 </script>
 {% endblock %}

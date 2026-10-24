@@ -97,11 +97,11 @@
                     <td>{{ rec.notes or '-' }}</td>
                     <td class="no-export">
                         <a href="{{ url_for('workshop.oil_tracking.print_report', id=rec.id) }}" target="_blank" class="btn btn-sm" style="padding: 5px 12px; font-size: 12px; text-decoration: none; background: #495057; color: white; border-radius: 4px; font-weight: bold;" title="طباعة وعرض التقرير">
-                            <i class="fa-solid fa-print"></i> تقرير
+                            <i class="fa-solid fa-print" aria-hidden="true"></i>
                         </a>
                         <form method="POST" action="{{ url_for('workshop.oil_tracking.delete', id=rec.id) }}" style="display: inline;">
-                            <button type="submit" class="btn btn-sm" data-confirm-delete data-target-name="سجل متابعة تغيير الزيت" style="padding: 5px 12px; font-size: 12px; background: #dc3545; color: white; border: 0; border-radius: 4px; font-weight: bold;">
-                                حذف
+                            <button type="submit" class="btn btn-sm" data-confirm-delete data-target-name="سجل متابعة تغيير الزيت" style="padding: 5px 12px; font-size: 12px; background: #dc3545; color: white; border: 0; border-radius: 4px; font-weight: bold;" title="حذف سجل متابعة الزيت" aria-label="حذف سجل متابعة الزيت">
+                                <i class="fa-solid fa-trash" aria-hidden="true"></i>
                             </button>
                         </form>
                     </td>

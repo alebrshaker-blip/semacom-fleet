@@ -21,7 +21,7 @@ def get_email_setting(key, default=None):
 def get_public_base_url():
     row_value = repository.get_setting('app_public_url')
 
-    base_url = str(row_value or '').strip().rstrip('/')
+    base_url = str(row_value or settings.PUBLIC_BASE_URL or '').strip().rstrip('/')
     try:
         parsed_url = urlsplit(base_url)
         public_port = parsed_url.port

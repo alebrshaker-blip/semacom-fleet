@@ -7,6 +7,7 @@ import sys
 from contextlib import closing
 from pathlib import Path
 from flask import Flask, render_template, Blueprint, redirect, url_for, session, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 
 if sys.platform == 'win32':
@@ -394,6 +395,8 @@ def create_app():
         template_folder=str(Path(__file__).parent / "templates"),
         static_folder=str(Path(__file__).parent / "static"),
     )
+    if settings.IS_PRODUCTION:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     configure_logging(app)
 
@@ -405,7 +408,11 @@ def create_app():
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=settings.SESSION_COOKIE_SECURE,
         MAX_CONTENT_LENGTH=settings.MAX_CONTENT_LENGTH,
+        COMPRESS_MIN_SIZE=500,
+        SEND_FILE_MAX_AGE_DEFAULT=300,
     )
+    from flask_compress import Compress
+    Compress(app)
 
     # تحديث الـ ChoiceLoader ليشمل مسارات الـ views لكل موديول (بما فيها الفحص الشامل ومتابعة الزيوت ومركز التقارير)
     app.jinja_loader = ChoiceLoader([

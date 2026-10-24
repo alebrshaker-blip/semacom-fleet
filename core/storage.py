@@ -1,5 +1,6 @@
 """Supabase Storage helpers: every uploaded file lives in the 'app-files' bucket
 and the database stores the public URL returned here."""
+import logging
 import mimetypes
 import re
 import uuid
@@ -11,6 +12,7 @@ from werkzeug.utils import secure_filename
 from config import settings
 
 _client = None
+_logger = logging.getLogger(__name__)
 
 
 class StorageError(RuntimeError):
@@ -79,12 +81,29 @@ def upload_file(file_storage, folder):
     )
 
 
+def download_file(url):
+    """Download one of this application's Supabase Storage objects as bytes."""
+    path = object_path_from_url(url)
+    if not path:
+        raise StorageError('The requested file is not in the configured Supabase bucket.')
+    try:
+        return _bucket().download(path)
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError(f'Failed to download file from Supabase Storage: {exc}') from exc
+
+
 def object_path_from_url(url):
     """Return the in-bucket object path for one of our public URLs, else None."""
     if not is_url(url):
         return None
+    parsed = urlparse(url)
+    configured_host = urlparse(settings.SUPABASE_URL).netloc
+    if not configured_host or parsed.netloc.lower() != configured_host.lower():
+        return None
     marker = f"/{settings.SUPABASE_BUCKET}/"
-    path = unquote(urlparse(url).path)
+    path = unquote(parsed.path)
     index = path.find(marker)
     if index < 0:
         return None
@@ -100,6 +119,7 @@ def delete_file(url):
         _bucket().remove([path])
         return True
     except Exception:
+        _logger.exception('Failed to delete Supabase Storage object %s', path)
         return False
 
 

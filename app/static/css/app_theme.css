@@ -625,6 +625,187 @@ main.content-wrapper {
     }
 }
 
+@media (max-width: 767.98px) {
+    html,
+    body {
+        max-width: 100%;
+        overflow-x: clip;
+    }
+
+    .content-wrapper {
+        min-width: 0;
+        width: 100%;
+        padding-inline: 10px;
+    }
+
+    .main-header {
+        position: relative;
+        z-index: 1000;
+    }
+
+    .main-nav {
+        inset-inline: 10px;
+        width: auto;
+        max-height: calc(100dvh - 90px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .nav-toggle,
+    .content-wrapper .btn,
+    .content-wrapper button:not(.btn-close),
+    .content-wrapper input[type="submit"],
+    .content-wrapper input[type="button"],
+    .content-wrapper input[type="reset"],
+    .content-wrapper .search-bar > *,
+    .content-wrapper .search-form > *,
+    .content-wrapper .search-box > * {
+        min-height: 46px;
+    }
+
+    .content-wrapper .btn,
+    .content-wrapper button:not(.btn-close),
+    .content-wrapper input[type="submit"],
+    .content-wrapper input[type="button"],
+    .content-wrapper input[type="reset"] {
+        width: 100%;
+        max-width: 100%;
+        margin-inline: 0;
+        white-space: normal;
+    }
+
+    .content-wrapper :is(
+        .actions,
+        .action-group,
+        .toolbar,
+        .page-actions,
+        .filter-actions,
+        .search-bar,
+        .search-form,
+        .search-box
+    ) {
+        display: flex;
+        width: 100%;
+        min-width: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .content-wrapper :is(
+        .actions,
+        .action-group,
+        .toolbar,
+        .page-actions,
+        .filter-actions,
+        .search-bar,
+        .search-form,
+        .search-box
+    ) > * {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        flex: 1 1 auto;
+    }
+
+    .content-wrapper .input-group {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .content-wrapper .input-group > * {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        border-radius: 9px !important;
+    }
+
+    .content-wrapper :is(
+        .btn-back,
+        .back-button,
+        .back-btn,
+        .btn-back-action,
+        .btn-back-module
+    ) {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        width: 100%;
+        min-height: 48px;
+        align-items: center;
+        justify-content: center;
+        margin: 0 0 12px;
+        padding: 12px 16px;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-radius: 10px;
+        background-color: #526579;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.4;
+        text-align: center;
+        text-decoration: none;
+        touch-action: manipulation;
+    }
+
+    .sidebar,
+    .side-bar {
+        position: fixed;
+        inset-block: 0;
+        inset-inline-start: 0;
+        z-index: 1100;
+        width: min(84vw, 320px);
+        max-width: 100%;
+        max-height: 100dvh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        visibility: hidden;
+        transform: translateX(110%);
+        transition: transform 0.2s ease, visibility 0.2s ease;
+    }
+
+    :is(.sidebar, .side-bar).is-open,
+    :is(.sidebar, .side-bar).open,
+    :is(.sidebar, .side-bar).active {
+        visibility: visible;
+        transform: translateX(0);
+    }
+
+    .table-scroll,
+    .table-responsive {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x pan-y;
+    }
+
+    .content-wrapper :is(
+        input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
+        select,
+        textarea,
+        .form-control,
+        .form-select
+    ) {
+        min-width: 0;
+        max-width: 100%;
+        font-size: 16px !important;
+    }
+
+    .content-wrapper .card,
+    .content-wrapper .card-body,
+    .content-wrapper .card-header,
+    .content-wrapper .container,
+    .content-wrapper .container-fluid {
+        min-width: 0;
+        max-width: 100%;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

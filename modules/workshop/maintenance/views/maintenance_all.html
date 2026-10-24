@@ -15,7 +15,7 @@
     }
     .maintenance-table th { position: sticky; top: 0; z-index: 2; }
     .maintenance-table .order-number { direction: ltr; }
-    .maintenance-table .actions-cell { min-width: 180px; }
+    .maintenance-table .actions-cell { min-width: 100px; }
     .filter-control { min-width: 150px; }
 </style>
 
@@ -103,9 +103,13 @@
                     <td>{{ order.final_cost if order.final_cost else order.expected_cost or '—' }}</td>
                     <td class="actions-cell">
                         <div class="d-flex flex-wrap justify-content-center gap-1">
-                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.maintenance_reports', order_id=order.id, view='print') }}">تقرير</a>
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.maintenance_reports', order_id=order.id, view='print') }}" title="عرض تقرير الصيانة" aria-label="عرض تقرير الصيانة">
+                                <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+                            </a>
                             {% if order.status == 'open' %}
-                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('workshop.maintenance.maintenance_close', order_id=order.id) }}">إقفال</a>
+                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('workshop.maintenance.maintenance_close', order_id=order.id) }}" title="تقفيل أمر الصيانة" aria-label="تقفيل أمر الصيانة">
+                                <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                            </a>
                             {% endif %}
                         </div>
                     </td>

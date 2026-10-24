@@ -97,7 +97,7 @@ def _latest_inspection_mileage(session):
 
 
 def get_form_entities():
-    vehicles = vehicles_repository.list_active()
+    vehicles = vehicles_repository.list_active_summaries()
     with get_session() as session:
         mileage = _latest_inspection_mileage(session)
         active_handovers = [

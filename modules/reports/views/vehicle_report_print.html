@@ -4,19 +4,19 @@
 
 {% block extra_css %}
 <style>
-    .vehicle-report-title { margin: 0 auto 12px; text-align: center; font-size: 20px; }
+    .vehicle-report-title { margin: 0 auto 12px; text-align: center; font-size: 22px; font-weight: 700; }
     .vehicle-report-page { break-inside: auto; }
     .vehicle-report-table { width: 100%; border-collapse: collapse; table-layout: auto; direction: rtl; margin: 0 0 12px; }
     .vehicle-report-table th, .vehicle-report-table td {
-        border: 1px solid #475569;
-        padding: 7px 9px;
+        border: 1px solid #b0b0b0;
+        padding: 8px 10px;
         text-align: center;
-        font-size: 13px;
+        font-size: 14px;
         word-break: keep-all;
         overflow-wrap: normal;
         white-space: nowrap;
     }
-    .vehicle-report-table th { background: #e9eff5; font-size: 13px; }
+    .vehicle-report-table th { background: #f2f2f2; font-size: 15px; font-weight: 700; }
     .vehicle-details-table { table-layout: fixed; }
     .vehicle-details-table th { width: 13%; }
     .vehicle-details-table td { width: 20.33%; }
@@ -27,7 +27,7 @@
         text-align: right;
         min-width: 35mm;
     }
-    .vehicle-report-section-title { margin: 12px 0 6px; font-size: 15px; color: #1b365d; }
+    .vehicle-report-section-title { margin: 12px 0 6px; font-size: 18px; font-weight: 700; color: #1b365d; }
     .vehicle-report-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
     .status-form { display: inline-flex; align-items: center; gap: 6px; }
     .status-form select, .status-form button { padding: 4px 6px; }
@@ -39,8 +39,9 @@
         .vehicle-report-table-wrap { width: 100%; overflow-x: auto; }
     }
     @media print {
-        .vehicle-report-table th, .vehicle-report-table td { padding: 5px 6px; font-size: 12px; }
-        .vehicle-report-section-title { font-size: 14px; }
+        .vehicle-report-table th, .vehicle-report-table td { padding: 8px 10px; font-size: 14px; }
+        .vehicle-report-table th { font-size: 15px; }
+        .vehicle-report-title { font-size: 22px; }
         .vehicle-report-table tr { break-inside: avoid; page-break-inside: avoid; }
         .vehicle-report-table-wrap { overflow: visible; }
         .status-form { display: none; }
@@ -61,8 +62,8 @@
     <div class="vehicle-report-table-wrap">
         <table class="vehicle-report-table vehicle-details-table">
             <tbody>
-                {% set identity_fields = vehicle_fields|selectattr('key', 'in', ['vehicle_code', 'plate_number', 'vehicle_type', 'model', 'manufacturer', 'color', 'fuel_type', 'engine_number'])|list %}
-                {% for field in identity_fields %}
+                {% set identity_fields = vehicle_fields|selectattr('key', 'in', ['vehicle_code', 'plate_number', 'vehicle_type', 'model', 'manufacturer', 'color', 'fuel_type', 'engine_number'])|list + vehicle_fields|selectattr('is_custom')|list %}
+                {% for field in identity_fields if not field.is_custom or item.vehicle.get(field.key) not in [none, ''] %}
                     {% if loop.index0 is divisibleby 3 %}<tr>{% endif %}
                     <th>{{ field.label }}</th>
                     <td>{{ item.vehicle.get(field.key, '—') or '—' }}</td>
@@ -118,7 +119,7 @@
     <div class="vehicle-report-table-wrap">
         <table class="vehicle-report-table vehicle-details-table">
             <tbody>
-                {% for field in vehicle_fields if field.key not in ['id', 'vehicle_id', 'chassis_number', 'vin'] and (field.key != 'workshop_status' or not item.is_assigned) %}
+                {% for field in vehicle_fields if field.key not in ['id', 'vehicle_id', 'chassis_number', 'vin'] and (field.key != 'workshop_status' or not item.is_assigned) and (not field.is_custom or item.vehicle.get(field.key) not in [none, '']) %}
                     {% if loop.index0 is divisibleby 3 %}<tr>{% endif %}
                     <th>{{ field.label }}</th>
                     <td>{{ item.vehicle.get(field.key, '—') or '—' }}</td>

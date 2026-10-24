@@ -13,7 +13,7 @@ class InspectionController:
         try:
             return [
                 {'plate_number': v['plate_number'], 'vehicle_type': v.get('vehicle_type'), 'model': v.get('model')}
-                for v in vehicles_repository.list_active()
+                for v in vehicles_repository.list_active_summaries()
             ]
         except Exception:
             return []

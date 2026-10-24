@@ -1,9 +1,12 @@
 import datetime
+from io import BytesIO
 import os
 import time
 from pathlib import Path
 
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select, text
+from werkzeug.utils import secure_filename
 
 from core import storage
 from core.database import get_session
@@ -33,6 +36,60 @@ _CLOSE_FIELDS = (
 
 
 UPLOAD_FOLDER = 'maintenance'
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+IMAGE_FORMAT_EXTENSIONS = {
+    'JPEG': '.jpg',
+    'PNG': '.png',
+    'WEBP': '.webp',
+}
+IMAGE_MIME_TYPES = {
+    'JPEG': 'image/jpeg',
+    'PNG': 'image/png',
+    'WEBP': 'image/webp',
+}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
+
+def _upload_order_files(files):
+    uploaded = {}
+    try:
+        for field in ('photo_before', 'photo_after', 'other_attachments'):
+            file_item = files.get(field) if files else None
+            if not file_item or not getattr(file_item, 'filename', ''):
+                continue
+
+            extension = Path(secure_filename(file_item.filename)).suffix.lower()
+            image_slot = field in {'photo_before', 'photo_after'}
+            is_image = extension in IMAGE_EXTENSIONS or (
+                getattr(file_item, 'mimetype', '') or ''
+            ).startswith('image/')
+
+            if image_slot or is_image:
+                payload = file_item.read(MAX_IMAGE_SIZE + 1)
+                file_item.stream.seek(0)
+                if len(payload) > MAX_IMAGE_SIZE:
+                    raise ValueError('يجب ألا يتجاوز حجم كل صورة 5 ميجابايت.')
+                try:
+                    with Image.open(BytesIO(payload)) as image:
+                        image.verify()
+                        image_format = image.format
+                except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+                    raise ValueError('تعذر قراءة إحدى الصور المرفقة؛ يرجى اختيار صورة صالحة.')
+                if image_format not in IMAGE_MIME_TYPES:
+                    raise ValueError('يرجى إرفاق صورة بصيغة JPG أو PNG أو WEBP.')
+                uploaded[field] = storage.upload_bytes(
+                    payload,
+                    UPLOAD_FOLDER,
+                    original_name=file_item.filename,
+                    content_type=IMAGE_MIME_TYPES[image_format],
+                    extension=IMAGE_FORMAT_EXTENSIONS[image_format],
+                )
+            else:
+                uploaded[field] = storage.upload_file(file_item, UPLOAD_FOLDER)
+    except Exception:
+        storage.delete_files(*uploaded.values())
+        raise
+    return uploaded
 
 
 class MaintenanceService:
@@ -95,9 +152,12 @@ class MaintenanceService:
         return members
 
     @classmethod
-    def create_order(cls, data):
+    def create_order(cls, data, files=None):
         """إنشاء أمر الصيانة وحفظ بيانات الفتح بحقولها المعتمدة"""
+        uploaded = []
         try:
+            file_paths = _upload_order_files(files)
+            uploaded.extend(file_paths.values())
             m_type = data.get('type', 'internal')
             order_no = generate_work_order_no(m_type)
 
@@ -120,12 +180,16 @@ class MaintenanceService:
                 plate_number=vehicle['plate_number'] if vehicle else data.get('plate_number'),
                 order_date=data.get('order_date') or datetime.date.today().strftime('%Y-%m-%d'),
                 expected_cost=to_float(data.get('expected_cost'), 0.0),
+                photo_before=file_paths.get('photo_before'),
+                photo_after=file_paths.get('photo_after'),
+                other_attachments=file_paths.get('other_attachments'),
                 **{field: data.get(field) for field in _OPEN_FIELDS},
             )
             with get_session() as session:
                 session.add(order)
             return order_no
         except Exception as e:
+            storage.delete_files(*uploaded)
             print(f"[ERROR - create_order]: {e}")
             raise
 
@@ -203,20 +267,15 @@ class MaintenanceService:
         """إقفال أمر الصيانة وحفظ بيانات الإقفال والملفات المرفقة"""
         uploaded = []
         try:
-            file_paths = {}
-            if files:
-                for f_key in ('photo_before', 'photo_after', 'other_attachments'):
-                    file_item = files.get(f_key)
-                    url = storage.upload_file(file_item, UPLOAD_FOLDER)
-                    if url:
-                        uploaded.append(url)
-                        file_paths[f_key] = url
+            file_paths = _upload_order_files(files)
+            uploaded.extend(file_paths.values())
 
             current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+            replaced_files = []
             with get_session() as session:
                 order = session.get(MaintenanceOrder, int(order_id))
                 if order is None:
-                    return
+                    raise ValueError('أمر الصيانة المطلوب غير موجود.')
                 order.status = 'closed'
                 order.closure_date = close_data.get('closure_date') or datetime.date.today().strftime('%Y-%m-%d')
                 order.receipt_datetime = close_data.get('receipt_datetime') or current_time
@@ -226,7 +285,9 @@ class MaintenanceService:
                     setattr(order, field, close_data.get(field))
                 # Keep existing attachments when no new file was uploaded (COALESCE semantics).
                 for field, path in file_paths.items():
+                    replaced_files.append(getattr(order, field))
                     setattr(order, field, path)
+            storage.delete_files(*replaced_files)
         except Exception as e:
             storage.delete_files(*uploaded)
             print(f"[ERROR - close_order]: {e}")

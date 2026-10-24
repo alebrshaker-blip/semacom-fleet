@@ -3,6 +3,7 @@
 {% block title %}إدارة الفحص الدوري - SEMACOM{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
     .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     h2 { color: #2c3e50; }
@@ -102,9 +103,11 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <a href="{{ url_for('reports.data_reports', report_key='inspections', report_type='single', inspection_id=item.id, view='print') }}" target="_blank" class="btn btn-info" style="padding: 3px 8px; font-size: 12px;">تقرير</a>
-                                <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 12px;" onclick="openDeleteModal('{{ item.id }}', '{{ plate }}')">
-                                    حذف
+                                <a href="{{ url_for('reports.data_reports', report_key='inspections', report_type='single', inspection_id=item.id, view='print') }}" target="_blank" class="btn btn-info" style="padding: 3px 8px; font-size: 12px;" title="عرض تقرير الفحص" aria-label="عرض تقرير الفحص">
+                                    <i class="fa-solid fa-print" aria-hidden="true"></i>
+                                </a>
+                                <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 12px;" title="حذف سجل الفحص" aria-label="حذف سجل الفحص" onclick="openDeleteModal('{{ item.id }}', '{{ plate }}')">
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                 </button>
                             </td>
                         </tr>

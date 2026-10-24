@@ -1,4 +1,4 @@
-from sqlalchemy import Float, Integer, Text
+from sqlalchemy import Float, Index, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base, DictMixin
@@ -6,6 +6,10 @@ from core.database import Base, DictMixin
 
 class Violation(DictMixin, Base):
     __tablename__ = "violations"
+    __table_args__ = (
+        Index("ix_violations_vehicle_datetime", "vehicle_plate", "violation_datetime"),
+        Index("ix_violations_status_datetime", "status_type", "violation_datetime"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     violation_number: Mapped[str | None] = mapped_column(Text)

@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, Text, text
+from sqlalchemy import Index, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base, DictMixin
@@ -10,6 +10,10 @@ class VehiclePublicSubmission(DictMixin, Base):
     """Reports submitted through a vehicle's public QR page."""
 
     __tablename__ = "vehicle_public_submissions"
+    __table_args__ = (
+        Index("ix_public_submissions_vehicle_submitted", "vehicle_id", "submitted_at"),
+        Index("ix_public_submissions_status_submitted", "status", "submitted_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vehicle_id: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -18,6 +22,7 @@ class VehiclePublicSubmission(DictMixin, Base):
     proposed_values: Mapped[str | None] = mapped_column(Text)
     photo_1: Mapped[str | None] = mapped_column(Text)
     photo_2: Mapped[str | None] = mapped_column(Text)
+    photo_3: Mapped[str | None] = mapped_column(Text)
     video_1: Mapped[str | None] = mapped_column(Text)
     response: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="جديد")

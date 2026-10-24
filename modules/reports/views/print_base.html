@@ -511,9 +511,11 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
-<body class="{% if orientation == 'landscape' %}landscape{% else %}portrait{% endif %}">
+<body class="{% if orientation == 'landscape' %}landscape{% else %}portrait{% endif %} {{ report_font_class }}"
+      style="--report-font-size: {{ report_font_size }};">
 
     <!-- شريط الإجراءات العلوي -->
     <div class="action-bar">
@@ -735,6 +737,10 @@
             formData.append('item_id', itemId);
             formData.append('approval_token', approvalToken);
             formData.append('action', action);
+            const editableValues = Array.from(
+                document.querySelectorAll('[contenteditable="true"]')
+            ).map(element => element.innerText || '');
+            formData.append('editable_values', JSON.stringify(editableValues));
             document.querySelectorAll('input[type="file"][name]').forEach(input => {
                 if (input.files && input.files[0]) {
                     formData.append(input.name, input.files[0]);

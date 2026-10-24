@@ -482,6 +482,34 @@ label {
                             </select>
                         </div>
                     </div>
+                    <h4 class="appearance-title">تنسيق تقارير PDF</h4>
+                    <p class="appearance-help">تُطبّق هذه الخيارات على جميع التقارير التي ينشئها WeasyPrint.</p>
+                    <div class="form-row">
+                        {% set report_settings = settings.reports|default({}) %}
+                        {% set selected_report_font = report_settings.get('report_font_family', report_font_default) %}
+                        <div class="form-group col-md-6">
+                            <label for="reportFontFamily">نوع خط التقارير</label>
+                            <select id="reportFontFamily" name="report_font_family" class="form-control">
+                                {% for family in report_fonts %}
+                                {% set font_available = family in available_report_fonts %}
+                                <option value="{{ family }}"
+                                        {% if (font_available and selected_report_font == family) or (family == report_font_default and selected_report_font not in available_report_fonts) %}selected{% endif %}
+                                        {% if not font_available %}disabled{% endif %}>
+                                    {{ family }}{% if not font_available %} — يتطلب ملفات خط مرخصة{% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small>يجب توفير ملفي Regular وBold داخل app/static/fonts لتفعيل الخط.</small>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="reportFontSize">حجم خط خلايا الجداول</label>
+                            <select id="reportFontSize" name="report_font_size" class="form-control">
+                                {% for size in report_font_sizes %}
+                                <option value="{{ size }}" {% if report_settings.get('report_font_size', report_font_size_default) == size %}selected{% endif %}>{{ size }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
                     <button type="button" class="btn btn-primary" onclick="saveAllSettings()" style="margin-top: 15px;">حفظ التعديلات</button>
                 </div>
 

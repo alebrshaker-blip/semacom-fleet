@@ -16,9 +16,6 @@
     .btn-primary:hover { background-color: #0b5ed7; }
     .btn-secondary { background-color: #6c757d; color: white; }
     .btn-secondary:hover { background-color: #5c636a; }
-    .btn-success { background-color: #198754; color: white; }
-    .btn-success:hover { background-color: #157347; }
-    .custom-field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed #ced4da; }
     .unique-feedback { display: block; margin-top: 5px; color: #b02a37; font-size: 13px; font-weight: 700; }
     .unique-feedback[hidden] { display: none; }
     .form-control.unique-invalid { border-color: #dc3545; }
@@ -30,7 +27,6 @@
 <div class="form-container">
     <div class="form-header">
         <h2><i class="fa-solid fa-user-plus ml-2"></i> إضافة عضو فريق عمل جديد</h2>
-        <a href="{{ url_for('workshop.team.team_index') }}" class="btn btn-secondary">العودة للقائمة</a>
     </div>
 
     <form action="{{ url_for('workshop.team.save_member') }}" method="POST">
@@ -99,15 +95,6 @@
             </div>
         </div>
 
-        <!-- قسم الحقول الديناميكية الإضافية -->
-        <div style="margin-top: 25px; border-top: 1px solid #dee2e6; padding-top: 15px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h4 style="margin: 0; color: #2c3e50; font-size: 16px;">حقول إضافية مخصصة (اختياري)</h4>
-                <button type="button" class="btn btn-success" onclick="addCustomField()"><i class="fa-solid fa-plus ml-1"></i> إضافة حقل جديد</button>
-            </div>
-            <div id="customFieldsContainer"></div>
-        </div>
-
         <div style="margin-top: 25px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #dee2e6; padding-top: 15px;">
             <button type="submit" class="btn btn-primary">حفظ السجل</button>
             <a href="{{ url_for('workshop.team.team_index') }}" class="btn btn-secondary">إلغاء</a>
@@ -115,28 +102,6 @@
     </form>
 </div>
 
-<script>
-    function addCustomField() {
-        const container = document.getElementById('customFieldsContainer');
-        const fieldId = 'field_' + Date.now();
-        
-        const row = document.createElement('div');
-        row.className = 'custom-field-row';
-        row.innerHTML = `
-            <div style="flex: 1;">
-                <input type="text" name="custom_label[]" class="form-control" placeholder="اسم الحقل بالعربي (مثال: رقم الاعتماد)" required>
-                <input type="hidden" name="custom_name[]" value="${fieldId}">
-            </div>
-            <div style="flex: 1;">
-                <input type="text" name="custom_value[]" class="form-control" placeholder="قيمة الحقل" required>
-            </div>
-            <div>
-                <button type="button" class="btn btn-danger" onclick="this.parentElement.parentElement.remove()" style="padding: 6px 12px;"><i class="fa-solid fa-trash"></i></button>
-            </div>
-        `;
-        container.appendChild(row);
-    }
-</script>
 {% endblock %}
 
 {% block extra_js %}

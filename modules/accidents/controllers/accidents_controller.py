@@ -15,7 +15,7 @@ class AccidentsController:
     def add_get():
         # استدعاء المركبات وربط السائق بتاريخ العهدة عند اختيار المركبة والتاريخ
         from modules.vehicles import repository as vehicles_repository
-        vehicles = vehicles_repository.list_active()
+        vehicles = vehicles_repository.list_active_summaries()
         return render_template('accidents_add.html', vehicles=vehicles)
 
     @staticmethod

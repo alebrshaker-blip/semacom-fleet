@@ -107,26 +107,26 @@
                     </td>
                     <td>
                         <div class="action-group">
-                            <a href="{{ url_for('reports.data_reports', report_key='insurance', report_type='single', policy_id=p.id, view='print') }}" target="_blank" class="btn-action btn-info-custom" title="تقرير وثيقة التأمين">
-                                <i class="fa-solid fa-print"></i> تقرير
+                            <a href="{{ url_for('reports.data_reports', report_key='insurance', report_type='single', policy_id=p.id, view='print') }}" target="_blank" class="btn-action btn-info-custom" title="تقرير وثيقة التأمين" aria-label="تقرير وثيقة التأمين">
+                                <i class="fa-solid fa-print" aria-hidden="true"></i>
                             </a>
                             <!-- زر عرض المرفق الآمن الجديد الذي يتحقق من وجود الملف والمجلد تلقائياً -->
                             {% if p.policy_attachment %}
-                            <a href="{{ url_for('insurance_bp.view_attachment', filename=p.policy_attachment) }}" target="_blank" class="btn-action btn-info-custom" title="عرض الملف المرفق">
-                                <i class="fa-solid fa-file-arrow-down"></i> عرض المرفق
+                            <a href="{{ url_for('insurance_bp.view_attachment', filename=p.policy_attachment) }}" target="_blank" class="btn-action btn-info-custom" title="عرض الملف المرفق" aria-label="عرض الملف المرفق">
+                                <i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i>
                             </a>
                             {% endif %}
                             
                             <!-- زر الأرشفة -->
                             {% if p.status == 'active' %}
-                            <button type="button" class="btn-action btn-warning-custom" onclick="openModal('archive', '{{ url_for('insurance_bp.expire_policy', policy_id=p.id) }}')" title="أرشفة الوثيقة">
-                                <i class="fa-solid fa-box-archive"></i> أرشفة
+                            <button type="button" class="btn-action btn-warning-custom" onclick="openModal('archive', '{{ url_for('insurance_bp.expire_policy', policy_id=p.id) }}')" title="أرشفة الوثيقة" aria-label="أرشفة الوثيقة">
+                                <i class="fa-solid fa-box-archive" aria-hidden="true"></i>
                             </button>
                             {% endif %}
 
                             <!-- زر الحذف -->
-                            <button type="button" class="btn-action btn-danger-custom" onclick="openModal('delete', '{{ url_for('insurance_bp.delete_policy', policy_id=p.id) }}')" title="حذف السجل نهائياً">
-                                <i class="fa-solid fa-trash"></i> حذف
+                            <button type="button" class="btn-action btn-danger-custom" onclick="openModal('delete', '{{ url_for('insurance_bp.delete_policy', policy_id=p.id) }}')" title="حذف السجل نهائياً" aria-label="حذف السجل نهائياً">
+                                <i class="fa-solid fa-trash" aria-hidden="true"></i>
                             </button>
                         </div>
                     </td>

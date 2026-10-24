@@ -1,5 +1,6 @@
 import json
 import math
+from datetime import date
 from core import database as dbapi
 from core import storage
 from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash, current_app
@@ -57,20 +58,39 @@ def vehicles_index():
     controller = VehiclesController()
 
     search_query = request.args.get("q", "").strip()
-    data = controller.get_all(search_query if search_query else None)
+    page_size = 50
+    total_vehicles = repository.count_active(search_query or None)
+    page_count = max(1, (total_vehicles + page_size - 1) // page_size)
+    page = min(page_count, max(1, request.args.get("page", 1, type=int) or 1))
+    data = controller.get_all(search_query if search_query else None, page, page_size)
     fields = controller.get_all_fields()
 
-    return render_template("vehicles/views/index.html", vehicles=data, fields=fields)
+    return render_template(
+        "vehicles/views/index.html",
+        vehicles=data,
+        fields=fields,
+        page=page,
+        page_count=page_count,
+        page_size=page_size,
+        total_vehicles=total_vehicles,
+    )
 
 
 @vehicles_bp.route("/archive")
 def vehicle_archive_index():
     search_query = request.args.get("q", "").strip()
-    archived_vehicles = get_archived_vehicles(search_query)
+    page_size = 50
+    total_archived = repository.count_archived(search_query)
+    page_count = max(1, (total_archived + page_size - 1) // page_size)
+    page = min(page_count, max(1, request.args.get("page", 1, type=int) or 1))
+    archived_vehicles = repository.list_archived(search_query, page=page, page_size=page_size)
     return render_template(
         "vehicles/views/archive.html",
         archived_vehicles=archived_vehicles,
         search_query=search_query,
+        page=page,
+        page_count=page_count,
+        total_archived=total_archived,
     )
 
 
@@ -437,7 +457,8 @@ def public_submit_issue(token):
         vehicle_label = f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -")
         if not profile["inquiries_enabled"]:
             return "إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً.", 403
-        if request.content_length and request.content_length > 31 * 1024 * 1024:
+        request.max_content_length = 41 * 1024 * 1024
+        if request.content_length and request.content_length > request.max_content_length:
             return render_template(
                 "vehicles/views/public_portal.html",
                 mode="issue",
@@ -457,14 +478,15 @@ def public_submit_issue(token):
                 error="يرجى كتابة وصف المشكلة أو الاستفسار.",
             ), 400
         uploads = request.files.getlist("photos")
-        if len(uploads) > 1:
+        uploads = [upload for upload in uploads if upload and upload.filename]
+        if len(uploads) > 3:
             return render_template(
                 "vehicles/views/public_portal.html",
                 mode="issue",
                 token=token,
                 vehicle_label=vehicle_label,
                 inquiries_enabled=True,
-                error="يمكن إرفاق صورة واحدة فقط.",
+                error="يمكن إرفاق ثلاث صور كحد أقصى.",
             ), 400
         photos = validate_and_save_photos(uploads)
         video = None
@@ -535,7 +557,7 @@ def public_submissions():
                 json.loads(submission["proposed_values"])
                 if submission["proposed_values"] else {}
             )
-            submissions.append(submission)
+            submissions.append(_resolve_submission_attachments(submission))
         return render_template(
             "vehicles/views/public_submissions.html",
             submissions=submissions,
@@ -555,7 +577,7 @@ def public_vehicle_submissions(token):
         rows = connection.execute(
             """
             SELECT id, submission_type, message, response, status, submitted_at,
-                   photo_1, video_1
+                   photo_1, photo_2, photo_3, video_1
             FROM vehicle_public_submissions
             WHERE vehicle_id = ? AND submission_type = 'استفسار أو بلاغ مشكلة'
             ORDER BY submitted_at DESC, id DESC
@@ -567,11 +589,21 @@ def public_vehicle_submissions(token):
             mode="submissions",
             token=token,
             inquiries_enabled=bool(profile["inquiries_enabled"]),
-            submissions=[dict(row) for row in rows],
+            submissions=[
+                _resolve_submission_attachments(dict(row)) for row in rows
+            ],
             vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
     finally:
         connection.close()
+
+
+def _resolve_submission_attachments(submission):
+    for field in ("photo_1", "photo_2", "photo_3", "video_1"):
+        submission[field] = storage.resolve_url(
+            submission.get(field), "uploads/vehicle_qr_reports"
+        )
+    return submission
 
 
 @vehicles_bp.route("/public-submissions/<int:submission_id>/review", methods=["POST"])
@@ -629,7 +661,7 @@ def delete_public_submission(submission_id):
         ensure_public_tables(connection)
         submission = connection.execute(
             """
-            SELECT photo_1, photo_2, video_1
+            SELECT photo_1, photo_2, photo_3, video_1
             FROM vehicle_public_submissions WHERE id = ?
             """,
             (submission_id,),
@@ -672,21 +704,23 @@ def save_vehicle():
     data = {bf: request.form.get(bf) for bf in base_fields}
     data["status"] = "متاحة"
 
-    custom_names = request.form.getlist("custom_name[]")
     custom_labels = request.form.getlist("custom_label[]")
     custom_values = request.form.getlist("custom_value[]")
     custom_requireds = request.form.getlist("custom_required[]")
 
     try:
-        for i in range(len(custom_names)):
-            c_name = custom_names[i].strip()
-            c_label = custom_labels[i].strip()
-            c_val = custom_values[i].strip()
-            c_req = custom_requireds[i] if i < len(custom_requireds) else 0
+        for i, raw_label in enumerate(custom_labels):
+            c_label = raw_label.strip()
+            c_val = custom_values[i].strip() if i < len(custom_values) else ""
+            c_req = 1 if i < len(custom_requireds) and custom_requireds[i] == "1" else 0
 
-            if c_name:
-                repository.add_custom_field(c_name, c_label, c_req)
-                data[c_name] = c_val
+            if not c_label:
+                raise ValueError("يرجى إدخال عنوان عربي لكل حقل إضافي.")
+            if c_req and not c_val:
+                raise ValueError(f"الحقل الإضافي «{c_label}» إلزامي.")
+
+            custom_field = repository.add_custom_field(c_label, c_req)
+            data[custom_field["name"]] = c_val or None
 
         controller.add(data)
 

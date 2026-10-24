@@ -217,12 +217,6 @@
                 <small class="text-muted">قسم الصيانة الداخلية والتجهيزات</small>
             </div>
         </div>
-        <div>
-            <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type='internal') }}" 
-               class="btn btn-outline-secondary font-weight-bold px-3 py-2">
-                ↩️ العودة للقائمة
-            </a>
-        </div>
     </div>
 
     <!-- نموذج الإقفال الرئيسي -->
@@ -302,7 +296,7 @@
                             <div class="file-upload-box" id="box_photo_before" onclick="triggerFileInput('photo_before_input')">
                                 <button type="button" class="btn-remove-file" id="remove_before" style="display:none;" onclick="clearFileInput(event, 'photo_before_input', 'before_preview', 'before_placeholder', 'remove_before')">&times;</button>
                                 
-                                <input type="file" id="photo_before_input" name="photo_before" accept="image/*" style="display:none;" onchange="previewImage(this, 'before_preview', 'before_placeholder', 'remove_before')">
+                                <input type="file" id="photo_before_input" name="photo_before" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="previewImage(this, 'before_preview', 'before_placeholder', 'remove_before')">
                                 
                                 <div id="before_placeholder" style="{% if order.photo_before %}display:none;{% endif %}">
                                     <span style="font-size:2rem;">📤</span>
@@ -326,7 +320,7 @@
                             <div class="file-upload-box" id="box_photo_after" onclick="triggerFileInput('photo_after_input')">
                                 <button type="button" class="btn-remove-file" id="remove_after" style="display:none;" onclick="clearFileInput(event, 'photo_after_input', 'after_preview', 'after_placeholder', 'remove_after')">&times;</button>
                                 
-                                <input type="file" id="photo_after_input" name="photo_after" accept="image/*" style="display:none;" onchange="previewImage(this, 'after_preview', 'after_placeholder', 'remove_after')">
+                                <input type="file" id="photo_after_input" name="photo_after" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="previewImage(this, 'after_preview', 'after_placeholder', 'remove_after')">
                                 
                                 <div id="after_placeholder">
                                     <span style="font-size:2rem;">📤</span>
@@ -361,7 +355,7 @@
             </button>
             <a href="{{ url_for('workshop.maintenance.maintenance_list', m_type='internal') }}" 
                class="btn btn-light border font-weight-bold px-4 py-2">
-               إلغاء
+               إلغاء والعودة للقائمة
             </a>
         </div>
 
@@ -451,7 +445,8 @@ function previewFile(input, displayId) {
     const file = input.files[0];
     const displayElement = document.getElementById(displayId);
     if (file) {
-        displayElement.innerHTML = '✅ <strong class="text-success">' + file.name + '</strong>';
+        displayElement.textContent = '✅ ' + file.name;
+        displayElement.classList.add('text-success');
     }
 }
 
@@ -473,4 +468,5 @@ document.addEventListener('keydown', function(event) {
     }
 });
 </script>
+{% include '_maintenance_image_uploads.html' %}
 {% endblock %}

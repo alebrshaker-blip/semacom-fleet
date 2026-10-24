@@ -1,24 +1,28 @@
 import os
+import re
 from core import database as dbapi
 import qrcode
+import io
 import math
 import mimetypes
 import warnings
 import base64
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 from PIL import Image, ImageOps, UnidentifiedImageError
 from flask import request, url_for
 from config import settings
+from core import storage
 
-# تحديد المسار الرئيسي للمشروع (SEMACOM_Fleet_System)
+from modules.reports.typography import REPORT_FONT_FILES, get_report_typography
+
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+TEMP_UPLOAD_DIR = os.path.join(tempfile.gettempdir(), 'semacom-fleet')
+QR_DIR = os.path.join(TEMP_UPLOAD_DIR, 'qrcodes')
+REPORTS_DIR = os.path.join(TEMP_UPLOAD_DIR, 'reports')
 
-# المسار المباشر لمجلد الاستاتيك المعتمد: SEMACOM_Fleet_System/app/static/uploads/qrcodes
-QR_DIR = os.path.join(BASE_DIR, 'app', 'static', 'uploads', 'qrcodes')
-REPORTS_DIR = os.path.join(BASE_DIR, 'app', 'static', 'uploads', 'reports')
-
-# إنشاء مجلد qrcodes تلقائياً إذا لم يكن موجوداً
 os.makedirs(QR_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
@@ -91,7 +95,7 @@ def generate_document_qr(
     access_token: str = None
 ) -> str:
     """
-    الدالة الثانية: توليد QR Code وحفظه في app/static/uploads/qrcodes/
+    Generate a QR code and persist it in Supabase Storage.
     """
     try:
         host_url = request.host_url.rstrip('/')
@@ -125,14 +129,16 @@ def generate_document_qr(
     
     img = qr.make_image(fill_color="#1b365d", back_color="white")
     
-    # حفظ الملف في مسار static المعتمد
     clean_doc_num = doc_number.replace('.', '_').replace('-', '_')
     filename = f"qr_{clean_doc_num}.png"
-    filepath = os.path.join(QR_DIR, filename)
-    img.save(filepath)
-    
-    # إرجاع المسار النسبي المستعمل في قوالب Flask
-    return f"/static/uploads/qrcodes/{filename}"
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    return storage.upload_bytes(
+        buffer.getvalue(),
+        'reports/qrcodes',
+        filename,
+        content_type='image/png',
+    )
 
 
 def merge_report_images(image_sources, output_path, canvas_size=(1800, 1100)):
@@ -197,13 +203,123 @@ def render_report_pdf(html, output_path, base_url):
         ) from error
 
     try:
+        static_dir = os.path.join(BASE_DIR, 'app', 'static')
+        report_css_path = os.path.join(static_dir, 'css', 'report.css')
+        if not os.path.isfile(report_css_path):
+            raise FileNotFoundError(f'Report stylesheet not found: {report_css_path}')
+        with open(report_css_path, encoding='utf-8') as css_file:
+            report_css = css_file.read()
+        typography = get_report_typography()
+        selected_font_files = set(
+            REPORT_FONT_FILES[typography['report_font_family']]
+        )
+
+        def resolve_font_face(match):
+            font_face = match.group(0)
+            source_match = re.search(
+                r'url\(["\']?([^"\')]+)',
+                font_face,
+                flags=re.IGNORECASE,
+            )
+            if not source_match:
+                return ''
+            font_name = os.path.basename(source_match.group(1))
+            if font_name not in selected_font_files:
+                return ''
+            font_path = os.path.join(static_dir, 'fonts', font_name)
+            if not os.path.isfile(font_path):
+                raise FileNotFoundError(f'Report font not found: {font_path}')
+            return font_face.replace(
+                source_match.group(1),
+                Path(font_path).as_uri(),
+            )
+
+        report_css = re.sub(
+            r'@font-face\s*\{[^}]*\}',
+            resolve_font_face,
+            report_css,
+            flags=re.IGNORECASE,
+        )
+        report_css += (
+            f"\n:root {{ --report-font-size: "
+            f"{typography['report_font_size']}; }}\n"
+        )
+        html = re.sub(
+            r'<link\b[^>]*href=["\'][^"\']*report\.css(?:\?[^"\']*)?["\'][^>]*>',
+            '',
+            html,
+            flags=re.IGNORECASE,
+        )
+        body_match = re.search(r'<body\b([^>]*)>', html, flags=re.IGNORECASE)
+        if body_match:
+            attributes = body_match.group(1)
+            class_match = re.search(
+                r'\bclass=["\']([^"\']*)["\']',
+                attributes,
+                flags=re.IGNORECASE,
+            )
+            class_names = class_match.group(1).split() if class_match else []
+            font_classes = {
+                'font-cairo', 'font-tajawal', 'font-majalla', 'font-almarai'
+            }
+            class_names = [
+                name for name in class_names if name not in font_classes
+            ]
+            class_names.append(typography['report_font_class'])
+            class_attribute = f'class="{" ".join(class_names)}"'
+            if class_match:
+                attributes = (
+                    attributes[:class_match.start()]
+                    + class_attribute
+                    + attributes[class_match.end():]
+                )
+            else:
+                attributes += f' {class_attribute}'
+            style_match = re.search(
+                r'\bstyle=["\']([^"\']*)["\']',
+                attributes,
+                flags=re.IGNORECASE,
+            )
+            style_text = style_match.group(1) if style_match else ''
+            style_text = re.sub(
+                r'--report-font-size\s*:\s*[^;]+;?',
+                '',
+                style_text,
+                flags=re.IGNORECASE,
+            ).strip().rstrip(';')
+            style_text = (
+                f'{style_text}; ' if style_text else ''
+            ) + f"--report-font-size: {typography['report_font_size']};"
+            style_attribute = f'style="{style_text}"'
+            if style_match:
+                attributes = (
+                    attributes[:style_match.start()]
+                    + style_attribute
+                    + attributes[style_match.end():]
+                )
+            else:
+                attributes += f' {style_attribute}'
+            html = (
+                html[:body_match.start()]
+                + f'<body{attributes}>'
+                + html[body_match.end():]
+            )
+        inline_styles = f'<style>{report_css}</style>'
+        if re.search(r'</head\s*>', html, flags=re.IGNORECASE):
+            html = re.sub(
+                r'</head\s*>',
+                lambda _: f'{inline_styles}</head>',
+                html,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        else:
+            html = f'{inline_styles}{html}'
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        pdf_bytes = HTML(
+        HTML(
             string=html,
             base_url=base_url
-        ).write_pdf()
-        with open(output_path, 'wb') as pdf_file:
-            pdf_file.write(pdf_bytes)
+        ).write_pdf(target=output_path)
     except Exception as error:
         raise RuntimeError(f'تعذر تجهيز ملف PDF: {error}') from error
     return output_path

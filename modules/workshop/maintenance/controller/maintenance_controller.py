@@ -213,7 +213,7 @@ class MaintenanceController:
             try:
                 data = request.form.to_dict()
                 data['type'] = m_type
-                order_no = MaintenanceService.create_order(data)
+                order_no = MaintenanceService.create_order(data, request.files)
                 flash(f'تم إنشاء أمر الصيانة بنجاح برقم: {order_no}', 'success')
                 return redirect(MaintenanceController._resolve_url('maintenance_list', m_type=m_type, status='open'))
             except Exception as e:

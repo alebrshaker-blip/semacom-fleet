@@ -41,8 +41,6 @@
                 <i class="fa-solid fa-file-lines"></i> تقارير الموظفين
             </a>
             <a href="{{ url_for('workshop.team.add_member') }}" class="btn btn-primary">إضافة عضـو جديد +</a>
-            <!-- تم تصحيح اسم الـ endpoint هنا إلى workshop.index -->
-            <a href="{{ url_for('workshop.index') }}" class="btn btn-secondary">الورشة والصيانة</a>
         </div>
     </div>
 
@@ -112,11 +110,11 @@
                             <td>{{ member[f.name] }}</td>
                             {% endfor %}
                             <td>
-                                <a href="{{ url_for('reports.data_reports', report_key='employees', report_type='single', member_id=member.id, view='print') }}" target="_blank" class="btn btn-primary" style="padding: 3px 8px; font-size: 12px;">
-                                    تقرير الموظف
+                                <a href="{{ url_for('reports.data_reports', report_key='employees', report_type='single', member_id=member.id, view='print') }}" target="_blank" class="btn btn-primary" style="padding: 3px 8px; font-size: 12px;" title="عرض تقرير الموظف" aria-label="عرض تقرير الموظف">
+                                    <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
                                 </a>
-                                <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 12px;" onclick="openDeleteModal('{{ member.id }}', '{{ member.full_name }}')">
-                                    حذف
+                                <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 12px;" title="حذف عضو الفريق" aria-label="حذف عضو الفريق" onclick="openDeleteModal('{{ member.id }}', '{{ member.full_name }}')">
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                 </button>
                             </td>
                         </tr>

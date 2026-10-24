@@ -57,11 +57,11 @@
             </ul>
         </section>
         {% endif %}
-        {% if submission.photo_1 or submission.photo_2 %}
+        {% if submission.photo_1 or submission.photo_2 or submission.photo_3 %}
         <div class="photos">
-            {% for photo in [submission.photo_1, submission.photo_2] if photo %}
-            <a href="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ photo) }}" target="_blank" rel="noopener">
-                <img src="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ photo) }}" alt="صورة مرفقة بالبلاغ">
+            {% for photo in [submission.photo_1, submission.photo_2, submission.photo_3] if photo %}
+            <a href="{{ photo }}" target="_blank" rel="noopener">
+                <img src="{{ photo }}" alt="صورة مرفقة بالبلاغ">
             </a>
             {% endfor %}
         </div>
@@ -69,7 +69,7 @@
         {% if submission.video_1 %}
         <div class="photos">
             <video controls preload="metadata">
-                <source src="{{ url_for('static', filename='uploads/vehicle_qr_reports/' ~ submission.video_1) }}">
+                <source src="{{ submission.video_1 }}">
                 متصفحك لا يدعم تشغيل الفيديو.
             </video>
         </div>

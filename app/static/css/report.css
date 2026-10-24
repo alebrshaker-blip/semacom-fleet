@@ -1,0 +1,227 @@
+@font-face {
+    font-family: "Cairo";
+    src: url("../fonts/Cairo-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Cairo";
+    src: url("../fonts/Cairo-Bold.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 700;
+}
+
+@font-face {
+    font-family: "Tajawal";
+    src: url("../fonts/Tajawal-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Tajawal";
+    src: url("../fonts/Tajawal-Bold.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 700;
+}
+
+@font-face {
+    font-family: "Sakkal Majalla";
+    src: url("../fonts/Majalla-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Sakkal Majalla";
+    src: url("../fonts/Majalla-Bold.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 700;
+}
+
+@font-face {
+    font-family: "Almarai";
+    src: url("../fonts/Almarai-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+}
+
+@font-face {
+    font-family: "Almarai";
+    src: url("../fonts/Almarai-Bold.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 700;
+}
+
+body.font-cairo {
+    --report-font-family: "Cairo";
+}
+
+body.font-tajawal {
+    --report-font-family: "Tajawal";
+}
+
+body.font-majalla {
+    --report-font-family: "Sakkal Majalla";
+}
+
+body.font-almarai {
+    --report-font-family: "Almarai";
+}
+
+html,
+body {
+    direction: rtl;
+    text-align: right;
+}
+
+body,
+body * {
+    font-family: var(--report-font-family, "Cairo"), sans-serif !important;
+}
+
+table {
+    border-collapse: collapse;
+    direction: rtl;
+    text-align: right;
+    font-size: var(--report-font-size, 14px) !important;
+}
+
+table td,
+table th {
+    border: 1px solid #b0b0b0 !important;
+    padding: 8px 10px !important;
+}
+
+table td {
+    font-size: var(--report-font-size, 14px) !important;
+    font-weight: 400 !important;
+}
+
+table th,
+table thead td {
+    background: #f2f2f2 !important;
+    font-size: var(--report-font-size, 14px) !important;
+    font-weight: 700 !important;
+}
+
+h1,
+.report-title-box,
+.vehicle-report-title,
+.data-report-title,
+.driver-report-title,
+.maintenance-report-title,
+.handover-report-title {
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    text-align: center;
+}
+
+h2 {
+    font-size: 20px !important;
+    font-weight: 700 !important;
+}
+
+h3 {
+    font-weight: 700 !important;
+}
+
+@media screen and (max-width: 767.98px) {
+    html,
+    body {
+        max-width: 100%;
+        overflow-x: clip;
+    }
+
+    .action-bar {
+        width: auto !important;
+        margin: 0 10px 12px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .action-bar > *,
+    .action-bar > div {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .action-bar .btn-action {
+        display: flex;
+        width: 100%;
+        min-height: 48px;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        text-align: center;
+        touch-action: manipulation;
+    }
+
+    .action-bar :is(input, select, textarea, button) {
+        width: 100%;
+        min-width: 0;
+        min-height: 46px;
+        font-size: 16px !important;
+    }
+
+    .action-bar .btn-back {
+        position: sticky;
+        top: 8px;
+        z-index: 5;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.2);
+    }
+
+    .page-container,
+    .page-container.portrait,
+    .page-container.landscape {
+        width: auto !important;
+        min-width: 0;
+        min-height: 0;
+        margin: 0 8px;
+        padding: clamp(12px, 4vw, 22px);
+        overflow-wrap: anywhere;
+    }
+
+    .page-container table {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        table-layout: auto;
+    }
+
+    .page-container img,
+    .page-container svg {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .page-container :is(h1, h2, h3, p, td, th, li) {
+        overflow-wrap: anywhere;
+    }
+
+    .page-container :is(.official-header, .header-right-zone, .document-meta-bar) {
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .page-container :is(.header-logo-zone, .header-qr-zone) {
+        flex-shrink: 0;
+    }
+
+    .page-container :is(input, select, textarea) {
+        min-width: 0;
+        max-width: 100%;
+        font-size: 16px !important;
+    }
+}

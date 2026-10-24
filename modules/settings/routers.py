@@ -18,6 +18,13 @@ from modules.settings.services.email_service import (
     get_public_base_url,
     send_email,
 )
+from modules.reports.typography import (
+    REPORT_FONT_DEFAULT,
+    REPORT_FONT_FILES,
+    REPORT_FONT_SIZE_DEFAULT,
+    REPORT_FONT_SIZES,
+    available_report_fonts,
+)
 
 # تعريف البلوبرينت الخاص بالإعدادات
 settings_bp = Blueprint(
@@ -209,6 +216,11 @@ def index():
         reference_lists=reference_lists,
         reference_list_definitions=REFERENCE_LISTS,
         smtp_password_configured=smtp_password_configured,
+        report_fonts=REPORT_FONT_FILES,
+        available_report_fonts=available_report_fonts(),
+        report_font_default=REPORT_FONT_DEFAULT,
+        report_font_size_default=REPORT_FONT_SIZE_DEFAULT,
+        report_font_sizes=REPORT_FONT_SIZES,
     )
 
 
@@ -225,6 +237,8 @@ def save_settings():
     appearance_theme = data.get('appearance_theme')
     font_size = data.get('appearance_font_size')
     primary_color = data.get('appearance_primary_color')
+    report_font_family = data.get('report_font_family')
+    report_font_size = data.get('report_font_size')
 
     if appearance_theme is not None and (
         not isinstance(appearance_theme, str)
@@ -243,6 +257,16 @@ def save_settings():
         or not re.fullmatch(r'#[0-9a-fA-F]{6}', primary_color)
     ):
         return jsonify({'status': 'error', 'message': 'لون الواجهة غير صالح'}), 400
+    if report_font_family is not None and (
+        not isinstance(report_font_family, str)
+        or report_font_family not in available_report_fonts()
+    ):
+        return jsonify({
+            'status': 'error',
+            'message': 'الخط المحدد غير متوفر؛ تحقق من وجود ملفي Regular وBold المرخصين.',
+        }), 400
+    if report_font_size is not None and report_font_size not in REPORT_FONT_SIZES:
+        return jsonify({'status': 'error', 'message': 'حجم خط التقارير غير صالح'}), 400
     public_base_url = data.get('app_public_url')
     if public_base_url is not None:
         if not isinstance(public_base_url, str):
@@ -381,6 +405,8 @@ def save_settings():
             group_name = 'fleet'
         elif key.startswith('appearance_'):
             group_name = 'appearance'
+        elif key.startswith('report_font_'):
+            group_name = 'reports'
         else:
             group_name = 'general'
         items.append((key, str(value), group_name))

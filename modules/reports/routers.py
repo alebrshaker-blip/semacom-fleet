@@ -2,6 +2,8 @@ import io
 import json
 import os
 import re
+from html import escape
+from html.parser import HTMLParser
 from core import database as dbapi
 from core import storage
 import smtplib
@@ -12,6 +14,7 @@ from flask import Blueprint, Response, current_app, render_template, request, js
 from PIL import Image, ImageOps, UnidentifiedImageError
 from modules.reports.controllers.reports_controller import ReportsController
 from modules.reports.models.reports_model import ReportsModel
+from modules.reports.typography import get_report_typography
 from .services.reports_service import (
     generate_reference_number,
     generate_document_qr,
@@ -41,6 +44,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 ACCIDENT_UPLOADS_DIR = os.path.join(
     PROJECT_ROOT, 'app', 'static', 'uploads', 'accidents'
 )
+LEGACY_REPORTS_DIR = os.path.join(PROJECT_ROOT, 'app', 'static', 'uploads', 'reports')
+LEGACY_QR_DIR = os.path.join(PROJECT_ROOT, 'app', 'static', 'uploads', 'qrcodes')
 
 # إنشاء راوتر الموديول (Blueprint)
 reports_bp = Blueprint(
@@ -49,6 +54,68 @@ reports_bp = Blueprint(
     template_folder='views',
     url_prefix='/reports'
 )
+
+
+def _discard_files(*paths):
+    for path in paths:
+        if not path:
+            continue
+        if storage.is_url(path):
+            if not storage.delete_file(path):
+                current_app.logger.warning('Unable to remove cloud report artifact %s', path)
+        elif os.path.isfile(path):
+            os.remove(path)
+
+
+def _upload_report_artifact(local_path, folder, content_type):
+    with open(local_path, 'rb') as artifact:
+        return storage.upload_bytes(
+            artifact.read(),
+            folder,
+            os.path.basename(local_path),
+            content_type=content_type,
+        )
+
+
+def _read_report_artifact(stored_path):
+    if not stored_path:
+        raise FileNotFoundError('ملف التقرير المعتمد غير متاح')
+    if storage.is_url(stored_path):
+        return storage.download_file(stored_path)
+
+    normalized_path = str(stored_path)
+    for prefix in ('/static/uploads/reports/', 'static/uploads/reports/', 'uploads/reports/'):
+        if normalized_path.startswith(prefix):
+            normalized_path = os.path.join(LEGACY_REPORTS_DIR, os.path.basename(normalized_path))
+            break
+    candidate = os.path.realpath(normalized_path)
+    allowed_roots = (os.path.realpath(REPORTS_DIR), os.path.realpath(LEGACY_REPORTS_DIR))
+    for root in allowed_roots:
+        try:
+            if os.path.commonpath((root, candidate)) == root and os.path.isfile(candidate):
+                with open(candidate, 'rb') as artifact:
+                    return artifact.read()
+        except ValueError:
+            continue
+
+    legacy_candidate = os.path.join(LEGACY_REPORTS_DIR, os.path.basename(normalized_path))
+    if os.path.isfile(legacy_candidate):
+        with open(legacy_candidate, 'rb') as artifact:
+            return artifact.read()
+    raise FileNotFoundError('ملف التقرير المعتمد غير متاح')
+
+
+def _remove_memo_artifacts(paths):
+    for path in set(paths):
+        if storage.is_url(path):
+            if not storage.delete_file(path):
+                current_app.logger.warning('Unable to remove cloud report artifact %s', path)
+        elif path and os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError:
+                current_app.logger.exception('Unable to remove archived report artifact %s', path)
+
 
 GENERAL_MEMO_FIELD_TITLES = {
     'recipient': 'التوجيه',
@@ -61,10 +128,99 @@ GENERAL_MEMO_FIELD_TITLES = {
     'signature': 'التوقيع',
 }
 
+_VOID_HTML_TAGS = {
+    'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link',
+    'meta', 'param', 'source', 'track', 'wbr',
+}
+
+
+class _EditableTextHTMLParser(HTMLParser):
+    def __init__(self, editable_values):
+        super().__init__(convert_charrefs=False)
+        self.editable_values = editable_values
+        self.editable_count = 0
+        self.output = []
+        self.skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if self.skip_depth:
+            if tag not in _VOID_HTML_TAGS:
+                self.skip_depth += 1
+            return
+
+        raw_tag = self.get_starttag_text()
+        attributes = {name.lower(): value for name, value in attrs}
+        if attributes.get('contenteditable', '').lower() == 'true':
+            if self.editable_count >= len(self.editable_values):
+                raise ValueError('عدد الحقول القابلة للتحرير لا يطابق معاينة التقرير')
+            value = self.editable_values[self.editable_count]
+            self.editable_count += 1
+            self.output.append(raw_tag)
+            self.output.append(
+                '<br>'.join(escape(line, quote=False) for line in value.splitlines())
+            )
+            if tag not in _VOID_HTML_TAGS:
+                self.skip_depth = 1
+            return
+        self.output.append(raw_tag)
+
+    def handle_startendtag(self, tag, attrs):
+        if not self.skip_depth:
+            self.output.append(self.get_starttag_text())
+
+    def handle_endtag(self, tag):
+        if self.skip_depth:
+            self.skip_depth -= 1
+            if self.skip_depth == 0:
+                self.output.append(f'</{tag}>')
+            return
+        self.output.append(f'</{tag}>')
+
+    def handle_data(self, data):
+        if not self.skip_depth:
+            self.output.append(data)
+
+    def handle_entityref(self, name):
+        if not self.skip_depth:
+            self.output.append(f'&{name};')
+
+    def handle_charref(self, name):
+        if not self.skip_depth:
+            self.output.append(f'&#{name};')
+
+    def handle_comment(self, data):
+        if not self.skip_depth:
+            self.output.append(f'<!--{data}-->')
+
+    def handle_decl(self, decl):
+        if not self.skip_depth:
+            self.output.append(f'<!{decl}>')
+
+    def handle_pi(self, data):
+        if not self.skip_depth:
+            self.output.append(f'<?{data}>')
+
+
+def _apply_editable_values(html, editable_values):
+    if editable_values is None:
+        return html
+
+    parser = _EditableTextHTMLParser(editable_values)
+    parser.feed(html)
+    parser.close()
+    if parser.editable_count != len(editable_values):
+        raise ValueError('عدد الحقول القابلة للتحرير لا يطابق معاينة التقرير')
+    return ''.join(parser.output)
+
 
 @reports_bp.app_context_processor
 def inject_report_approval_token():
     return {'approval_token': uuid.uuid4().hex}
+
+
+@reports_bp.context_processor
+def inject_report_typography_settings():
+    return get_report_typography()
 
 # استدعاء متحكم التقارير
 controller = ReportsController()
@@ -572,6 +728,21 @@ def _saved_handover_document_response(handover, handover_id):
     for report_path in report_paths:
         if not report_path:
             continue
+        if storage.is_url(report_path):
+            try:
+                report_html = storage.download_file(report_path).decode('utf-8')
+            except (storage.StorageError, UnicodeError):
+                current_app.logger.exception(
+                    'Unable to read the approved report for handover %s', handover_id
+                )
+                continue
+            report_html = re.sub(
+                r'\scontenteditable\s*=\s*(["\'])true\1',
+                ' contenteditable="false"',
+                report_html,
+                flags=re.IGNORECASE
+            )
+            return Response(report_html, mimetype='text/html')
         candidates = [os.path.realpath(report_path)]
         candidates.append(
             os.path.realpath(os.path.join(report_root, os.path.basename(report_path)))
@@ -763,6 +934,10 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
             'SELECT * FROM drivers'
         ).fetchall()] if driver_columns else []
         vehicle_columns = [row['name'] for row in conn.execute('PRAGMA table_info(vehicles)')]
+        custom_vehicle_labels = {
+            row['name']: row['label']
+            for row in conn.execute('SELECT name, label FROM vehicle_fields').fetchall()
+        }
         inspection_columns = [
             row['name'] for row in conn.execute('PRAGMA table_info(inspections)')
         ] if inspections or conn.execute(
@@ -860,7 +1035,13 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
         })
 
     vehicle_fields = [
-        {'key': name, 'label': VEHICLE_FIELD_LABELS.get(name, name.replace('_', ' '))}
+        {
+            'key': name,
+            'label': custom_vehicle_labels.get(
+                name, VEHICLE_FIELD_LABELS.get(name, name.replace('_', ' '))
+            ),
+            'is_custom': name in custom_vehicle_labels,
+        }
         for name in vehicle_columns
         if name not in {'id', 'vehicle_id', 'chassis_number', 'vin'}
     ]
@@ -1621,6 +1802,19 @@ def approve_document_api():
         return jsonify({'success': False, 'message': 'نوع التقرير غير صالح للاعتماد'}), 400
     if not isinstance(approval_token, str) or not re.fullmatch(r'[0-9a-f]{32}', approval_token):
         return jsonify({'success': False, 'message': 'انتهت صلاحية معاينة التقرير؛ أعد فتحه ثم حاول مرة أخرى'}), 400
+    editable_values = None
+    if 'editable_values' in data:
+        try:
+            editable_values = json.loads(data['editable_values'])
+        except (TypeError, json.JSONDecodeError):
+            return jsonify({'success': False, 'message': 'بيانات الحقول المعدلة غير صالحة'}), 400
+        if (
+            not isinstance(editable_values, list)
+            or len(editable_values) > 200
+            or any(not isinstance(value, str) for value in editable_values)
+            or sum(len(value.encode('utf-8')) for value in editable_values) > 128 * 1024
+        ):
+            return jsonify({'success': False, 'message': 'تجاوزت بيانات التعديل الحد المسموح'}), 400
 
     init_report_counter_db()
     if doc_type == 'handover_document':
@@ -2063,7 +2257,9 @@ def approve_document_api():
     doc_number = generate_reference_number()
     
     archived_report_path = None
+    archived_report_url = None
     final_pdf_path = None
+    final_pdf_url = None
     accident_image_paths = []
     accident_image_sources = {}
     archive_suffix = uuid.uuid4().hex
@@ -2075,9 +2271,17 @@ def approve_document_api():
         except ValueError as error:
             return jsonify({'success': False, 'message': str(error)}), 400
     # QR always resolves to the immutable final-report page, never to preview.
-    qr_url = generate_document_qr(
-        doc_number, doc_type, item_id, access_token=approval_token
-    )
+    try:
+        qr_url = generate_document_qr(
+            doc_number, doc_type, item_id, access_token=approval_token
+        )
+    except storage.StorageError:
+        current_app.logger.exception('Unable to store report QR code')
+        _discard_files(*accident_image_paths, *maintenance_photo_paths)
+        return jsonify({
+            'success': False,
+            'message': 'تعذر حفظ رمز QR في التخزين السحابي'
+        }), 503
 
     if doc_type in {'accidents_report', 'accident_single'}:
         html = render_template(
@@ -2122,7 +2326,7 @@ def approve_document_api():
             approval_item_id=item_id,
             allow_orientation=False,
             orientation='landscape',
-            is_certified=True,
+            is_certified=False,
             is_finalized=True,
             type_titles=MAINTENANCE_TYPE_TITLES
         )
@@ -2215,7 +2419,7 @@ def approve_document_api():
             orientation='portrait' if handover_is_document else 'landscape',
             allow_orientation=False,
             is_document=handover_is_document,
-            is_certified=handover_is_document,
+            is_certified=False,
             report_params=handover_report_params
         )
         archive_filename = f"report_{doc_number.replace('.', '_').replace('-', '_')}_{archive_suffix}.html"
@@ -2300,6 +2504,20 @@ def approve_document_api():
         with open(archived_report_path, 'w', encoding='utf-8') as archive_file:
             archive_file.write(html)
     
+    try:
+        html = _apply_editable_values(html, editable_values)
+    except ValueError as error:
+        db_session.rollback()
+        _discard_files(
+            archived_report_path, qr_url,
+            *accident_image_paths, *maintenance_photo_paths
+        )
+        current_app.logger.warning(
+            'Rejected report approval with mismatched editable fields for %s/%s',
+            doc_type, item_id
+        )
+        return jsonify({'success': False, 'message': str(error)}), 409
+
     html = re.sub(
         r'\scontenteditable\s*=\s*(["\'])true\1',
         ' contenteditable="false"',
@@ -2322,7 +2540,7 @@ def approve_document_api():
         current_app.logger.exception('WeasyPrint runtime is not ready')
         for generated_path in (
             archived_report_path, final_pdf_path, *accident_image_paths,
-            os.path.join(QR_DIR, os.path.basename(qr_url)) if qr_url else None,
+            qr_url,
             *maintenance_photo_paths
         ):
             if generated_path and storage.is_url(generated_path):
@@ -2337,7 +2555,7 @@ def approve_document_api():
         current_app.logger.exception('Unable to render finalized report PDF')
         for generated_path in (
             archived_report_path, final_pdf_path, *accident_image_paths,
-            os.path.join(QR_DIR, os.path.basename(qr_url)) if qr_url else None,
+            qr_url,
             *maintenance_photo_paths
         ):
             if generated_path and storage.is_url(generated_path):
@@ -2349,15 +2567,25 @@ def approve_document_api():
             'message': 'تعذر إنشاء PDF للتقرير النهائي. تحقق من إعداد WeasyPrint والخطوط.'
         }), 500
 
-    # 3. تسجيل المستند المعتمد في قاعدة البيانات
-    qr_file_path = os.path.join(QR_DIR, os.path.basename(qr_url))
+    try:
+        final_pdf_url = _upload_report_artifact(
+            final_pdf_path, 'reports/pdf', 'application/pdf'
+        )
+        archived_report_url = _upload_report_artifact(
+            archived_report_path, 'reports/html', 'text/html; charset=utf-8'
+        )
+    except (OSError, storage.StorageError):
+        current_app.logger.exception('Unable to persist finalized report artifacts')
+        _discard_files(
+            archived_report_path, final_pdf_path, archived_report_url, final_pdf_url,
+            qr_url, *accident_image_paths, *maintenance_photo_paths
+        )
+        return jsonify({
+            'success': False,
+            'message': 'تعذر حفظ ملفات التقرير في التخزين السحابي'
+        }), 503
 
-    def _discard_files(*paths):
-        for generated_path in paths:
-            if generated_path and storage.is_url(generated_path):
-                storage.delete_file(generated_path)
-            elif generated_path and os.path.exists(generated_path):
-                os.remove(generated_path)
+    # 3. تسجيل المستند المعتمد في قاعدة البيانات
 
     now_text = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
     db_session = SessionLocal()
@@ -2384,7 +2612,7 @@ def approve_document_api():
                 db_session.rollback()
                 _discard_files(
                     archived_report_path, final_pdf_path, *accident_image_paths,
-                    qr_file_path, *maintenance_photo_paths
+                    archived_report_url, final_pdf_url, qr_url, *maintenance_photo_paths
                 )
                 return jsonify({
                     'success': False,
@@ -2398,7 +2626,7 @@ def approve_document_api():
                     db_session.rollback()
                     _discard_files(
                         archived_report_path, final_pdf_path, *accident_image_paths,
-                        qr_file_path, *maintenance_photo_paths
+                        archived_report_url, final_pdf_url, qr_url, *maintenance_photo_paths
                     )
                     return jsonify({
                         'success': False,
@@ -2429,7 +2657,7 @@ def approve_document_api():
             db_session.rollback()
             _discard_files(
                 archived_report_path, final_pdf_path, *accident_image_paths,
-                *maintenance_photo_paths
+                archived_report_url, final_pdf_url, qr_url, *maintenance_photo_paths
             )
             if current_number:
                 return jsonify({
@@ -2454,22 +2682,40 @@ def approve_document_api():
             ).first()
             if not handover:
                 db_session.rollback()
+                _discard_files(
+                    archived_report_path, final_pdf_path, archived_report_url,
+                    final_pdf_url, qr_url, *maintenance_photo_paths
+                )
                 return jsonify({'success': False, 'message': 'حركة الاستلام والتسليم المطلوبة غير موجودة'}), 404
             if handover[1]:
                 db_session.rollback()
-                _discard_files(archived_report_path, qr_file_path, *maintenance_photo_paths)
+                _discard_files(
+                    archived_report_path, final_pdf_path, archived_report_url,
+                    final_pdf_url, qr_url, *maintenance_photo_paths
+                )
                 existing_number = handover[2]
-                qr_filename = f"qr_{existing_number.replace('.', '_').replace('-', '_')}.png"
+                if not existing_number:
+                    return jsonify({
+                        'success': False,
+                        'message': 'الحركة معتمدة لكن رقم المستند غير متاح؛ يرجى مراجعة الدعم الفني'
+                    }), 500
+                _, existing_qr_url = reports_repository.lookup_approved_report(
+                    str(item_id), 'handover_document'
+                )
                 return jsonify({
                     'success': True,
                     'doc_number': existing_number,
-                    'qr_code_url': f"/static/uploads/qrcodes/{qr_filename}",
+                    'qr_code_url': existing_qr_url,
                     'public_url': url_for(
                         'reports.public_view_document', doc_number=existing_number, _external=True
                     )
                 })
             if handover[0] not in {'نشط', 'بانتظار التوثيق'}:
                 db_session.rollback()
+                _discard_files(
+                    archived_report_path, final_pdf_path, archived_report_url,
+                    final_pdf_url, qr_url, *maintenance_photo_paths
+                )
                 return jsonify({
                     'success': False,
                     'message': 'لا يمكن توثيق حركة مؤرشفة؛ يمكن عرض التوثيق السابق فقط'
@@ -2511,15 +2757,15 @@ def approve_document_api():
 
         reports_repository.add_approved_document(
             db_session, doc_number=doc_number, doc_type=doc_type, item_id=item_id,
-            file_path=archived_report_path or qr_url, approval_token=approval_token,
-            final_pdf_path=final_pdf_path, qr_code_path=qr_url
+            file_path=archived_report_url or qr_url, approval_token=approval_token,
+            final_pdf_path=final_pdf_url, qr_code_path=qr_url
         )
 
         def _add_generated(module_name, report_type, title, template_key, parameters):
             reports_repository.add_generated_report(
                 db_session, doc_number=doc_number, module_name=module_name,
                 report_type=report_type, title=title, template_key=template_key,
-                parameters=parameters, report_path=archived_report_path, qr_path=qr_file_path
+                parameters=parameters, report_path=archived_report_url, qr_path=qr_url
             )
 
         if doc_type in {'accidents_report', 'accident_single'}:
@@ -2566,7 +2812,7 @@ def approve_document_api():
                         'certified_at': datetime.now().isoformat(timespec='seconds'),
                         'certified_by': session.get('full_name') or session.get('username') or 'غير محدد',
                         'doc_number': doc_number, 'report_data': handover_snapshot,
-                        'report_path': archived_report_path, 'id': str(item_id),
+                        'report_path': archived_report_url, 'id': str(item_id),
                     }
                 )
                 if result.rowcount != 1:
@@ -2588,7 +2834,7 @@ def approve_document_api():
             )
 
         reports_repository.finalize_generated_report(
-            db_session, doc_number, final_pdf_path, qr_url
+            db_session, doc_number, final_pdf_url, qr_url
         )
 
         # ربط الرقم المرجعي بسجل الحوادث إذا كان نوع التقرير حادث سير
@@ -2610,19 +2856,20 @@ def approve_document_api():
         current_app.logger.exception('Unable to persist finalized report')
         _discard_files(
             archived_report_path, final_pdf_path, *accident_image_paths,
-            qr_file_path, *maintenance_photo_paths
+            archived_report_url, final_pdf_url, qr_url, *maintenance_photo_paths
         )
         return jsonify({'success': False, 'message': 'تعذر حفظ التقرير المعتمد'}), 500
     finally:
         db_session.close()
 
+    _discard_files(archived_report_path, final_pdf_path)
     return jsonify({
         'success': True,
         'doc_number': doc_number,
         'qr_code_url': qr_url,
         'report_url': url_for(
-            'static',
-            filename=f"uploads/reports/{os.path.basename(archived_report_path)}"
+            'reports.public_view_document', doc_number=doc_number,
+            token=approval_token, _external=True
         ),
         'public_url': url_for(
             'reports.public_view_document', doc_number=doc_number,
@@ -2636,38 +2883,39 @@ def approve_document_api():
 
 
 def _ensure_final_pdf(document):
-    report_root = os.path.realpath(REPORTS_DIR)
     pdf_path = document.get('final_pdf_path')
     if pdf_path:
-        resolved_pdf = os.path.realpath(pdf_path)
         try:
-            if os.path.commonpath((report_root, resolved_pdf)) == report_root and os.path.isfile(resolved_pdf):
-                return resolved_pdf
-        except ValueError:
-            pass
+            pdf_data = _read_report_artifact(pdf_path)
+            if not pdf_data.startswith(b'%PDF-'):
+                raise ValueError('Stored report artifact is not a valid PDF')
+            return io.BytesIO(pdf_data)
+        except (FileNotFoundError, storage.StorageError, ValueError):
+            current_app.logger.warning(
+                'Stored PDF unavailable for report %s; regenerating from archived HTML',
+                document.get('doc_number'),
+                exc_info=True,
+            )
 
     html_path = document.get('file_path')
     if not html_path:
         abort(404, description='ملف التقرير المعتمد غير متاح')
-    resolved_html = os.path.realpath(html_path)
-    try:
-        if os.path.commonpath((report_root, resolved_html)) != report_root:
-            abort(404, description='مسار التقرير غير صالح')
-    except ValueError:
-        abort(404, description='مسار التقرير غير صالح')
-    if not os.path.isfile(resolved_html):
-        abort(404, description='ملف التقرير المعتمد غير متاح')
 
+    generated_pdf = os.path.join(
+        REPORTS_DIR,
+        f"legacy_final_{document['doc_number'].replace('.', '_')}_{uuid.uuid4().hex}.pdf"
+    )
+    pdf_url = None
     try:
-        with open(resolved_html, encoding='utf-8') as report_file:
-            html = report_file.read()
-        generated_pdf = os.path.join(
-            REPORTS_DIR,
-            f"legacy_final_{document['doc_number'].replace('.', '_')}_{uuid.uuid4().hex}.pdf"
-        )
+        html = _read_report_artifact(html_path).decode('utf-8')
         render_report_pdf(html, generated_pdf, request.url_root)
-        reports_repository.set_final_pdf(document['doc_number'], generated_pdf)
-        return generated_pdf
+        with open(generated_pdf, 'rb') as pdf_file:
+            pdf_bytes = pdf_file.read()
+        pdf_url = _upload_report_artifact(
+            generated_pdf, 'reports/pdf', 'application/pdf'
+        )
+        reports_repository.set_final_pdf(document['doc_number'], pdf_url)
+        return io.BytesIO(pdf_bytes)
     except RuntimeError as error:
         current_app.logger.exception(
             'WeasyPrint runtime is unavailable for legacy report %s',
@@ -2679,7 +2927,12 @@ def _ensure_final_pdf(document):
             'Unable to create a PDF for legacy finalized report %s',
             document['doc_number']
         )
+        if pdf_url:
+            _discard_files(pdf_url)
         abort(500, description='تعذر تجهيز PDF للتقرير المعتمد')
+    finally:
+        if os.path.isfile(generated_pdf):
+            os.remove(generated_pdf)
 
 
 @reports_bp.route('/final/<doc_number>')
@@ -2714,7 +2967,7 @@ def final_report(doc_number):
         pdf_download_url=url_for(
             'reports.final_report_pdf', doc_number=doc_number, download=1
         ),
-        pdf_filename=os.path.basename(pdf_path),
+        pdf_filename=f"{document.get('reference_number') or doc_number}.pdf",
         email_reports_enabled=(
             get_email_setting('email_reports_enabled', '1') == '1'
             and get_email_setting('smtp_enabled', '0') == '1'
@@ -2865,6 +3118,8 @@ def public_view_document(doc_number):
             return redirect(url_for(
                 'reports.handover_reports', view='document', handover_id=item_id
             ))
+        if storage.is_url(file_path) and storage.object_path_from_url(file_path):
+            return redirect(file_path)
         if file_path and os.path.isfile(file_path):
             try:
                 report_root = os.path.realpath(REPORTS_DIR)
@@ -3286,15 +3541,25 @@ def _delete_memo_and_documents(table, doc_type, memo_id, missing_message):
     for stored_path, kind in stored:
         if not stored_path:
             continue
-        allowed_root = QR_DIR if kind == 'qr' else REPORTS_DIR
-        if kind == 'qr' and stored_path.startswith('/static/uploads/qrcodes/'):
-            stored_path = os.path.join(QR_DIR, os.path.basename(stored_path))
-        elif kind == 'report' and stored_path.startswith('/static/uploads/reports/'):
-            stored_path = os.path.join(REPORTS_DIR, os.path.basename(stored_path))
+        if storage.is_url(stored_path):
+            if storage.object_path_from_url(stored_path):
+                files.append(stored_path)
+            continue
+
+        legacy_root = LEGACY_QR_DIR if kind == 'qr' else LEGACY_REPORTS_DIR
+        allowed_roots = (QR_DIR, legacy_root) if kind == 'qr' else (REPORTS_DIR, legacy_root)
+        legacy_prefix = (
+            '/static/uploads/qrcodes/' if kind == 'qr'
+            else '/static/uploads/reports/'
+        )
+        if str(stored_path).startswith(legacy_prefix):
+            stored_path = os.path.join(legacy_root, os.path.basename(stored_path))
         resolved = os.path.realpath(stored_path)
-        root = os.path.realpath(allowed_root)
         try:
-            if os.path.commonpath((root, resolved)) == root and os.path.isfile(resolved):
+            if any(
+                os.path.commonpath((os.path.realpath(root), resolved)) == os.path.realpath(root)
+                for root in allowed_roots
+            ) and os.path.isfile(resolved):
                 files.append(resolved)
         except ValueError:
             current_app.logger.warning('Skipping out-of-root file while deleting %s %s', table, memo_id)
@@ -3311,11 +3576,7 @@ def delete_general_memo(memo_id):
         current_app.logger.exception('Unable to delete general memo %s', memo_id)
         abort(500, description='تعذر حذف المذكرة')
 
-    for path in set(files_to_remove):
-        try:
-            os.remove(path)
-        except OSError:
-            current_app.logger.exception('Unable to remove archived memo file %s', path)
+    _remove_memo_artifacts(files_to_remove)
     flash('تم حذف المذكرة وملفاتها المؤرشفة.', 'success')
     return redirect(url_for('reports.general_memo_form'))
 
@@ -3493,11 +3754,7 @@ def delete_custody_clearance(clearance_id):
         current_app.logger.exception('Unable to delete custody clearance %s', clearance_id)
         abort(500, description='تعذر حذف نموذج إخلاء العهدة')
 
-    for path in set(files_to_remove):
-        try:
-            os.remove(path)
-        except OSError:
-            current_app.logger.exception('Unable to remove custody clearance archive file %s', path)
+    _remove_memo_artifacts(files_to_remove)
     flash('تم حذف نموذج إخلاء العهدة وملفاته المؤرشفة.', 'success')
     return redirect(url_for('reports.custody_clearance_form'))
 
@@ -3786,15 +4043,6 @@ def delete_workshop_memo(memo_id):
         current_app.logger.exception('Unable to delete workshop memo %s', memo_id)
         abort(500, description='تعذر حذف مذكرة الورشة')
 
-    for path in set(files_to_remove):
-        try:
-            os.remove(path)
-        except OSError:
-            current_app.logger.exception(
-                'Unable to remove archived workshop memo file %s', path
-            )
-            abort(500, description='حُذفت المذكرة من السجل، لكن تعذر حذف أحد ملفاتها المؤرشفة')
+    _remove_memo_artifacts(files_to_remove)
     flash('تم حذف المذكرة وملفاتها المؤرشفة.', 'success')
     return redirect(url_for('reports.workshop_request_form'))
-
-

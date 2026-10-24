@@ -1,5 +1,7 @@
 """ORM data access for users, system settings, dynamic fields and password-reset tokens."""
 import json
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select, update
@@ -15,6 +17,17 @@ from modules.settings.models.settings_orm import (
 from modules.vehicles.models.vehicle_orm import VehicleField
 
 _TS_FORMAT = "%Y-%m-%d %H:%M:%S"
+_SETTINGS_CACHE_TTL_SECONDS = 10
+_settings_cache_lock = threading.Lock()
+_settings_cache_rows = None
+_settings_cache_expires_at = 0
+
+
+def _invalidate_settings_cache():
+    global _settings_cache_rows, _settings_cache_expires_at
+    with _settings_cache_lock:
+        _settings_cache_rows = None
+        _settings_cache_expires_at = 0
 
 
 def _ts(delta=None):
@@ -26,34 +39,48 @@ def _ts(delta=None):
 
 # ---------------------------------------------------------------- settings
 def get_setting(key, default=None):
-    with get_session() as session:
-        row = session.execute(select(SystemSetting.value).where(SystemSetting.key == key)).first()
-        return row[0] if row else default
+    return {setting_key: value for setting_key, value, _ in get_all_settings()}.get(key, default)
 
 
 def get_settings(keys):
     """{key: value} for the given keys that exist."""
-    with get_session() as session:
-        rows = session.execute(
-            select(SystemSetting.key, SystemSetting.value).where(SystemSetting.key.in_(list(keys)))
-        ).all()
-        return {key: value for key, value in rows}
+    requested = set(keys)
+    return {
+        key: value
+        for key, value, _ in get_all_settings()
+        if key in requested
+    }
 
 
 def get_group_settings(group_name):
-    with get_session() as session:
-        rows = session.execute(
-            select(SystemSetting.key, SystemSetting.value).where(SystemSetting.group_name == group_name)
-        ).all()
-        return {key: value for key, value in rows}
+    return {
+        key: value
+        for key, value, group in get_all_settings()
+        if group == group_name
+    }
 
 
 def get_all_settings():
     """[(key, value, group_name)] for every stored setting."""
-    with get_session() as session:
-        return [tuple(row) for row in session.execute(
-            select(SystemSetting.key, SystemSetting.value, SystemSetting.group_name)
-        ).all()]
+    global _settings_cache_rows, _settings_cache_expires_at
+    now = time.monotonic()
+    with _settings_cache_lock:
+        if _settings_cache_rows is not None and now < _settings_cache_expires_at:
+            return list(_settings_cache_rows)
+        with get_session() as session:
+            rows = tuple(
+                tuple(row)
+                for row in session.execute(
+                    select(
+                        SystemSetting.key,
+                        SystemSetting.value,
+                        SystemSetting.group_name,
+                    )
+                ).all()
+            )
+        _settings_cache_rows = rows
+        _settings_cache_expires_at = now + _SETTINGS_CACHE_TTL_SECONDS
+        return list(rows)
 
 
 def get_grouped_settings(raw=True):
@@ -88,6 +115,7 @@ def upsert_settings(items):
                     "updated_at": statement.excluded.updated_at,
                 },
             ))
+    _invalidate_settings_cache()
 
 
 def seed_defaults(defaults):
@@ -98,6 +126,7 @@ def seed_defaults(defaults):
                 key=key, value=value, setting_type=setting_type,
                 group_name=group_name, description=description,
             ).on_conflict_do_nothing(index_elements=[SystemSetting.key]))
+    _invalidate_settings_cache()
 
 
 def update_setting_description(key, description):
@@ -114,6 +143,7 @@ def replace_setting_value(key, old_value, new_value):
             .where(SystemSetting.key == key, SystemSetting.value == old_value)
             .values(value=new_value, updated_at=now_text())
         )
+    _invalidate_settings_cache()
 
 
 def set_setting_group(key, group_name):
@@ -121,6 +151,7 @@ def set_setting_group(key, group_name):
         session.execute(
             update(SystemSetting).where(SystemSetting.key == key).values(group_name=group_name)
         )
+    _invalidate_settings_cache()
 
 
 # ------------------------------------------------------------------- users

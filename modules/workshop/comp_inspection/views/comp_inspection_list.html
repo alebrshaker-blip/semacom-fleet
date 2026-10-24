@@ -39,12 +39,12 @@
                         </span>
                     </td>
                     <td style="padding: 10px; border: 1px solid #dee2e6;">
-                        <a href="{{ url_for('workshop.comp_inspection.print_report', id=ins.id) }}" target="_blank" class="btn btn-info" style="padding: 4px 10px; background: #0dcaf0; color: #000; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">
-                            <i class="fa-solid fa-print"></i> طباعة A4
+                        <a href="{{ url_for('workshop.comp_inspection.print_report', id=ins.id) }}" target="_blank" class="btn btn-info" style="padding: 4px 10px; background: #0dcaf0; color: #000; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;" title="طباعة تقرير الفحص الشامل" aria-label="طباعة تقرير الفحص الشامل">
+                            <i class="fa-solid fa-print" aria-hidden="true"></i>
                         </a>
                         <form method="POST" action="{{ url_for('workshop.comp_inspection.delete', id=ins.id) }}" style="display: inline;">
-                            <button type="submit" class="btn btn-danger" data-confirm-delete data-target-name="سجل الفحص الشامل" style="padding: 4px 10px; background: #dc3545; color: white; border: 0; border-radius: 4px; font-size: 11px; font-weight: bold;">
-                                حذف
+                            <button type="submit" class="btn btn-danger" data-confirm-delete data-target-name="سجل الفحص الشامل" style="padding: 4px 10px; background: #dc3545; color: white; border: 0; border-radius: 4px; font-size: 11px; font-weight: bold;" title="حذف سجل الفحص الشامل" aria-label="حذف سجل الفحص الشامل">
+                                <i class="fa-solid fa-trash" aria-hidden="true"></i>
                             </button>
                         </form>
                     </td>

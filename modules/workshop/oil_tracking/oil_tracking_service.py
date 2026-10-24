@@ -47,7 +47,7 @@ class OilTrackingService:
     def get_all_vehicles():
         """جلب أرقام لوحات المركبات من جدول المركبات الأساسي"""
         try:
-            return [v['plate_number'] for v in vehicles_repository.list_active()]
+            return [v['plate_number'] for v in vehicles_repository.list_active_summaries()]
         except Exception:
             return []
 

@@ -81,6 +81,24 @@
         padding: 20px;
         text-align: center;
     }
+    .vehicle-actions {
+        display: flex;
+        justify-content: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .vehicle-action {
+        display: inline-flex;
+        width: 36px;
+        height: 36px;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+    .vehicle-action:focus-visible {
+        outline: 3px solid #212529;
+        outline-offset: 2px;
+    }
 </style>
 {% endblock %}
 
@@ -134,24 +152,30 @@
                     <tbody>
                         {% for vehicle in vehicles %}
                         <tr>
-                            <td>{{ loop.index }}</td>
+                            <td>{{ (page - 1) * page_size + loop.index }}</td>
                             {% for field in fields %}
-                            <td>{{ vehicle.get(field.name, '-') }}</td>
+                            {% set field_value = vehicle.get(field.name) %}
+                            <td>{{ field_value if field_value is not none and field_value != '' else ('_' if field.is_custom else '-') }}</td>
                             {% endfor %}
                             <!-- عمود الإجراءات -->
                             <td>
-                                <a class="btn btn-warning btn-sm"
-                                   href="{{ url_for('vehicles.vehicle_information', vehicle_id=vehicle.id) }}">
-                                    <i class="fas fa-circle-info" aria-hidden="true"></i> المعلومات
-                                </a>
-                                <a class="btn btn-primary btn-sm"
-                                   href="{{ url_for('reports.vehicle_reports', report_type='single', vehicle_id=vehicle.id, view='print') }}">
-                                    تقرير
-                                </a>
-                                <a class="btn btn-archive btn-sm"
-                                   href="{{ url_for('vehicles.archive_vehicle', vehicle_id=vehicle.id) }}">
-                                    <i class="fas fa-box-archive" aria-hidden="true"></i> إخراج من الخدمة
-                                </a>
+                                <div class="vehicle-actions">
+                                    <a class="btn btn-warning btn-sm vehicle-action"
+                                       href="{{ url_for('vehicles.vehicle_information', vehicle_id=vehicle.id) }}"
+                                       title="المعلومات" aria-label="المعلومات">
+                                        <i class="fas fa-circle-info" aria-hidden="true"></i>
+                                    </a>
+                                    <a class="btn btn-primary btn-sm vehicle-action"
+                                       href="{{ url_for('reports.vehicle_reports', report_type='single', vehicle_id=vehicle.id, view='print') }}"
+                                       title="تقرير PDF" aria-label="تقرير PDF">
+                                        <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                                    </a>
+                                    <a class="btn btn-archive btn-sm vehicle-action"
+                                       href="{{ url_for('vehicles.archive_vehicle', vehicle_id=vehicle.id) }}"
+                                       title="إخراج من الخدمة وأرشفة المركبة" aria-label="إخراج من الخدمة وأرشفة المركبة">
+                                        <i class="fas fa-box-archive" aria-hidden="true"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
@@ -161,6 +185,30 @@
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+                <span class="text-muted">إجمالي المركبات: {{ total_vehicles }}</span>
+                {% if page_count > 1 %}
+                <nav aria-label="صفحات المركبات">
+                    <ul class="pagination mb-0">
+                        <li class="page-item{% if page <= 1 %} disabled{% endif %}">
+                            {% if page > 1 %}
+                            <a class="page-link" href="{{ url_for('vehicles.vehicles_index', q=request.args.get('q', ''), page=page - 1) }}" aria-label="السابق">السابق</a>
+                            {% else %}
+                            <span class="page-link" aria-disabled="true">السابق</span>
+                            {% endif %}
+                        </li>
+                        <li class="page-item disabled"><span class="page-link">{{ page }} / {{ page_count }}</span></li>
+                        <li class="page-item{% if page >= page_count %} disabled{% endif %}">
+                            {% if page < page_count %}
+                            <a class="page-link" href="{{ url_for('vehicles.vehicles_index', q=request.args.get('q', ''), page=page + 1) }}" aria-label="التالي">التالي</a>
+                            {% else %}
+                            <span class="page-link" aria-disabled="true">التالي</span>
+                            {% endif %}
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
             </div>
         </div>
     </div>

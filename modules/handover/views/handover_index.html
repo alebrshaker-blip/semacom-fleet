@@ -96,10 +96,10 @@
                                     <td>
                                         <a class="btn btn-sm btn-outline-primary"
                                            href="{{ url_for('reports.handover_reports', view='print', report_type='single', handover_id=row.id) }}"
-                                           target="_blank" title="تقرير الحركة" aria-label="طباعة تقرير الحركة"><i class="fas fa-file-lines" aria-hidden="true"></i> تقرير</a>
+                                           target="_blank" title="تقرير الحركة" aria-label="طباعة تقرير الحركة"><i class="fas fa-file-lines" aria-hidden="true"></i></a>
                                         <a class="btn btn-sm btn-outline-success"
                                            href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
-                                           target="_blank" title="{% if row.is_certified %}عرض التوثيق المعتمد{% else %}توثيق حركة التسليم{% endif %}" aria-label="{% if row.is_certified %}عرض التوثيق المعتمد{% else %}توثيق حركة التسليم{% endif %}"><i class="fas fa-clipboard-check" aria-hidden="true"></i> {% if row.is_certified %}عرض التوثيق{% else %}توثيق{% endif %}</a>
+                                           target="_blank" title="{% if row.is_certified %}عرض التوثيق المعتمد{% else %}توثيق حركة التسليم{% endif %}" aria-label="{% if row.is_certified %}عرض التوثيق المعتمد{% else %}توثيق حركة التسليم{% endif %}"><i class="fas fa-clipboard-check" aria-hidden="true"></i></a>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -144,7 +144,7 @@
                                         <a class="btn btn-sm btn-outline-success"
                                            href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
                                            target="_blank" title="توثيق الإرجاع ثم أرشفته" aria-label="توثيق الإرجاع ثم أرشفته">
-                                            <i class="fas fa-clipboard-check" aria-hidden="true"></i> توثيق الإرجاع
+                                            <i class="fas fa-clipboard-check" aria-hidden="true"></i>
                                         </a>
                                     </td>
                                 </tr>
@@ -208,10 +208,10 @@
                                         {% if row.is_certified %}
                                         <a class="btn btn-sm btn-outline-success"
                                            href="{{ url_for('reports.handover_reports', view='document', handover_id=row.id) }}"
-                                           target="_blank" title="عرض التوثيق المعتمد" aria-label="عرض التوثيق المعتمد"><i class="fas fa-clipboard-check" aria-hidden="true"></i> عرض التوثيق</a>
+                                           target="_blank" title="عرض التوثيق المعتمد" aria-label="عرض التوثيق المعتمد"><i class="fas fa-clipboard-check" aria-hidden="true"></i></a>
                                         <a class="btn btn-sm btn-outline-primary"
                                            href="{{ url_for('reports.handover_reports', view='print', report_type='single', handover_id=row.id) }}"
-                                           target="_blank" title="طباعة التقرير السابق" aria-label="طباعة التقرير السابق"><i class="fas fa-file-lines" aria-hidden="true"></i> طباعة التقرير السابق</a>
+                                           target="_blank" title="طباعة التقرير السابق" aria-label="طباعة التقرير السابق"><i class="fas fa-file-lines" aria-hidden="true"></i></a>
                                         {% else %}
                                         <span class="text-muted small">غير موثقة — لا يمكن إصدار تقرير بعد الأرشفة</span>
                                         {% endif %}
@@ -221,7 +221,7 @@
                                             <button type="submit" class="btn btn-sm btn-outline-danger"
                                                     data-confirm-delete="{{ url_for('handover.delete_archived_handover', record_id=row.id) }}"
                                                     data-target-name="{{ row.vehicle_info }}"
-                                                    aria-label="حذف الحركة المؤرشفة">
+                                                    title="حذف الحركة المؤرشفة" aria-label="حذف الحركة المؤرشفة">
                                                 <i class="fas fa-trash" aria-hidden="true"></i>
                                             </button>
                                         </form>

@@ -1,0 +1,17 @@
+<div class="row mb-3">
+    <div class="col-md-6">
+        <label class="form-label fw-semibold" for="creation_photo_before_input">صورة قبل المعالجة (اختياري)</label>
+        <div class="maintenance-image-drop-zone" data-maintenance-image-zone>
+            <input type="file" id="creation_photo_before_input" name="photo_before"
+                   accept="image/jpeg,image/png,image/webp" hidden>
+            <img class="maintenance-image-preview" alt="معاينة صورة قبل المعالجة" hidden>
+            <p class="maintenance-image-prompt mb-2">اسحب الصورة هنا أو الصقها، أو اخترها من الجهاز</p>
+            <div class="maintenance-image-actions">
+                <button type="button" class="btn btn-outline-primary"
+                        onclick="document.getElementById('creation_photo_before_input').click()">
+                    اختيار صورة
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

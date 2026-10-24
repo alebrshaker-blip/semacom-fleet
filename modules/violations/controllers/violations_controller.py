@@ -20,7 +20,7 @@ class ViolationsController:
             ViolationsService.add_violation(request.form, file_att)
             flash('تم تسجيل المخالفة واختيار السائق بنجاح', 'success')
             return redirect(url_for('violations.index'))
-        vehicles = vehicles_repository.list_active()
+        vehicles = vehicles_repository.list_active_summaries()
         return render_template('violation_add.html', vehicles=vehicles)
 
     @staticmethod

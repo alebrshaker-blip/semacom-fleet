@@ -1,4 +1,6 @@
 """ORM-backed CRUD for vehicles, custom vehicle fields and the vehicle archive."""
+from uuid import uuid4
+
 from sqlalchemy import column, exists, func, inspect, or_, select, table, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -49,13 +51,44 @@ def is_unique_violation(error):
 
 # ---------------------------------------------------------------- vehicles
 
-def list_active(search_query=None):
-    stmt = _all_vehicle_columns().where(*_active_filter()).order_by(Vehicle.id)
+def _active_vehicles_query(search_query=None):
+    stmt = _all_vehicle_columns().where(*_active_filter())
     if search_query:
         pattern = f"%{search_query}%"
         stmt = stmt.where(or_(*[getattr(Vehicle, name).ilike(pattern) for name in _SEARCH_COLUMNS]))
+    return stmt
+
+
+def list_active(search_query=None, page=None, page_size=50):
+    stmt = _active_vehicles_query(search_query).order_by(Vehicle.id)
+    if page is not None:
+        size = min(100, max(1, int(page_size)))
+        stmt = stmt.offset((max(1, int(page)) - 1) * size).limit(size)
     with get_session() as session:
         return [dict(row) for row in session.connection().execute(stmt).mappings()]
+
+
+def list_active_summaries():
+    """Load only the fields used by vehicle selectors and compact lookup lists."""
+    stmt = (
+        select(
+            Vehicle.id,
+            Vehicle.plate_number,
+            Vehicle.vehicle_code,
+            Vehicle.vehicle_type,
+            Vehicle.model,
+        )
+        .where(*_active_filter())
+        .order_by(Vehicle.id)
+    )
+    with get_session() as session:
+        return [dict(row) for row in session.execute(stmt).mappings()]
+
+
+def count_active(search_query=None):
+    stmt = _active_vehicles_query(search_query).order_by(None).subquery()
+    with get_session() as session:
+        return session.scalar(select(func.count()).select_from(stmt)) or 0
 
 
 def get_vehicle(vehicle_id):
@@ -108,26 +141,57 @@ def create_vehicle(data):
 def list_custom_fields():
     with get_session() as session:
         rows = session.execute(
-            select(VehicleField.name, VehicleField.label, VehicleField.required).order_by(VehicleField.id)
+            select(
+                VehicleField.id,
+                VehicleField.name,
+                VehicleField.label,
+                VehicleField.required,
+            ).order_by(VehicleField.id)
         ).all()
-        return [{"name": r.name, "label": r.label, "required": r.required} for r in rows]
+        return [
+            {
+                "name": r.name,
+                "label": r.label,
+                "required": r.required,
+                "id": r.id,
+            }
+            for r in rows
+        ]
 
 
-def add_custom_field(name, label, required=0):
-    """Register a custom field and add its TEXT column to vehicles (idempotent)."""
-    quoted = engine.dialect.identifier_preparer.quote_identifier(name)
+def add_custom_field(label, required=0):
+    """Create a system-numbered custom field and add its TEXT column to vehicles."""
     with engine.begin() as connection:
-        connection.execute(text(f"ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS {quoted} TEXT"))
-        connection.execute(
+        field_id = connection.execute(
             pg_insert(VehicleField.__table__)
-            .values(name=name, label=label, required=int(required or 0))
-            .on_conflict_do_nothing(index_elements=["name"])
+            .values(
+                name=f"pending_{uuid4().hex}",
+                label=label,
+                required=int(required or 0),
+            )
+            .returning(VehicleField.id)
+        ).scalar_one()
+
+        name = f"custom_field_{field_id}"
+        suffix = 1
+        while connection.execute(
+            select(VehicleField.id).where(VehicleField.name == name)
+        ).first():
+            suffix += 1
+            name = f"custom_field_{field_id}_{suffix}"
+
+        connection.execute(
+            text("UPDATE vehicle_fields SET name = :name WHERE id = :id"),
+            {"name": name, "id": field_id},
         )
+        quoted = engine.dialect.identifier_preparer.quote_identifier(name)
+        connection.execute(text(f"ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS {quoted} TEXT"))
+    return {"id": field_id, "name": name, "label": label, "required": int(required or 0)}
 
 
 # ----------------------------------------------------------------- archive
 
-def list_archived(search_query=""):
+def _archived_vehicles_query(search_query=""):
     stmt = (
         select(
             text("vehicles.*"),
@@ -137,7 +201,6 @@ def list_archived(search_query=""):
         )
         .select_from(VehicleArchive)
         .join(Vehicle, Vehicle.id == VehicleArchive.vehicle_id)
-        .order_by(VehicleArchive.archived_at.desc(), VehicleArchive.id.desc())
     )
     if search_query:
         pattern = f"%{search_query}%"
@@ -147,8 +210,24 @@ def list_archived(search_query=""):
             VehicleArchive.reason.ilike(pattern), VehicleArchive.buyer_name.ilike(pattern),
             VehicleArchive.notes.ilike(pattern),
         ))
+    return stmt
+
+
+def list_archived(search_query="", page=None, page_size=50):
+    stmt = _archived_vehicles_query(search_query).order_by(
+        VehicleArchive.archived_at.desc(), VehicleArchive.id.desc()
+    )
+    if page is not None:
+        size = min(100, max(1, int(page_size)))
+        stmt = stmt.offset((max(1, int(page)) - 1) * size).limit(size)
     with get_session() as session:
         return [dict(row) for row in session.connection().execute(stmt).mappings()]
+
+
+def count_archived(search_query=""):
+    stmt = _archived_vehicles_query(search_query).order_by(None).subquery()
+    with get_session() as session:
+        return session.scalar(select(func.count()).select_from(stmt)) or 0
 
 
 def is_archived(vehicle_id):

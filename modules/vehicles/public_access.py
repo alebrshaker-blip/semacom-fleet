@@ -83,6 +83,7 @@ def ensure_public_tables(connection=None):
                 proposed_values TEXT,
                 photo_1 TEXT,
                 photo_2 TEXT,
+                photo_3 TEXT,
                 video_1 TEXT,
                 response TEXT,
                 status TEXT NOT NULL DEFAULT 'جديد',
@@ -105,7 +106,7 @@ def ensure_public_tables(connection=None):
                 "PRAGMA table_info(vehicle_public_submissions)"
             ).fetchall()
         }
-        for column in ("video_1", "response"):
+        for column in ("photo_3", "video_1", "response"):
             if column not in submission_columns:
                 connection.execute(
                     f'ALTER TABLE vehicle_public_submissions ADD COLUMN "{column}" TEXT'
@@ -499,14 +500,18 @@ def validate_and_save_video(upload):
 def save_submission(
     vehicle_id, submission_type, message, proposed_values=None, photos=None, video=None
 ):
-    photos = photos or [None, None]
+    photos = list(photos or [])
+    if len(photos) > 3:
+        raise ValueError("يمكن إرفاق ثلاث صور كحد أقصى.")
+    photos.extend([None] * (3 - len(photos)))
     connection = get_connection()
     try:
         connection.execute(
             """
             INSERT INTO vehicle_public_submissions
-                (vehicle_id, submission_type, message, proposed_values, photo_1, photo_2, video_1)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (vehicle_id, submission_type, message, proposed_values,
+                 photo_1, photo_2, photo_3, video_1)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 vehicle_id,
@@ -515,6 +520,7 @@ def save_submission(
                 json.dumps(proposed_values, ensure_ascii=False) if proposed_values else None,
                 photos[0],
                 photos[1],
+                photos[2],
                 video,
             ),
         )

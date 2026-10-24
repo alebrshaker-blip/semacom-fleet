@@ -63,7 +63,8 @@ class SettingsService:
             'email_fleet_digest_day': 'smtp', 'email_fleet_digest_hour': 'smtp',
             'gdrive_enabled': 'gdrive', 'gdrive_folder_id': 'gdrive', 'gdrive_client_id': 'gdrive', 'gdrive_client_secret': 'gdrive',
             'prefix_work_order': 'prefixes', 'prefix_store_item': 'prefixes', 'prefix_asset': 'prefixes',
-            'appearance_theme': 'appearance', 'appearance_font_size': 'appearance', 'appearance_primary_color': 'appearance'
+            'appearance_theme': 'appearance', 'appearance_font_size': 'appearance', 'appearance_primary_color': 'appearance',
+            'report_font_family': 'reports', 'report_font_size': 'reports',
         }
         items = []
         for key, value in data.items():
@@ -124,6 +125,10 @@ def seed_fleet_initial_settings():
         ('appearance_theme', 'semacom', 'string', 'appearance', 'الثيم الموحد'),
         ('appearance_font_size', '17', 'number', 'appearance', 'حجم الخط الأساسي'),
         ('appearance_primary_color', '#1b365d', 'string', 'appearance', 'اللون الرئيسي للواجهة'),
+
+        # تنسيق تقارير PDF
+        ('report_font_family', 'Cairo', 'string', 'reports', 'نوع خط تقارير PDF'),
+        ('report_font_size', '14px', 'string', 'reports', 'حجم خط جداول تقارير PDF'),
 
         # إعدادات البريد الإلكتروني SMTP
         ('smtp_server', 'smtp.gmail.com', 'string', 'smtp', 'خادم إرسال البريد'),

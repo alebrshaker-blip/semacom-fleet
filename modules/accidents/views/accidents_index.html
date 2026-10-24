@@ -144,17 +144,17 @@
                             <td>
                                 <div style="display: flex; gap: 5px; justify-content: center;">
                                     <!-- زر فتح تقرير الحادث المباشر باستخدام id الفريد بدقة -->
-                                    <a href="/reports/accidents?report_type=single&accident_id={{ acc.id }}" target="_blank" class="btn btn-info" style="padding: 3px 8px; font-size: 11px;" title="عرض طباعة التقرير">
-                                        <i class="fa-solid fa-file-contract"></i> التقرير
+                                    <a href="/reports/accidents?report_type=single&accident_id={{ acc.id }}" target="_blank" class="btn btn-info" style="padding: 3px 8px; font-size: 11px;" title="عرض طباعة التقرير" aria-label="عرض طباعة تقرير الحادث">
+                                        <i class="fa-solid fa-file-contract" aria-hidden="true"></i>
                                     </a>
 
                                     {% if active_tab == 'active' %}
-                                    <button type="button" class="btn btn-success" style="padding: 3px 8px; font-size: 11px;" onclick="openCloseModal('{{ acc.id }}', '{{ acc.accident_number or acc.id }}')">
-                                        <i class="fa-solid fa-check-to-slot"></i> تسوية وتقفيل
+                                    <button type="button" class="btn btn-success" style="padding: 3px 8px; font-size: 11px;" title="تسوية وتقفيل الحادث" aria-label="تسوية وتقفيل الحادث" onclick="openCloseModal('{{ acc.id }}', '{{ acc.accident_number or acc.id }}')">
+                                        <i class="fa-solid fa-check-to-slot" aria-hidden="true"></i>
                                     </button>
                                     {% endif %}
-                                    <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 11px;" onclick="confirmDelete('{{ acc.id }}', '{{ acc.accident_number or acc.id }}')">
-                                        <i class="fa-solid fa-trash"></i> حذف
+                                    <button type="button" class="btn btn-danger" style="padding: 3px 8px; font-size: 11px;" title="حذف الحادث" aria-label="حذف الحادث" onclick="confirmDelete('{{ acc.id }}', '{{ acc.accident_number or acc.id }}')">
+                                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                     </button>
                                 </div>
                             </td>

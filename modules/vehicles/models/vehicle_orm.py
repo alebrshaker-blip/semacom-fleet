@@ -1,4 +1,4 @@
-from sqlalchemy import CheckConstraint, Float, ForeignKey, Integer, Text, text
+from sqlalchemy import CheckConstraint, Float, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.database import Base
@@ -49,6 +49,7 @@ class VehicleArchive(Base):
     __tablename__ = "vehicle_archive"
     __table_args__ = (
         CheckConstraint("sale_value IS NULL OR sale_value >= 0", name="sale_value_non_negative"),
+        Index("ix_vehicle_archive_archived_at_id", "archived_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

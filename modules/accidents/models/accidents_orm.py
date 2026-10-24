@@ -1,4 +1,4 @@
-from sqlalchemy import Float, Integer, Text
+from sqlalchemy import Float, Index, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base, DictMixin
@@ -6,6 +6,10 @@ from core.database import Base, DictMixin
 
 class Accident(DictMixin, Base):
     __tablename__ = "accidents"
+    __table_args__ = (
+        Index("ix_accidents_vehicle_datetime", "vehicle_plate", "accident_datetime"),
+        Index("ix_accidents_status_datetime", "status_type", "accident_datetime"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     accident_number: Mapped[str | None] = mapped_column(Text)

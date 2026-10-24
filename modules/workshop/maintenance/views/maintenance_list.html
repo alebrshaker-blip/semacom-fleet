@@ -492,20 +492,23 @@
                             <div class="d-flex justify-content-center gap-2">
                                 {% if current_status == 'open' %}
                                     <a href="{{ url_for('workshop.maintenance.maintenance_close', order_id=order.id) }}" 
-                                       class="btn btn-outline-success btn-action shadow-sm">
-                                        <span>✅</span> تقفيل
+                                       class="btn btn-outline-success btn-action shadow-sm"
+                                       title="تقفيل أمر الصيانة" aria-label="تقفيل أمر الصيانة">
+                                        <i class="fa-solid fa-lock" aria-hidden="true"></i>
                                     </a>
                                 {% endif %}
 
                                 <a href="{{ url_for('reports.maintenance_reports', order_id=order.id, view='print') }}"
-                                   class="btn btn-outline-primary btn-action shadow-sm">
-                                    تقرير
+                                   class="btn btn-outline-primary btn-action shadow-sm"
+                                   title="عرض تقرير الصيانة" aria-label="عرض تقرير الصيانة">
+                                    <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
                                 </a>
                                 
                                 <button type="button" 
                                         class="btn btn-outline-danger btn-action shadow-sm" 
+                                        title="حذف أمر الصيانة" aria-label="حذف أمر الصيانة"
                                         onclick="triggerDeleteDialog('{{ order.order_no or order.id }}', '{{ url_for('workshop.maintenance.maintenance_delete', order_id=order.id) }}', '{{ m_type }}', '{{ current_status }}')">
-                                    <span>🗑️</span> حذف
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                 </button>
                             </div>
                         </td>

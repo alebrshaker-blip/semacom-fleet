@@ -6,6 +6,8 @@ import psycopg2
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker
+from sqlalchemy.schema import CreateIndex
+from sqlalchemy.sql import text
 
 from config import settings
 from core.sql_compat import split_statements, translate
@@ -30,11 +32,12 @@ def _database_url():
             "postgresql+psycopg2://user:password@localhost:5432/semacom"
         )
     url = make_url(raw_url)
-    if not url.drivername.startswith(("postgresql", "postgres")):
+    backend = url.drivername.partition("+")[0]
+    if backend not in {"postgres", "postgresql"}:
         raise RuntimeError("DATABASE_URL must point to a PostgreSQL database.")
-    if url.drivername in ("postgres", "postgresql"):
-        url = url.set(drivername="postgresql+psycopg2")
-    return url
+    if "+" in url.drivername and url.drivername.partition("+")[2] != "psycopg2":
+        raise RuntimeError("DATABASE_URL must use the psycopg2 SQLAlchemy driver.")
+    return url.set(drivername="postgresql+psycopg2")
 
 
 engine = create_engine(
@@ -340,11 +343,45 @@ def sync_columns():
                 ))
 
 
+def sync_indexes():
+    """Idempotently create and verify declared ORM indexes in the active schema."""
+    expected_indexes = {}
+    with engine.begin() as connection:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                connection.execute(CreateIndex(index, if_not_exists=True))
+                expected_indexes[index.name] = table.name
+        if not expected_indexes:
+            return
+
+        existing_indexes = dict(connection.execute(
+            text(
+                "SELECT indexname, tablename FROM pg_indexes "
+                "WHERE schemaname = current_schema()"
+            )
+        ).all())
+        missing_or_misplaced = {
+            name: table_name
+            for name, table_name in expected_indexes.items()
+            if existing_indexes.get(name) != table_name
+        }
+        if missing_or_misplaced:
+            details = ", ".join(
+                f"{name} on {table_name}"
+                for name, table_name in missing_or_misplaced.items()
+            )
+            raise RuntimeError(
+                "ORM indexes are missing or attached to the wrong table in the "
+                f"active PostgreSQL schema: {details}"
+            )
+
+
 def init_orm_schema():
     """Create any missing tables and columns for the registered ORM models."""
     load_models()
     Base.metadata.create_all(bind=engine)
     sync_columns()
+    sync_indexes()
 
 
 def ensure_compat_views():
