@@ -204,6 +204,7 @@
     const videoPathInput = document.getElementById("video-path");
     const videoStatus = document.getElementById("video-status");
     const submitButton = issueForm.querySelector('button[type="submit"]');
+    const submitButtonLabel = submitButton.textContent;
     const videoUploadUrl = {{ url_for('vehicles.public_video_upload_url', token=token)|tojson }};
     const videoUploadCancelUrl = {{ url_for('vehicles.public_cancel_video_upload', token=token)|tojson }};
     const supabaseAnonKey = {{ supabase_anon_key|tojson }};
@@ -300,27 +301,20 @@
     issueForm.addEventListener("submit", async function (event) {
         const video = videoInput.files[0];
         event.preventDefault();
-        if (!video || videoPathInput.value) {
-            submitButton.disabled = true;
-            videoStatus.textContent = "جارٍ إرسال البلاغ...";
-            try {
-                await submitIssue();
-            } catch (error) {
-                videoStatus.textContent = error.message || "تعذر إرسال البلاغ.";
-                submitButton.disabled = false;
-            }
-            return;
-        }
-
-        if (video.size > 200 * 1024 * 1024) {
-            videoStatus.textContent = "يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.";
-            return;
-        }
         submitButton.disabled = true;
-        videoStatus.textContent = "جارٍ تجهيز رفع الفيديو مباشرةً...";
         let stagedVideoPath = null;
 
         try {
+            if (!video || videoPathInput.value) {
+                videoStatus.textContent = "جارٍ إرسال البلاغ...";
+                submitButton.textContent = "جارٍ إرسال البلاغ...";
+                await submitIssue();
+                return;
+            }
+
+            submitButton.textContent = "جارٍ رفع الفيديو...";
+            videoStatus.textContent = "جارٍ تجهيز رفع الفيديو مباشرةً...";
+
             const extension = video.name.slice(video.name.lastIndexOf(".")).toLowerCase();
             const signedResponse = await fetch(videoUploadUrl, {
                 method: "POST",
@@ -336,19 +330,23 @@
                 throw new Error("تعذر بدء رفع الفيديو؛ لم يُرجع الخادم رابط الرفع المطلوب.");
             }
             stagedVideoPath = signedResult.path;
+            const maxVideoBytes = Number(signedResult.max_bytes) || 200 * 1024 * 1024;
+            if (video.size > maxVideoBytes) {
+                throw new Error("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.");
+            }
 
             videoStatus.textContent = "جارٍ رفع الفيديو؛ يرجى إبقاء الصفحة مفتوحة...";
-            const uploadForm = new FormData();
-            uploadForm.append("cacheControl", "3600");
-            uploadForm.append("", video);
+            submitButton.textContent = "جارٍ رفع الفيديو...";
             const uploadResponse = await fetch(signedResult.signed_url, {
                 method: "PUT",
                 headers: {
                     "x-upsert": "false",
                     "apikey": publicApiKey,
-                    "Authorization": `Bearer ${publicApiKey}`
+                    "Authorization": `Bearer ${publicApiKey}`,
+                    "Content-Type": video.type || "application/octet-stream",
+                    "Cache-Control": "max-age=3600"
                 },
-                body: uploadForm
+                body: video
             });
             if (!uploadResponse.ok) {
                 throw new Error("تعذر رفع الفيديو إلى التخزين؛ تحقق من الاتصال وحاول مجدداً.");
@@ -356,6 +354,7 @@
 
             videoPathInput.value = signedResult.path;
             videoStatus.textContent = "اكتمل رفع الفيديو؛ جارٍ إرسال البلاغ...";
+            submitButton.textContent = "جارٍ إرسال البلاغ...";
             await submitIssue();
         } catch (error) {
             if (stagedVideoPath) {
@@ -370,8 +369,12 @@
                 }
                 videoPathInput.value = "";
             }
-            videoStatus.textContent = error.message || "تعذر رفع الفيديو؛ حاول مرة أخرى.";
+            videoStatus.textContent = error instanceof TypeError
+                ? "تعذر الاتصال بالخادم؛ تحقق من اتصال الإنترنت وحاول مرة أخرى."
+                : error.message || "تعذر إرسال البلاغ؛ حاول مرة أخرى.";
+        } finally {
             submitButton.disabled = false;
+            submitButton.textContent = submitButtonLabel;
         }
     });
 </script>

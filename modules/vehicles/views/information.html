@@ -24,18 +24,39 @@
     @media (max-width: 850px) { .vehicle-info-layout { grid-template-columns: 1fr; } }
     @media print {
         @page { size: A4 portrait; margin: 0; }
-        html, body { width: 100%; height: 100%; margin: 0 !important; padding: 0 !important; }
-        body * { visibility: hidden !important; }
-        .qr-print, .qr-print * { visibility: visible !important; }
+        html, body {
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        body > * { display: none !important; }
+        body > main.content-wrapper,
+        body > main.content-wrapper > .container,
+        body > main.content-wrapper > .container > .vehicle-info-layout,
+        .qr-print,
+        .qr-print * { display: block !important; }
+        body > main.content-wrapper,
+        body > main.content-wrapper > .container,
+        body > main.content-wrapper > .container > .vehicle-info-layout {
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
         .qr-print {
-            position: fixed;
-            inset: 0;
+            position: static !important;
             box-sizing: border-box;
-            width: 100%;
-            height: 100%;
-            margin: 0;
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
             padding: 16mm;
-            display: flex;
+            display: flex !important;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -45,7 +66,7 @@
             page-break-inside: avoid;
         }
         .qr-print h2, .qr-print p { flex: 0 0 auto; }
-        .qr-image { flex: 0 1 auto; max-height: 65vh; }
+        .qr-image { display: block !important; flex: 0 1 auto; max-height: 65vh; }
         .qr-url, .qr-actions { display: none !important; }
     }
 </style>

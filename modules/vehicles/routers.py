@@ -13,6 +13,8 @@ from modules.vehicles.controller.vehicles_controller import VehiclesController
 from modules.vehicles.public_access import (
     IMMUTABLE_PUBLIC_FIELDS,
     MAX_PUBLIC_SUBMISSION_BYTES,
+    MAX_VIDEO_BYTES,
+    MAX_VIDEO_DURATION_SECONDS,
     THANK_YOU_MESSAGE,
     create_public_video_upload_path,
     create_vehicle_qr,
@@ -477,6 +479,8 @@ def public_video_upload_url(token):
             signed_url=signed_upload["signed_url"],
             path=signed_upload["path"],
             api_key=settings.SUPABASE_PUBLIC_KEY,
+            max_bytes=MAX_VIDEO_BYTES,
+            max_duration_seconds=MAX_VIDEO_DURATION_SECONDS,
         )
     except RequestEntityTooLarge:
         return jsonify(
