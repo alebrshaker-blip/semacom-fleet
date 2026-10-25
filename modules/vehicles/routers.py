@@ -460,7 +460,7 @@ def public_video_upload_url(token):
             return jsonify(error="رابط المركبة غير صالح أو منتهي الصلاحية."), 404
         if not profile["inquiries_enabled"]:
             return jsonify(error="إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً."), 403
-        if not settings.SUPABASE_ANON_KEY:
+        if not settings.SUPABASE_PUBLIC_KEY:
             return jsonify(
                 error="رفع الفيديو غير مهيأ؛ يرجى ضبط مفتاح Supabase العام."
             ), 503
@@ -477,7 +477,7 @@ def public_video_upload_url(token):
         return jsonify(
             signed_url=signed_upload["signed_url"],
             path=signed_upload["path"],
-            api_key=settings.SUPABASE_ANON_KEY,
+            api_key=settings.SUPABASE_PUBLIC_KEY,
         )
     finally:
         connection.close()

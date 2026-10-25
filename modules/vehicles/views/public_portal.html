@@ -279,6 +279,10 @@
             if (!signedResponse.ok) {
                 throw new Error(signedResult.error || "تعذر بدء رفع الفيديو.");
             }
+            const publicApiKey = signedResult.api_key || signedResult.supabase_key;
+            if (!publicApiKey || !signedResult.signed_url || !signedResult.path) {
+                throw new Error("رفع الفيديو غير مهيأ؛ يرجى ضبط مفتاح Supabase العام.");
+            }
             stagedVideoPath = signedResult.path;
 
             videoStatus.textContent = "جارٍ رفع الفيديو؛ يرجى إبقاء الصفحة مفتوحة...";
@@ -289,8 +293,8 @@
                 method: "PUT",
                 headers: {
                     "x-upsert": "false",
-                    "apikey": signedResult.api_key,
-                    "Authorization": `Bearer ${signedResult.api_key}`
+                    "apikey": publicApiKey,
+                    "Authorization": `Bearer ${publicApiKey}`
                 },
                 body: uploadForm
             });

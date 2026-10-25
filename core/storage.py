@@ -28,8 +28,8 @@ def _get_client():
     if _client is None:
         if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
             raise StorageError(
-                'Supabase Storage is not configured: set SUPABASE_URL and '
-                'SUPABASE_SERVICE_ROLE_KEY in .env.'
+                'Supabase Storage is not configured: set SUPABASE_URL and one of '
+                'SUPABASE_SERVICE_ROLE_KEY, SUPABASE_KEY, or SUPABASE_ANON_KEY in .env.'
             )
         from supabase import create_client
         _client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)

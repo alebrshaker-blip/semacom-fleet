@@ -1,4 +1,6 @@
 """Central configuration. All values come from environment / the .env file."""
+import base64
+import json
 import os
 from pathlib import Path
 
@@ -46,11 +48,40 @@ DB_ECHO = _get_bool("DB_ECHO", False)
 SCHEMA_PATH = BASE_DIR / "database" / "schema.sql"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
-# Server-side key (service_role) so uploads work regardless of bucket policies.
+_SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+_SUPABASE_KEY_ALIAS = os.environ.get("SUPABASE_KEY", "").strip()
+_SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+
+
+def _is_public_supabase_key(value):
+    if value.startswith("sb_publishable_"):
+        return True
+    if value.startswith("sb_secret_"):
+        return False
+    parts = value.split(".")
+    if len(parts) != 3:
+        return False
+    try:
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+    except (ValueError, json.JSONDecodeError):
+        return False
+    return isinstance(claims, dict) and claims.get("role") == "anon"
+
+
+# The server can use an anon key when Storage policies permit signed uploads.
+# Prefer the service role for server-side operations, but never expose it to browsers.
 SUPABASE_KEY = (
-    os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY") or ""
-).strip()
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+    _SUPABASE_SERVICE_ROLE_KEY or _SUPABASE_KEY_ALIAS or _SUPABASE_ANON_KEY
+)
+SUPABASE_ANON_KEY = _SUPABASE_ANON_KEY
+SUPABASE_PUBLIC_KEY = next(
+    (
+        key for key in (_SUPABASE_ANON_KEY, _SUPABASE_KEY_ALIAS)
+        if key and _is_public_supabase_key(key)
+    ),
+    "",
+)
 SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "app-files").strip() or "app-files"
 
 MAX_CONTENT_LENGTH = _get_int("MAX_CONTENT_LENGTH_MB", 32) * 1024 * 1024
