@@ -57,9 +57,9 @@
             </ul>
         </section>
         {% endif %}
-        {% if submission.photo_1 or submission.photo_2 or submission.photo_3 %}
+        {% if submission.photo_1 or submission.photo_2 or submission.photo_3 or submission.photo_4 or submission.photo_5 %}
         <div class="photos">
-            {% for photo in [submission.photo_1, submission.photo_2, submission.photo_3] if photo %}
+            {% for photo in [submission.photo_1, submission.photo_2, submission.photo_3, submission.photo_4, submission.photo_5] if photo %}
             <a href="{{ photo }}" target="_blank" rel="noopener">
                 <img src="{{ photo }}" alt="صورة مرفقة بالبلاغ">
             </a>
@@ -72,6 +72,11 @@
                 <source src="{{ submission.video_1 }}">
                 متصفحك لا يدعم تشغيل الفيديو.
             </video>
+        </div>
+        {% endif %}
+        {% if submission.audio_1 %}
+        <div class="photos">
+            <audio controls preload="none" src="{{ submission.audio_1 }}" aria-label="التسجيل الصوتي المرفق"></audio>
         </div>
         {% endif %}
         {% if submission.submission_type == 'استفسار أو بلاغ مشكلة' %}

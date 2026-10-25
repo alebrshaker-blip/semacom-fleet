@@ -53,10 +53,14 @@ IMMUTABLE_PUBLIC_FIELDS = {
 }
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_COUNT = 5
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm"}
 MAX_VIDEO_BYTES = 200 * 1024 * 1024
 MAX_VIDEO_DURATION_SECONDS = 120
-MAX_PUBLIC_SUBMISSION_BYTES = 3 * MAX_IMAGE_BYTES + 1024 * 1024
+ALLOWED_AUDIO_EXTENSIONS = {".webm", ".m4a", ".ogg"}
+MAX_AUDIO_BYTES = 5 * 1024 * 1024
+MAX_AUDIO_DURATION_SECONDS = 120
+MAX_PUBLIC_SUBMISSION_BYTES = MAX_IMAGE_COUNT * MAX_IMAGE_BYTES + 1024 * 1024
 MAX_PUBLIC_ISSUE_JSON_BYTES = 1024 * 1024
 PUBLIC_VIDEO_UPLOAD_FOLDER = "vehicle_public_uploads"
 THANK_YOU_MESSAGE = "شكراً لكم، سيتم النظر في طلبكم وإبلاغكم بالرد في أقرب وقت."
@@ -90,7 +94,10 @@ def ensure_public_tables(connection=None):
                 photo_1 TEXT,
                 photo_2 TEXT,
                 photo_3 TEXT,
+                photo_4 TEXT,
+                photo_5 TEXT,
                 video_1 TEXT,
+                audio_1 TEXT,
                 response TEXT,
                 status TEXT NOT NULL DEFAULT 'جديد',
                 submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -112,7 +119,7 @@ def ensure_public_tables(connection=None):
                 "PRAGMA table_info(vehicle_public_submissions)"
             ).fetchall()
         }
-        for column in ("photo_3", "video_1", "response"):
+        for column in ("photo_3", "photo_4", "photo_5", "video_1", "audio_1", "response"):
             if column not in submission_columns:
                 connection.execute(
                     f'ALTER TABLE vehicle_public_submissions ADD COLUMN "{column}" TEXT'
@@ -582,10 +589,26 @@ def create_public_image_upload_path(vehicle_id, extension):
     )
 
 
+def create_public_audio_upload_path(vehicle_id, extension):
+    extension = str(extension or "").lower()
+    if extension not in ALLOWED_AUDIO_EXTENSIONS:
+        raise ValueError("تعذر تجهيز التسجيل الصوتي بهذه الصيغة.")
+    return (
+        f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/audio/"
+        f"{uuid.uuid4().hex}{extension}"
+    )
+
+
 def is_public_video_upload_path(path, vehicle_id):
     prefix = f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/"
     filename = path[len(prefix):] if isinstance(path, str) and path.startswith(prefix) else ""
     return bool(re.fullmatch(r"[a-f0-9]{32}\.(mp4|mov|webm)", filename))
+
+
+def is_public_audio_upload_path(path, vehicle_id):
+    prefix = f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/audio/"
+    filename = path[len(prefix):] if isinstance(path, str) and path.startswith(prefix) else ""
+    return bool(re.fullmatch(r"[a-f0-9]{32}\.(webm|m4a|ogg)", filename))
 
 
 def is_public_image_upload_path(path, vehicle_id):
@@ -597,6 +620,7 @@ def is_public_image_upload_path(path, vehicle_id):
 def is_public_issue_upload_path(path, vehicle_id):
     return (
         is_public_video_upload_path(path, vehicle_id)
+        or is_public_audio_upload_path(path, vehicle_id)
         or is_public_image_upload_path(path, vehicle_id)
     )
 
@@ -628,20 +652,21 @@ def validate_uploaded_video(path, vehicle_id):
 
 
 def save_submission(
-    vehicle_id, submission_type, message, proposed_values=None, photos=None, video=None
+    vehicle_id, submission_type, message, proposed_values=None, photos=None, video=None,
+    audio=None,
 ):
     photos = list(photos or [])
-    if len(photos) > 3:
-        raise ValueError("يمكن إرفاق ثلاث صور كحد أقصى.")
-    photos.extend([None] * (3 - len(photos)))
+    if len(photos) > MAX_IMAGE_COUNT:
+        raise ValueError(f"يمكن إرفاق {MAX_IMAGE_COUNT} صور كحد أقصى.")
+    photos.extend([None] * (MAX_IMAGE_COUNT - len(photos)))
     connection = get_connection()
     try:
         connection.execute(
             """
             INSERT INTO vehicle_public_submissions
                 (vehicle_id, submission_type, message, proposed_values,
-                 photo_1, photo_2, photo_3, video_1)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 photo_1, photo_2, photo_3, photo_4, photo_5, video_1, audio_1)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 vehicle_id,
@@ -651,14 +676,17 @@ def save_submission(
                 photos[0],
                 photos[1],
                 photos[2],
+                photos[3],
+                photos[4],
                 video,
+                audio,
             ),
         )
         connection.commit()
     except dbapi.Error:
         connection.rollback()
-        if photos or video:
-            storage.delete_files(*photos, video)
+        if photos or video or audio:
+            storage.delete_files(*photos, video, audio)
         raise
     finally:
         connection.close()

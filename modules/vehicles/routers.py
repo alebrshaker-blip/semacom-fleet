@@ -16,10 +16,14 @@ from modules.vehicles.public_access import (
     MAX_IMAGE_BYTES,
     MAX_PUBLIC_SUBMISSION_BYTES,
     MAX_PUBLIC_ISSUE_JSON_BYTES,
+    MAX_AUDIO_BYTES,
+    MAX_AUDIO_DURATION_SECONDS,
+    MAX_IMAGE_COUNT,
     MAX_VIDEO_BYTES,
     MAX_VIDEO_DURATION_SECONDS,
     THANK_YOU_MESSAGE,
     create_public_image_upload_path,
+    create_public_audio_upload_path,
     create_public_video_upload_path,
     create_vehicle_qr,
     ensure_public_tables,
@@ -30,6 +34,7 @@ from modules.vehicles.public_access import (
     get_public_profile,
     get_vehicle_information,
     is_public_video_upload_path,
+    is_public_audio_upload_path,
     is_public_image_upload_path,
     is_public_issue_upload_path,
     read_field_settings,
@@ -534,6 +539,15 @@ def public_issue_media_upload_url(token):
                 ".png": "image/png",
                 ".webp": "image/webp",
             }[extension.lower()]
+        elif kind == "audio":
+            path = create_public_audio_upload_path(profile["vehicle_id"], extension)
+            max_bytes = MAX_AUDIO_BYTES
+            max_duration_seconds = MAX_AUDIO_DURATION_SECONDS
+            content_type = {
+                ".webm": "audio/webm",
+                ".m4a": "audio/mp4",
+                ".ogg": "audio/ogg",
+            }[extension.lower()]
         elif kind == "video":
             path = create_public_video_upload_path(profile["vehicle_id"], extension)
             max_bytes = MAX_VIDEO_BYTES
@@ -619,6 +633,7 @@ def public_submit_issue(token):
     profile = None
     photos = []
     video_path = None
+    audio_path = None
     is_json_submission = request.is_json
     request_limit = MAX_PUBLIC_SUBMISSION_BYTES
     try:
@@ -652,8 +667,9 @@ def public_submit_issue(token):
             message = str(payload.get("message") or "").strip()
             photo_urls = payload.get("photo_urls") or []
             video_url = str(payload.get("video_url") or "").strip() or None
-            if not isinstance(photo_urls, list) or len(photo_urls) > 3:
-                raise ValueError("يمكن إرفاق ثلاث صور كحد أقصى.")
+            audio_url = str(payload.get("audio_url") or "").strip() or None
+            if not isinstance(photo_urls, list) or len(photo_urls) > MAX_IMAGE_COUNT:
+                raise ValueError(f"يمكن إرفاق {MAX_IMAGE_COUNT} صور كحد أقصى.")
             if any(not isinstance(url, str) for url in photo_urls):
                 raise ValueError("روابط الصور المرفقة غير صالحة.")
             for photo_url in photo_urls:
@@ -677,15 +693,27 @@ def public_submit_issue(token):
                 if video_size > MAX_VIDEO_BYTES:
                     raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
                 video = storage.get_public_url(video_path)
+            audio = None
+            if audio_url:
+                audio_path = storage.object_path_from_url(audio_url)
+                if not audio_path or not is_public_audio_upload_path(
+                    audio_path, profile["vehicle_id"]
+                ):
+                    raise ValueError("رابط التسجيل الصوتي غير صالح.")
+                audio_size = storage.get_object_size(audio_path)
+                if audio_size <= 0 or audio_size > MAX_AUDIO_BYTES:
+                    raise ValueError("يجب ألا يتجاوز حجم التسجيل الصوتي 5 ميجابايت.")
+                audio = storage.get_public_url(audio_path)
         else:
             message = (request.form.get("message") or "").strip()
             video_path = (request.form.get("video_path") or "").strip() or None
             uploads = request.files.getlist("photos")
             uploads = [upload for upload in uploads if upload and upload.filename]
-            if len(uploads) > 3:
-                raise ValueError("يمكن إرفاق ثلاث صور كحد أقصى.")
+            if len(uploads) > MAX_IMAGE_COUNT:
+                raise ValueError(f"يمكن إرفاق {MAX_IMAGE_COUNT} صور كحد أقصى.")
             photos = validate_and_save_photos(uploads)
             video = None
+            audio = None
             if video_path:
                 if not is_public_video_upload_path(video_path, profile["vehicle_id"]):
                     raise ValueError("مسار الفيديو المرفوع غير صالح.")
@@ -698,6 +726,7 @@ def public_submit_issue(token):
             message[:4000],
             photos=photos,
             video=video,
+            audio=audio,
         )
         if is_json_submission or request.accept_mimetypes.best == "application/json":
             return jsonify(
@@ -716,7 +745,8 @@ def public_submit_issue(token):
     except RequestEntityTooLarge:
         current_app.logger.info("Rejected oversized vehicle QR issue submission")
         _cleanup_failed_issue_uploads(
-            photos, video_path, profile.get("vehicle_id") if profile else None
+            photos, video_path, profile.get("vehicle_id") if profile else None,
+            audio_path,
         )
         return jsonify(
             success=False,
@@ -725,13 +755,15 @@ def public_submit_issue(token):
         ), 413
     except ValueError as error:
         _cleanup_failed_issue_uploads(
-            photos, video_path, profile.get("vehicle_id") if profile else None
+            photos, video_path, profile.get("vehicle_id") if profile else None,
+            audio_path,
         )
         return jsonify(success=False, error=str(error)), 400
     except storage.StorageError:
         current_app.logger.exception("Vehicle QR report upload failed")
         _cleanup_failed_issue_uploads(
-            photos, video_path, profile.get("vehicle_id") if profile else None
+            photos, video_path, profile.get("vehicle_id") if profile else None,
+            audio_path,
         )
         return jsonify(
             success=False,
@@ -740,7 +772,8 @@ def public_submit_issue(token):
     except Exception:
         current_app.logger.exception("Unexpected error while processing a vehicle QR issue submission")
         _cleanup_failed_issue_uploads(
-            photos, video_path, profile.get("vehicle_id") if profile else None
+            photos, video_path, profile.get("vehicle_id") if profile else None,
+            audio_path,
         )
         return jsonify(
             success=False,
@@ -754,7 +787,7 @@ def public_submit_issue(token):
                 current_app.logger.exception("Failed to close vehicle issue submission connection")
 
 
-def _cleanup_failed_issue_uploads(photos, video_path, vehicle_id):
+def _cleanup_failed_issue_uploads(photos, video_path, vehicle_id, audio_path=None):
     try:
         storage.delete_files(*photos)
     except Exception:
@@ -764,6 +797,11 @@ def _cleanup_failed_issue_uploads(photos, video_path, vehicle_id):
             storage.delete_object(video_path)
         except Exception:
             current_app.logger.exception("Failed to clean up staged vehicle issue video")
+    if audio_path and vehicle_id and is_public_audio_upload_path(audio_path, vehicle_id):
+        try:
+            storage.delete_object(audio_path)
+        except Exception:
+            current_app.logger.exception("Failed to clean up staged vehicle issue audio")
 
 
 @vehicles_bp.route("/public-submissions")
@@ -807,7 +845,7 @@ def public_vehicle_submissions(token):
         rows = connection.execute(
             """
             SELECT id, submission_type, message, response, status, submitted_at,
-                   photo_1, photo_2, photo_3, video_1
+                   photo_1, photo_2, photo_3, photo_4, photo_5, video_1, audio_1
             FROM vehicle_public_submissions
             WHERE vehicle_id = ? AND submission_type = 'استفسار أو بلاغ مشكلة'
             ORDER BY submitted_at DESC, id DESC
@@ -829,7 +867,9 @@ def public_vehicle_submissions(token):
 
 
 def _resolve_submission_attachments(submission):
-    for field in ("photo_1", "photo_2", "photo_3", "video_1"):
+    for field in (
+        "photo_1", "photo_2", "photo_3", "photo_4", "photo_5", "video_1", "audio_1"
+    ):
         submission[field] = storage.resolve_url(
             submission.get(field), "uploads/vehicle_qr_reports"
         )
@@ -891,7 +931,7 @@ def delete_public_submission(submission_id):
         ensure_public_tables(connection)
         submission = connection.execute(
             """
-            SELECT photo_1, photo_2, photo_3, video_1
+            SELECT photo_1, photo_2, photo_3, photo_4, photo_5, video_1, audio_1
             FROM vehicle_public_submissions WHERE id = ?
             """,
             (submission_id,),
