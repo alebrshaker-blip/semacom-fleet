@@ -1,7 +1,9 @@
 import json
+import math
 import mimetypes
 import os
 import re
+import struct
 from config import settings
 from core import database as dbapi
 from core import storage
@@ -51,10 +53,11 @@ IMMUTABLE_PUBLIC_FIELDS = {
 }
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov"}
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm"}
 MAX_VIDEO_BYTES = 200 * 1024 * 1024
 MAX_VIDEO_DURATION_SECONDS = 120
 MAX_PUBLIC_SUBMISSION_BYTES = 3 * MAX_IMAGE_BYTES + 1024 * 1024
+MAX_PUBLIC_ISSUE_JSON_BYTES = 1024 * 1024
 PUBLIC_VIDEO_UPLOAD_FOLDER = "vehicle_public_uploads"
 THANK_YOU_MESSAGE = "شكراً لكم، سيتم النظر في طلبكم وإبلاغكم بالرد في أقرب وقت."
 
@@ -388,14 +391,18 @@ def create_vehicle_qr(token):
     cache_key = (token, public_url)
     qr_url = _QR_URLS.get(cache_key)
     if qr_url is None:
-        buffer = BytesIO()
-        qrcode.make(public_url).save(buffer, format="PNG")
         qr_url = storage.upload_bytes(
-            buffer.getvalue(), "vehicle_qr", content_type="image/png",
+            generate_vehicle_qr_png(public_url), "vehicle_qr", content_type="image/png",
             path=f"vehicle_qr/{token}.png", upsert=True,
         )
         _QR_URLS[cache_key] = qr_url
     return qr_url, public_url
+
+
+def generate_vehicle_qr_png(public_url):
+    buffer = BytesIO()
+    qrcode.make(public_url).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def validate_and_save_photos(files):
@@ -495,12 +502,82 @@ def _mp4_duration_seconds(payload):
     return duration / timescale
 
 
+def _read_ebml_vint(payload, offset, strip_marker):
+    if offset >= len(payload) or payload[offset] == 0:
+        return None
+    first = payload[offset]
+    marker = 0x80
+    length = 1
+    while not first & marker:
+        marker >>= 1
+        length += 1
+        if length > 8:
+            return None
+    if offset + length > len(payload):
+        return None
+    value = first & (marker - 1) if strip_marker else first
+    for byte in payload[offset + 1:offset + length]:
+        value = (value << 8) | byte
+    if strip_marker and value == (1 << (7 * length)) - 1:
+        return None
+    return value, offset + length
+
+
+def _webm_duration_seconds(payload):
+    if not payload.startswith(b"\x1a\x45\xdf\xa3"):
+        return None
+    segment_offset = payload.find(b"\x18\x53\x80\x67")
+    info_offset = payload.find(b"\x15\x49\xa9\x66", segment_offset + 4)
+    if segment_offset < 0 or info_offset < 0:
+        return None
+
+    info_size = _read_ebml_vint(payload, info_offset + 4, True)
+    if not info_size:
+        return None
+    info_end = min(info_size[1] + info_size[0], len(payload))
+    offset = info_size[1]
+    timecode_scale = 1_000_000
+    duration = None
+    while offset < info_end:
+        element_id = _read_ebml_vint(payload, offset, False)
+        if not element_id:
+            return None
+        element_size = _read_ebml_vint(payload, element_id[1], True)
+        if not element_size:
+            return None
+        data_start = element_size[1]
+        data_end = data_start + element_size[0]
+        if data_end > info_end:
+            return None
+        if element_id[0] == 0x2AD7B1 and 0 < element_size[0] <= 8:
+            timecode_scale = int.from_bytes(payload[data_start:data_end], "big")
+        elif element_id[0] == 0x4489:
+            if element_size[0] == 4:
+                duration = struct.unpack(">f", payload[data_start:data_end])[0]
+            elif element_size[0] == 8:
+                duration = struct.unpack(">d", payload[data_start:data_end])[0]
+        offset = data_end
+    if duration is None or not math.isfinite(duration) or duration <= 0 or timecode_scale <= 0:
+        return None
+    return duration * timecode_scale / 1_000_000_000
+
+
 def create_public_video_upload_path(vehicle_id, extension):
     extension = str(extension or "").lower()
     if extension not in ALLOWED_VIDEO_EXTENSIONS:
-        raise ValueError("يرجى إرفاق مقطع بصيغة MP4 أو MOV.")
+        raise ValueError("يرجى إرفاق مقطع بصيغة MP4 أو MOV أو WEBM.")
     return (
         f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/"
+        f"{uuid.uuid4().hex}{extension}"
+    )
+
+
+def create_public_image_upload_path(vehicle_id, extension):
+    extension = str(extension or "").lower()
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise ValueError("يرجى إرفاق صور بصيغة JPG أو PNG أو WEBP فقط.")
+    return (
+        f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/images/"
         f"{uuid.uuid4().hex}{extension}"
     )
 
@@ -508,7 +585,20 @@ def create_public_video_upload_path(vehicle_id, extension):
 def is_public_video_upload_path(path, vehicle_id):
     prefix = f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/"
     filename = path[len(prefix):] if isinstance(path, str) and path.startswith(prefix) else ""
-    return bool(re.fullmatch(r"[a-f0-9]{32}\.(mp4|mov)", filename))
+    return bool(re.fullmatch(r"[a-f0-9]{32}\.(mp4|mov|webm)", filename))
+
+
+def is_public_image_upload_path(path, vehicle_id):
+    prefix = f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/images/"
+    filename = path[len(prefix):] if isinstance(path, str) and path.startswith(prefix) else ""
+    return bool(re.fullmatch(r"[a-f0-9]{32}\.(jpg|jpeg|png|webp)", filename))
+
+
+def is_public_issue_upload_path(path, vehicle_id):
+    return (
+        is_public_video_upload_path(path, vehicle_id)
+        or is_public_image_upload_path(path, vehicle_id)
+    )
 
 
 def validate_uploaded_video(path, vehicle_id):
@@ -525,9 +615,13 @@ def validate_uploaded_video(path, vehicle_id):
     payload = storage.download_object(path)
     if len(payload) > MAX_VIDEO_BYTES:
         raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
-    duration = _mp4_duration_seconds(payload)
+    duration = (
+        _webm_duration_seconds(payload)
+        if extension == ".webm"
+        else _mp4_duration_seconds(payload)
+    )
     if duration is None:
-        raise ValueError("تعذر التحقق من مدة المقطع؛ أرفق ملف MP4 أو MOV صالحاً.")
+        raise ValueError("تعذر التحقق من مدة المقطع؛ أرفق ملف فيديو صالحاً.")
     if duration > MAX_VIDEO_DURATION_SECONDS:
         raise ValueError("يجب ألا تتجاوز مدة مقطع الفيديو دقيقتين.")
     return storage.get_public_url(path)

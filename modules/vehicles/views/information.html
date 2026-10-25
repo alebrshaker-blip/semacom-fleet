@@ -13,6 +13,8 @@
     .vehicle-qr-label { color: #1b365d; font-weight: 800; font-size: 21px; line-height: 1.7; margin-top: 12px; }
     .qr-url { color: #64748b; font-size: 12px; overflow-wrap: anywhere; margin-top: 10px; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; justify-content: center; }
+    .qr-actions .btn { cursor: pointer; }
+    .qr-status { min-height: 1.5em; color: #526176; font-size: 13px; margin: 8px 0 0; }
     .settings-table { width: 100%; border-collapse: collapse; }
     .settings-table th, .settings-table td { padding: 12px 10px; border-bottom: 1px solid #e8edf3; text-align: right; vertical-align: middle; }
     .settings-table thead { background: #edf3fa; color: #1b365d; }
@@ -22,53 +24,6 @@
     .notice { border-radius: 10px; background: #fff8e6; color: #795500; padding: 13px 16px; line-height: 1.8; margin-bottom: 18px; }
     .table-scroll { overflow-x: auto; }
     @media (max-width: 850px) { .vehicle-info-layout { grid-template-columns: 1fr; } }
-    @media print {
-        @page { size: A4 portrait; margin: 0; }
-        html, body {
-            width: 210mm !important;
-            height: 297mm !important;
-            max-height: 297mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: hidden !important;
-        }
-        body > * { display: none !important; }
-        body > main.content-wrapper,
-        body > main.content-wrapper > .container,
-        body > main.content-wrapper > .container > .vehicle-info-layout,
-        .qr-print,
-        .qr-print * { display: block !important; }
-        body > main.content-wrapper,
-        body > main.content-wrapper > .container,
-        body > main.content-wrapper > .container > .vehicle-info-layout {
-            width: 210mm !important;
-            height: 297mm !important;
-            max-height: 297mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: hidden !important;
-        }
-        .qr-print {
-            position: static !important;
-            box-sizing: border-box;
-            width: 210mm !important;
-            height: 297mm !important;
-            max-height: 297mm !important;
-            margin: 0 !important;
-            padding: 16mm;
-            display: flex !important;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            box-shadow: none;
-            break-inside: avoid;
-            page-break-inside: avoid;
-        }
-        .qr-print h2, .qr-print p { flex: 0 0 auto; }
-        .qr-image { display: block !important; flex: 0 1 auto; max-height: 65vh; }
-        .qr-url, .qr-actions { display: none !important; }
-    }
 </style>
 {% endblock %}
 
@@ -91,14 +46,16 @@
             <p>امسح الرمز بكاميرا الجوال لفتح صفحة المركبة مباشرة دون تسجيل دخول.</p>
             <img class="qr-image" src="{{ qr_path }}" alt="رمز QR للمركبة {{ vehicle.vehicle_code }}">
             <div class="vehicle-qr-label">
-                {{ vehicle.vehicle_code }}<br>
-                {{ vehicle.plate_number }}
+                {{ vehicle.vehicle_code or '' }}
             </div>
             <div class="qr-url">{{ public_url }}</div>
             <div class="actions qr-actions">
-                <button type="button" class="btn btn-primary" onclick="window.print()">طباعة QR</button>
+                <button type="button" class="btn btn-primary" id="print-vehicle-qr">طباعة QR</button>
+                <button type="button" class="btn btn-success" id="download-vehicle-qr">تنزيل PNG</button>
+                <button type="button" class="btn btn-secondary" id="share-vehicle-qr">مشاركة QR</button>
                 <a class="btn btn-success" href="{{ public_url }}" target="_blank" rel="noopener">معاينة صفحة الزائر</a>
             </div>
+            <p class="qr-status" id="qr-action-status" aria-live="polite"></p>
         </section>
 
         <section class="info-card">
@@ -153,4 +110,134 @@
         </section>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+    (() => {
+        const imageUrl = {{ qr_image_url|tojson }};
+        const publicUrl = {{ public_url|tojson }};
+        const vehicleCode = {{ (vehicle.vehicle_code or '')|tojson }};
+        const status = document.getElementById("qr-action-status");
+        const fileName = `${vehicleCode || "vehicle"}-qr.png`;
+
+        async function loadQrImage() {
+            const response = await fetch(imageUrl, { credentials: "same-origin" });
+            if (!response.ok) {
+                let message = "تعذر تنزيل صورة رمز المركبة.";
+                try {
+                    const result = await response.json();
+                    message = result.error || message;
+                } catch {
+                    // Keep the user-facing fallback when the response is not JSON.
+                }
+                throw new Error(message);
+            }
+            return response.blob();
+        }
+
+        document.getElementById("download-vehicle-qr").addEventListener("click", async () => {
+            status.textContent = "جارٍ تجهيز صورة QR...";
+            try {
+                const blob = await loadQrImage();
+                const objectUrl = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = objectUrl;
+                link.download = fileName;
+                link.click();
+                window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                status.textContent = "تم تنزيل صورة QR.";
+            } catch (error) {
+                status.textContent = error.message || "تعذر تنزيل صورة QR.";
+            }
+        });
+
+        document.getElementById("share-vehicle-qr").addEventListener("click", async () => {
+            status.textContent = "جارٍ تجهيز QR للمشاركة...";
+            try {
+                const blob = await loadQrImage();
+                const file = new File([blob], fileName, { type: "image/png" });
+                if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+                    await navigator.share({ title: `رمز المركبة ${vehicleCode}`, files: [file] });
+                    status.textContent = "تمت مشاركة صورة QR.";
+                } else if (navigator.share) {
+                    await navigator.share({
+                        title: `رمز المركبة ${vehicleCode}`,
+                        text: "رابط معلومات المركبة",
+                        url: publicUrl
+                    });
+                    status.textContent = "تمت مشاركة رابط المركبة.";
+                } else {
+                    const objectUrl = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = objectUrl;
+                    link.download = fileName;
+                    link.click();
+                    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                    status.textContent = "المشاركة غير مدعومة في هذا المتصفح؛ تم تنزيل صورة QR بدلاً من ذلك.";
+                }
+            } catch (error) {
+                if (error.name === "AbortError") {
+                    status.textContent = "تم إلغاء المشاركة.";
+                    return;
+                }
+                status.textContent = error.message || "تعذرت مشاركة QR.";
+            }
+        });
+
+        document.getElementById("print-vehicle-qr").addEventListener("click", async () => {
+            const printWindow = window.open("", "_blank");
+            if (!printWindow) {
+                status.textContent = "اسمح بفتح النوافذ المنبثقة لطباعة QR.";
+                return;
+            }
+
+            status.textContent = "جارٍ تجهيز صفحة الطباعة...";
+            try {
+                const blob = await loadQrImage();
+                const objectUrl = URL.createObjectURL(blob);
+                let printed = false;
+                printWindow.document.open();
+                printWindow.document.write(
+                    "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'>" +
+                    "<title>رمز المركبة</title><style>" +
+                    "@page{size:A4 portrait;margin:0}" +
+                    "*{box-sizing:border-box}html,body{width:210mm;height:297mm;margin:0}" +
+                    "body{display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+                    "font-family:Arial,Tahoma,sans-serif;color:#1b365d}" +
+                    "img{width:110mm;height:110mm;object-fit:contain}" +
+                    "strong{margin-top:12mm;font-size:28pt;text-align:center}" +
+                    "@media print{html,body{break-after:avoid;page-break-after:avoid}}" +
+                    "</style></head><body></body></html>"
+                );
+                const image = printWindow.document.createElement("img");
+                image.src = objectUrl;
+                image.alt = `QR ${vehicleCode}`;
+                const label = printWindow.document.createElement("strong");
+                label.textContent = vehicleCode || "";
+                printWindow.document.body.append(image, label);
+                image.onload = () => {
+                    if (printed) return;
+                    printed = true;
+                    printWindow.focus();
+                    window.setTimeout(() => printWindow.print(), 250);
+                };
+                printWindow.onafterprint = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    printWindow.close();
+                };
+                image.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    printWindow.close();
+                    status.textContent = "تعذر تحميل QR لصفحة الطباعة.";
+                };
+                status.textContent = "تم تجهيز QR في صفحة طباعة واحدة.";
+            } catch (error) {
+                printWindow.close();
+                status.textContent = error.message || "تعذر تجهيز صفحة الطباعة.";
+            }
+        });
+    })();
+</script>
 {% endblock %}

@@ -29,6 +29,8 @@
         .info-item .value { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.8; }
         input, textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 9px; padding: 11px 12px; font: inherit; }
         textarea { min-height: 115px; resize: vertical; }
+        #video-progress { display: block; width: 100%; height: 10px; margin-top: 8px; accent-color: #1b365d; }
+        #video-progress[hidden] { display: none; }
         .form-row { margin: 15px 0; }
         .form-row label { display: block; margin-bottom: 7px; font-weight: 700; }
         .button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
@@ -111,7 +113,7 @@
         <h2>الاستفسار والإبلاغ عن مشكلة</h2>
         <p>يرجى وصف المشكلة أو الاستفسار، ويمكن إرفاق حتى ثلاث صور ومقطع فيديو قصير لا تتجاوز مدته دقيقتين.</p>
         {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
-        <form id="issue-form" method="post" enctype="multipart/form-data" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
+        <form id="issue-form" method="post" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
             <div class="form-row">
                 <label for="message">وصف المشكلة أو الاستفسار</label>
                 <textarea id="message" name="message" maxlength="4000" required>{{ request.form.get('message', '') }}</textarea>
@@ -130,9 +132,9 @@
             <div class="form-row">
                 <label for="video">مقطع فيديو (اختياري، حتى دقيقتين)</label>
                 <input id="video" type="file" accept="video/mp4,video/quicktime,.mp4,.mov">
-                <small>الصيغ المدعومة MP4 وMOV، بحد أقصى 200 ميجابايت. يتم التحقق من أن مدة المقطع لا تتجاوز دقيقتين عند الإرسال.</small>
-                <input id="video-path" type="hidden" name="video_path">
+                <small>الصيغ المدعومة MP4 وMOV، بحد أقصى 45 ميجابايت. سيتم ضغط الفيديو تلقائياً إذا تجاوز 35 ميجابايت، مع التحقق من ألا تتجاوز مدته دقيقتين.</small>
                 <small id="video-status" aria-live="polite"></small>
+                <progress id="video-progress" max="100" value="0" aria-label="تقدم ضغط الفيديو" hidden></progress>
             </div>
             <div class="button-row">
                 <button class="button" type="submit">ترحيل البلاغ</button>
@@ -201,11 +203,15 @@
     const photoStatus = document.getElementById("photo-status");
     const issueForm = document.getElementById("issue-form");
     const videoInput = document.getElementById("video");
-    const videoPathInput = document.getElementById("video-path");
     const videoStatus = document.getElementById("video-status");
+    const videoProgress = document.getElementById("video-progress");
+    const maxVideoBytes = 45 * 1024 * 1024;
+    const maxVideoSizeMessage = "يجب أن يكون حجم الفيديو أقل من 45 ميجابايت ليتوافق مع حدود النظام. اختر مقطعاً أصغر.";
+    const videoCompressionThresholdBytes = 35 * 1024 * 1024;
+    const maxCompressedVideoBytes = 40 * 1024 * 1024;
     const submitButton = issueForm.querySelector('button[type="submit"]');
     const submitButtonLabel = submitButton.textContent;
-    const videoUploadUrl = {{ url_for('vehicles.public_video_upload_url', token=token)|tojson }};
+    const mediaUploadUrl = {{ url_for('vehicles.public_issue_media_upload_url', token=token)|tojson }};
     const videoUploadCancelUrl = {{ url_for('vehicles.public_cancel_video_upload', token=token)|tojson }};
     const supabaseAnonKey = {{ supabase_anon_key|tojson }};
 
@@ -234,11 +240,18 @@
             .find(message => typeof message === "string" && message.trim()) || fallback;
     }
 
-    async function submitIssue() {
+    async function submitIssue(photoUrls, videoUrl) {
         const response = await fetch(issueForm.action, {
             method: "POST",
-            headers: { "Accept": "application/json" },
-            body: new FormData(issueForm)
+            headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                message: document.getElementById("message").value,
+                photo_urls: photoUrls,
+                video_url: videoUrl
+            })
         });
         const result = await readJsonResponse(response);
         if (!response.ok || !result.success) {
@@ -248,6 +261,243 @@
         if (result.redirect_url) {
             window.location.assign(result.redirect_url);
         }
+    }
+
+    async function uploadIssueFile(file, kind, stagedPaths) {
+        const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+        const signedResponse = await fetch(mediaUploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kind, extension })
+        });
+        const signedResult = await readJsonResponse(signedResponse);
+        if (!signedResponse.ok || !signedResult.success) {
+            throw new Error(getServerError(signedResult, "تعذر تجهيز رفع الملف."));
+        }
+        if (!signedResult.signed_url || !signedResult.path || !signedResult.public_url) {
+            throw new Error("تعذر تجهيز رفع الملف؛ لم يُرجع الخادم بيانات الرفع المطلوبة.");
+        }
+        const maxBytes = Number(signedResult.max_bytes);
+        if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+            throw new Error("لم يحدد الخادم الحد الأقصى المسموح به لحجم الملف.");
+        }
+        if (file.size <= 0 || file.size > maxBytes) {
+            throw new Error(kind === "image"
+                ? "يجب ألا يتجاوز حجم كل صورة 5 ميجابايت."
+                : maxVideoSizeMessage);
+        }
+        stagedPaths.push(signedResult.path);
+
+        const uploadResponse = await fetch(signedResult.signed_url, {
+            method: "PUT",
+            headers: {
+                "x-upsert": "false",
+                "apikey": signedResult.api_key || signedResult.supabase_key || supabaseAnonKey,
+                "Authorization": `Bearer ${signedResult.api_key || signedResult.supabase_key || supabaseAnonKey}`,
+                "Content-Type": signedResult.content_type,
+                "Cache-Control": "max-age=3600"
+            },
+            body: file
+        });
+        if (!uploadResponse.ok) {
+            throw new Error("تعذر رفع الملف إلى التخزين؛ تحقق من الاتصال وحاول مجدداً.");
+        }
+        return signedResult.public_url;
+    }
+
+    function getVideoDuration(file) {
+        return new Promise((resolve, reject) => {
+            const video = document.createElement("video");
+            const objectUrl = URL.createObjectURL(file);
+            video.preload = "metadata";
+            video.onloadedmetadata = () => {
+                URL.revokeObjectURL(objectUrl);
+                if (!Number.isFinite(video.duration) || video.duration <= 0) {
+                    reject(new Error("تعذر التحقق من مدة الفيديو؛ اختر ملفاً صالحاً."));
+                    return;
+                }
+                resolve(video.duration);
+            };
+            video.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                reject(new Error("تعذر قراءة الفيديو؛ اختر ملف MP4 أو MOV صالحاً."));
+            };
+            video.src = objectUrl;
+        });
+    }
+
+    async function compressVideoPass(file, duration, bitrateScale, attempt) {
+        if (!window.MediaRecorder || !window.MediaStream) {
+            throw new Error("ضغط الفيديو غير مدعوم في هذا المتصفح. يرجى استخدام متصفح حديث أو اختيار فيديو أصغر من 35 ميجابايت.");
+        }
+        const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextConstructor) {
+            throw new Error("تعذر ضغط الفيديو في هذا المتصفح؛ يرجى استخدام متصفح حديث.");
+        }
+
+        const video = document.createElement("video");
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context || typeof canvas.captureStream !== "function") {
+            throw new Error("ضغط الفيديو غير مدعوم في هذا المتصفح. يرجى استخدام متصفح حديث أو اختيار فيديو أصغر من 35 ميجابايت.");
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        const audioContext = new AudioContextConstructor();
+        let recordingStream;
+        let canvasStream;
+        let animationFrame = 0;
+        let progressTimer = 0;
+
+        try {
+            video.preload = "auto";
+            video.playsInline = true;
+            video.src = objectUrl;
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = resolve;
+                video.onerror = () => reject(new Error("تعذر قراءة الفيديو لضغطه؛ اختر ملف MP4 أو MOV صالحاً."));
+            });
+
+            const scale = Math.min(1, 1280 / video.videoWidth, 720 / video.videoHeight);
+            canvas.width = Math.max(2, Math.round(video.videoWidth * scale / 2) * 2);
+            canvas.height = Math.max(2, Math.round(video.videoHeight * scale / 2) * 2);
+            const source = audioContext.createMediaElementSource(video);
+            const audioDestination = audioContext.createMediaStreamDestination();
+            const silentOutput = audioContext.createGain();
+            silentOutput.gain.value = 0;
+            source.connect(audioDestination);
+            source.connect(silentOutput);
+            silentOutput.connect(audioContext.destination);
+            await audioContext.resume();
+
+            canvasStream = canvas.captureStream(24);
+            recordingStream = new MediaStream([
+                ...canvasStream.getVideoTracks(),
+                ...audioDestination.stream.getAudioTracks(),
+            ]);
+
+            const mimeType = [
+                "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+                "video/mp4",
+                "video/webm;codecs=vp9,opus",
+                "video/webm;codecs=vp8,opus",
+                "video/webm",
+            ].find(type => MediaRecorder.isTypeSupported(type));
+            if (!mimeType) {
+                throw new Error("لا يدعم هذا المتصفح صيغة ضغط الفيديو المطلوبة. يرجى اختيار فيديو أصغر من 35 ميجابايت.");
+            }
+
+            const targetBitsPerSecond = Math.floor((35 * 1024 * 1024 * 8 / duration) * 0.9);
+            const audioBitsPerSecond = 96_000;
+            const videoBitsPerSecond = Math.max(
+                250_000,
+                Math.min(2_000_000, Math.floor((targetBitsPerSecond - audioBitsPerSecond) * bitrateScale))
+            );
+            const recorder = new MediaRecorder(recordingStream, {
+                mimeType,
+                videoBitsPerSecond,
+                audioBitsPerSecond,
+            });
+            const chunks = [];
+
+            return await new Promise((resolve, reject) => {
+                let settled = false;
+                const cleanup = () => {
+                    cancelAnimationFrame(animationFrame);
+                    window.clearInterval(progressTimer);
+                    video.pause();
+                    recordingStream.getTracks().forEach(track => track.stop());
+                    canvasStream.getTracks().forEach(track => track.stop());
+                    audioContext.close();
+                    URL.revokeObjectURL(objectUrl);
+                };
+                const finish = (error, result) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    if (error) reject(error);
+                    else resolve(result);
+                };
+                const drawFrame = () => {
+                    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    }
+                    if (!video.ended && recorder.state === "recording") {
+                        animationFrame = requestAnimationFrame(drawFrame);
+                    }
+                };
+
+                recorder.ondataavailable = event => {
+                    if (event.data.size) chunks.push(event.data);
+                };
+                recorder.onerror = () => finish(new Error("تعذر ضغط الفيديو؛ حاول مرة أخرى أو اختر مقطعاً أصغر."));
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: recorder.mimeType || mimeType });
+                    if (!blob.size) {
+                        finish(new Error("لم ينتج عن ضغط الفيديو ملف صالح."));
+                        return;
+                    }
+                    const extension = blob.type.toLowerCase().includes("mp4") ? ".mp4" : ".webm";
+                    const baseName = file.name.replace(/\.[^.]+$/, "");
+                    finish(null, new File([blob], `${baseName}-compressed${extension}`, { type: blob.type }));
+                };
+                video.onended = () => {
+                    if (recorder.state !== "inactive") recorder.stop();
+                };
+                video.onerror = () => finish(new Error("حدث خطأ أثناء قراءة الفيديو لضغطه."));
+                progressTimer = window.setInterval(() => {
+                    const progress = Math.min(99, Math.floor((video.currentTime / duration) * 100));
+                    videoProgress.value = progress;
+                    videoStatus.textContent = `جاري ضغط الفيديو وتقليل الحجم... ${progress}% (المحاولة ${attempt})`;
+                }, 500);
+
+                recorder.start(1000);
+                animationFrame = requestAnimationFrame(drawFrame);
+                video.play().catch(() => finish(new Error("تعذر تشغيل الفيديو لبدء ضغطه.")));
+            });
+        } catch (error) {
+            if (recordingStream) recordingStream.getTracks().forEach(track => track.stop());
+            if (canvasStream) canvasStream.getTracks().forEach(track => track.stop());
+            await audioContext.close();
+            URL.revokeObjectURL(objectUrl);
+            throw error;
+        }
+    }
+
+    async function compressVideo(file, duration) {
+        videoProgress.hidden = false;
+        videoProgress.value = 0;
+        let compressed = await compressVideoPass(file, duration, 1, 1);
+        if (compressed.size > 38 * 1024 * 1024) {
+            videoStatus.textContent = "جارٍ تحسين الضغط للوصول إلى الحجم المطلوب...";
+            videoProgress.value = 0;
+            compressed = await compressVideoPass(file, duration, 0.65, 2);
+        }
+        if (compressed.size >= maxCompressedVideoBytes) {
+            throw new Error("تعذر ضغط الفيديو إلى أقل من 40 ميجابايت. اختر مقطعاً أقصر أو أصغر ثم حاول مجدداً.");
+        }
+        videoProgress.value = 100;
+        videoStatus.textContent = `اكتمل ضغط الفيديو؛ الحجم الجديد ${(compressed.size / (1024 * 1024)).toFixed(1)} ميجابايت.`;
+        return compressed;
+    }
+
+    function validateImageFile(file) {
+        if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+            return Promise.reject(new Error("يجب ألا يتجاوز حجم كل صورة 5 ميجابايت."));
+        }
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            const objectUrl = URL.createObjectURL(file);
+            image.onload = () => {
+                URL.revokeObjectURL(objectUrl);
+                resolve();
+            };
+            image.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                reject(new Error("تعذر قراءة إحدى الصور؛ اختر صورة JPG أو PNG أو WEBP صالحة."));
+            };
+            image.src = objectUrl;
+        });
     }
 
     function updatePhotoStatus(message) {
@@ -298,81 +548,92 @@
         updatePhotoStatus();
     });
 
-    issueForm.addEventListener("submit", async function (event) {
+    videoInput.addEventListener("change", function () {
         const video = videoInput.files[0];
+        if (video && video.size > maxVideoBytes) {
+            alert(maxVideoSizeMessage);
+            videoInput.value = "";
+            videoStatus.textContent = maxVideoSizeMessage;
+        } else {
+            videoProgress.hidden = true;
+            videoProgress.value = 0;
+            videoStatus.textContent = video && video.size > videoCompressionThresholdBytes
+                ? "سيتم ضغط الفيديو تلقائياً قبل رفعه."
+                : "";
+        }
+    });
+
+    issueForm.addEventListener("submit", async function (event) {
         event.preventDefault();
+        const selectedVideo = videoInput.files[0];
+        if (selectedVideo && selectedVideo.size > maxVideoBytes) {
+            alert(maxVideoSizeMessage);
+            videoInput.value = "";
+            videoStatus.textContent = maxVideoSizeMessage;
+            return;
+        }
         submitButton.disabled = true;
-        let stagedVideoPath = null;
+        const stagedPaths = [];
 
         try {
-            if (!video || videoPathInput.value) {
-                videoStatus.textContent = "جارٍ إرسال البلاغ...";
-                submitButton.textContent = "جارٍ إرسال البلاغ...";
-                await submitIssue();
-                return;
+            const photos = Array.from(photosInput.files);
+            const video = videoInput.files[0];
+            if (photos.length > 3) {
+                throw new Error("يمكن إرفاق ثلاث صور كحد أقصى.");
             }
 
-            submitButton.textContent = "جارٍ رفع الفيديو...";
-            videoStatus.textContent = "جارٍ تجهيز رفع الفيديو مباشرةً...";
-
-            const extension = video.name.slice(video.name.lastIndexOf(".")).toLowerCase();
-            const signedResponse = await fetch(videoUploadUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ extension })
-            });
-            const signedResult = await readJsonResponse(signedResponse);
-            if (!signedResponse.ok || !signedResult.success) {
-                throw new Error(getServerError(signedResult, "تعذر بدء رفع الفيديو."));
+            for (const photo of photos) {
+                await validateImageFile(photo);
             }
-            const publicApiKey = signedResult.api_key || signedResult.supabase_key || supabaseAnonKey;
-            if (!signedResult.signed_url || !signedResult.path) {
-                throw new Error("تعذر بدء رفع الفيديو؛ لم يُرجع الخادم رابط الرفع المطلوب.");
-            }
-            stagedVideoPath = signedResult.path;
-            const maxVideoBytes = Number(signedResult.max_bytes) || 200 * 1024 * 1024;
-            if (video.size > maxVideoBytes) {
-                throw new Error("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.");
+            let uploadVideo = video;
+            if (video) {
+                submitButton.textContent = "جارٍ التحقق من الفيديو...";
+                videoStatus.textContent = "جارٍ التحقق من مدة الفيديو...";
+                const duration = await getVideoDuration(video);
+                if (duration > 120) {
+                    throw new Error("يجب ألا تتجاوز مدة مقطع الفيديو دقيقتين.");
+                }
+                if (video.size > videoCompressionThresholdBytes) {
+                    submitButton.textContent = "جارٍ ضغط الفيديو...";
+                    uploadVideo = await compressVideo(video, duration);
+                }
             }
 
-            videoStatus.textContent = "جارٍ رفع الفيديو؛ يرجى إبقاء الصفحة مفتوحة...";
-            submitButton.textContent = "جارٍ رفع الفيديو...";
-            const uploadResponse = await fetch(signedResult.signed_url, {
-                method: "PUT",
-                headers: {
-                    "x-upsert": "false",
-                    "apikey": publicApiKey,
-                    "Authorization": `Bearer ${publicApiKey}`,
-                    "Content-Type": video.type || "application/octet-stream",
-                    "Cache-Control": "max-age=3600"
-                },
-                body: video
-            });
-            if (!uploadResponse.ok) {
-                throw new Error("تعذر رفع الفيديو إلى التخزين؛ تحقق من الاتصال وحاول مجدداً.");
+            const photoUrls = [];
+            for (const [index, photo] of photos.entries()) {
+                submitButton.textContent = `جارٍ رفع الصور (${index + 1}/${photos.length})...`;
+                photoStatus.textContent = `جارٍ رفع الصورة ${index + 1} من ${photos.length}...`;
+                photoUrls.push(await uploadIssueFile(photo, "image", stagedPaths));
             }
 
-            videoPathInput.value = signedResult.path;
-            videoStatus.textContent = "اكتمل رفع الفيديو؛ جارٍ إرسال البلاغ...";
+            let videoUrl = null;
+            if (uploadVideo) {
+                submitButton.textContent = "جارٍ رفع الفيديو...";
+                videoStatus.textContent = "جارٍ رفع الفيديو مباشرةً إلى التخزين...";
+                videoUrl = await uploadIssueFile(uploadVideo, "video", stagedPaths);
+            }
+
             submitButton.textContent = "جارٍ إرسال البلاغ...";
-            await submitIssue();
+            videoStatus.textContent = "اكتمل رفع المرفقات؛ جارٍ إرسال بيانات البلاغ...";
+            await submitIssue(photoUrls, videoUrl);
+            stagedPaths.length = 0;
         } catch (error) {
-            if (stagedVideoPath) {
+            for (const path of stagedPaths) {
                 try {
                     await fetch(videoUploadCancelUrl, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ path: stagedVideoPath })
+                        body: JSON.stringify({ path })
                     });
                 } catch (cleanupError) {
-                    console.error("Failed to clean up staged vehicle video.", cleanupError);
+                    console.error("Failed to clean up staged issue media.", cleanupError);
                 }
-                videoPathInput.value = "";
             }
             videoStatus.textContent = error instanceof TypeError
-                ? "تعذر الاتصال بالخادم؛ تحقق من اتصال الإنترنت وحاول مرة أخرى."
+                ? "تعذر الاتصال بالخادم أو التخزين؛ تحقق من الاتصال وحاول مرة أخرى."
                 : error.message || "تعذر إرسال البلاغ؛ حاول مرة أخرى.";
         } finally {
+            videoProgress.hidden = true;
             submitButton.disabled = false;
             submitButton.textContent = submitButtonLabel;
         }
