@@ -43,6 +43,7 @@ class VehicleField(Base):
     name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     label: Mapped[str] = mapped_column(Text, nullable=False)
     required: Mapped[int | None] = mapped_column(Integer, default=0, server_default="0")
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
 
 class VehicleArchive(Base):

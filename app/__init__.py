@@ -349,7 +349,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
             label TEXT NOT NULL,
-            required INTEGER DEFAULT 0
+            required INTEGER DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1
         )
     """)
 

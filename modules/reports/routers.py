@@ -974,10 +974,26 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
             'SELECT * FROM drivers'
         ).fetchall()] if driver_columns else []
         vehicle_columns = [row['name'] for row in conn.execute('PRAGMA table_info(vehicles)')]
-        custom_vehicle_labels = {
-            row['name']: row['label']
-            for row in conn.execute('SELECT name, label FROM vehicle_fields').fetchall()
-        }
+        vehicle_field_columns = {
+            row['name'] for row in conn.execute('PRAGMA table_info(vehicle_fields)')
+        } if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vehicle_fields'"
+        ).fetchone() else set()
+        custom_filter = ' WHERE is_active = 1' if 'is_active' in vehicle_field_columns else ''
+        custom_vehicle_labels = {}
+        seen_custom_labels = set()
+        if vehicle_field_columns:
+            for row in conn.execute(
+                f'SELECT name, label FROM vehicle_fields{custom_filter} ORDER BY id'
+            ).fetchall():
+                normalized_label = ' '.join((row['label'] or row['name']).split()).casefold()
+                if normalized_label not in seen_custom_labels:
+                    custom_vehicle_labels[row['name']] = row['label']
+                    seen_custom_labels.add(normalized_label)
+        vehicle_columns = [
+            name for name in vehicle_columns
+            if not name.startswith('custom_field_') or name in custom_vehicle_labels
+        ]
         inspection_columns = [
             row['name'] for row in conn.execute('PRAGMA table_info(inspections)')
         ] if inspections or conn.execute(

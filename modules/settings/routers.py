@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from config import settings as app_config
 from modules.settings import repository
+from modules.vehicles import repository as vehicles_repository
 from modules.settings.reference_lists import REFERENCE_LISTS, load_reference_lists
 from modules.settings.services.email_service import (
     EmailConfigurationError,
@@ -53,8 +54,9 @@ def load_settings():
 def load_vehicle_fields():
     """جلب الحقول الديناميكية للمركبات"""
     try:
-        return repository.list_dynamic_fields('vehicle')
+        return repository.list_dynamic_fields('vehicle', include_inactive=True)
     except SQLAlchemyError:
+        current_app.logger.exception('Unable to load vehicle dynamic fields')
         return []
 
 
@@ -222,6 +224,85 @@ def index():
         report_font_size_default=REPORT_FONT_SIZE_DEFAULT,
         report_font_sizes=REPORT_FONT_SIZES,
     )
+
+
+def _vehicle_field_required(value):
+    return value is True or value == 1 or value == '1' or value == 'true'
+
+
+@settings_bp.route('/dynamic-fields', methods=['POST'])
+def create_vehicle_dynamic_field():
+    if session.get('role') != 'admin':
+        return jsonify({'status': 'error', 'message': 'غير مسموح'}), 401
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'بيانات الحقل غير صالحة'}), 400
+    label = ' '.join(str(data.get('label') or '').split())
+    if not label or len(label) > 120:
+        return jsonify({'status': 'error', 'message': 'أدخل اسمًا للحقل لا يتجاوز 120 حرفًا'}), 400
+    try:
+        field = vehicles_repository.add_custom_field(
+            label, int(_vehicle_field_required(data.get('required')))
+        )
+    except (SQLAlchemyError, ValueError):
+        current_app.logger.exception('Unable to create vehicle dynamic field')
+        return jsonify({'status': 'error', 'message': 'تعذر إنشاء الحقل'}), 500
+    return jsonify({
+        'status': 'success',
+        'message': 'تم حفظ الحقل بنجاح.',
+        'field': field,
+    }), 200
+
+
+@settings_bp.route('/dynamic-fields/<int:field_id>', methods=['POST'])
+def update_vehicle_dynamic_field(field_id):
+    if session.get('role') != 'admin':
+        return jsonify({'status': 'error', 'message': 'غير مسموح'}), 401
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status': 'error', 'message': 'بيانات الحقل غير صالحة'}), 400
+    label = ' '.join(str(data.get('label') or '').split())
+    if not label or len(label) > 120:
+        return jsonify({'status': 'error', 'message': 'أدخل اسمًا للحقل لا يتجاوز 120 حرفًا'}), 400
+    try:
+        updated, message = repository.update_vehicle_field(
+            field_id, label, _vehicle_field_required(data.get('required'))
+        )
+    except ValueError as error:
+        return jsonify({'status': 'error', 'message': str(error)}), 400
+    except SQLAlchemyError:
+        current_app.logger.exception('Unable to update vehicle dynamic field %s', field_id)
+        return jsonify({'status': 'error', 'message': 'تعذر تحديث الحقل'}), 500
+    if not updated:
+        status_code = 404 if message == 'الحقل غير موجود.' else 409
+        return jsonify({'status': 'error', 'message': message}), status_code
+    return jsonify({'status': 'success', 'message': message}), 200
+
+
+@settings_bp.route('/dynamic-fields/<int:field_id>/archive', methods=['POST'])
+def archive_vehicle_dynamic_field(field_id):
+    return _set_vehicle_dynamic_field_active(field_id, False)
+
+
+@settings_bp.route('/dynamic-fields/<int:field_id>/restore', methods=['POST'])
+def restore_vehicle_dynamic_field(field_id):
+    return _set_vehicle_dynamic_field_active(field_id, True)
+
+
+def _set_vehicle_dynamic_field_active(field_id, is_active):
+    if session.get('role') != 'admin':
+        return jsonify({'status': 'error', 'message': 'غير مسموح'}), 401
+    try:
+        updated, message = repository.set_vehicle_field_active(field_id, is_active)
+    except SQLAlchemyError:
+        current_app.logger.exception(
+            'Unable to change active state for vehicle dynamic field %s', field_id
+        )
+        return jsonify({'status': 'error', 'message': 'تعذر تحديث حالة الحقل'}), 500
+    if not updated:
+        status_code = 404 if message == 'الحقل غير موجود.' else 409
+        return jsonify({'status': 'error', 'message': message}), status_code
+    return jsonify({'status': 'success', 'message': message}), 200
 
 
 @settings_bp.route('/save', methods=['POST'])

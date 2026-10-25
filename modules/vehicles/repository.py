@@ -146,7 +146,7 @@ def list_custom_fields():
                 VehicleField.name,
                 VehicleField.label,
                 VehicleField.required,
-            ).order_by(VehicleField.id)
+            ).where(VehicleField.is_active == 1).order_by(VehicleField.id)
         ).all()
         return [
             {
@@ -160,8 +160,41 @@ def list_custom_fields():
 
 
 def add_custom_field(label, required=0):
-    """Create a system-numbered custom field and add its TEXT column to vehicles."""
+    """Reuse or create a shared field definition and its vehicles table column."""
+    label = " ".join(str(label or "").split())
+    if not label:
+        raise ValueError("عنوان الحقل مطلوب.")
+
     with engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock(739184021)"))
+        existing_fields = connection.execute(
+            select(
+                VehicleField.id, VehicleField.name, VehicleField.label,
+                VehicleField.required, VehicleField.is_active,
+            ).order_by(VehicleField.id)
+        ).all()
+        normalized_label = label.casefold()
+        matching_fields = [
+            field for field in existing_fields
+            if " ".join(field.label.split()).casefold() == normalized_label
+        ]
+        if matching_fields:
+            field = next(
+                (candidate for candidate in matching_fields if candidate.is_active == 1),
+                matching_fields[0],
+            )
+            if field.is_active != 1:
+                connection.execute(
+                    text("UPDATE vehicle_fields SET is_active = 1 WHERE id = :id"),
+                    {"id": field.id},
+                )
+            return {
+                "id": field.id,
+                "name": field.name,
+                "label": field.label,
+                "required": field.required or 0,
+            }
+
         field_id = connection.execute(
             pg_insert(VehicleField.__table__)
             .values(

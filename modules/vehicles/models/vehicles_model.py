@@ -34,7 +34,16 @@ class VehiclesModel:
 
   def get_all_fields(self):
     """دمج الحقول الأساسية مع الحقول الديناميكية لعرضها في صفحة الإضافة والجدول"""
-    return self.get_core_fields() + self.get_custom_fields()
+    fields = self.get_core_fields()
+    names = {field["name"] for field in fields}
+    labels = {" ".join(field["label"].split()).casefold() for field in fields}
+    for field in self.get_custom_fields():
+      normalized_label = " ".join(field["label"].split()).casefold()
+      if field["name"] not in names and normalized_label not in labels:
+        fields.append(field)
+        names.add(field["name"])
+        labels.add(normalized_label)
+    return fields
 
   def add(self, data):
     """حفظ البيانات مع التحقق من الحقول الإلزامية (أساسية وديناميكية) وفحص التكرار"""

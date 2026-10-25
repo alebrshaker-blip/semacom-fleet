@@ -41,8 +41,10 @@ class VehiclesController:
         """الحقول الأساسية مضافًا إليها الحقول الديناميكية المسجلة"""
         fields = [dict(field) for field in CORE_FIELD_LABELS]
         existing_names = {field["name"] for field in fields}
+        existing_labels = {" ".join(field["label"].split()).casefold() for field in fields}
         for custom in repository.list_custom_fields():
-            if custom["name"] not in existing_names:
+            normalized_label = " ".join(custom["label"].split()).casefold()
+            if custom["name"] not in existing_names and normalized_label not in existing_labels:
                 fields.append(
                     {
                         "name": custom["name"],
@@ -50,6 +52,7 @@ class VehiclesController:
                         "is_custom": True,
                     }
                 )
+                existing_labels.add(normalized_label)
         return fields
 
     def add(self, data):

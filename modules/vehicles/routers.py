@@ -773,13 +773,18 @@ def save_vehicle():
     custom_requireds = request.form.getlist("custom_required[]")
 
     try:
+        seen_custom_labels = set()
         for i, raw_label in enumerate(custom_labels):
-            c_label = raw_label.strip()
+            c_label = " ".join(raw_label.split())
             c_val = custom_values[i].strip() if i < len(custom_values) else ""
             c_req = 1 if i < len(custom_requireds) and custom_requireds[i] == "1" else 0
 
             if not c_label:
                 raise ValueError("يرجى إدخال عنوان عربي لكل حقل إضافي.")
+            normalized_label = c_label.casefold()
+            if normalized_label in seen_custom_labels:
+                raise ValueError(f"الحقل «{c_label}» مكرر في النموذج.")
+            seen_custom_labels.add(normalized_label)
             if c_req and not c_val:
                 raise ValueError(f"الحقل الإضافي «{c_label}» إلزامي.")
 

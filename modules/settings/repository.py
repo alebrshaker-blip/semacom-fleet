@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from core.database import get_session, now_text
@@ -347,12 +347,21 @@ def _field_model(entity_type):
     return VehicleField if entity_type == "vehicle" else DriverField
 
 
-def list_dynamic_fields(entity_type):
+def list_dynamic_fields(entity_type, include_inactive=False):
     model = _field_model(entity_type)
     with get_session() as session:
+        statement = select(model)
+        if entity_type == "vehicle" and not include_inactive:
+            statement = statement.where(VehicleField.is_active == 1)
         return [
-            {"id": f.id, "name": f.name, "label": f.label, "required": f.required}
-            for f in session.scalars(select(model))
+            {
+                "id": f.id,
+                "name": f.name,
+                "label": f.label,
+                "required": f.required,
+                "is_active": getattr(f, "is_active", 1),
+            }
+            for f in session.scalars(statement.order_by(model.id))
         ]
 
 
@@ -361,3 +370,52 @@ def add_dynamic_field(entity_type, name, label, required=False):
     model = _field_model(entity_type)
     with get_session() as session:
         session.add(model(name=name, label=label, required=1 if required else 0))
+
+
+def update_vehicle_field(field_id, label, required=False):
+    label = " ".join(str(label or "").split())
+    if not label or len(label) > 120:
+        raise ValueError("يجب إدخال اسم للحقل لا يتجاوز 120 حرفًا.")
+    normalized_label = label.casefold()
+    with get_session() as session:
+        session.execute(text("SELECT pg_advisory_xact_lock(739184021)"))
+        fields = session.scalars(
+            select(VehicleField).where(VehicleField.is_active == 1)
+        ).all()
+        if any(
+            field.id != field_id
+            and " ".join(field.label.split()).casefold() == normalized_label
+            for field in fields
+        ):
+            return False, "يوجد حقل نشط بهذا الاسم بالفعل."
+        field = session.get(VehicleField, field_id)
+        if field is None:
+            return False, "الحقل غير موجود."
+        if field.is_active != 1:
+            return False, "لا يمكن تعديل حقل مؤرشف؛ أعد تفعيله أولاً."
+        field.label = label
+        field.required = 1 if required else 0
+        return True, "تم تحديث الحقل."
+
+
+def set_vehicle_field_active(field_id, is_active):
+    with get_session() as session:
+        session.execute(text("SELECT pg_advisory_xact_lock(739184021)"))
+        field = session.get(VehicleField, field_id)
+        if field is None:
+            return False, "الحقل غير موجود."
+        if is_active:
+            normalized_label = " ".join(field.label.split()).casefold()
+            fields = session.scalars(
+                select(VehicleField).where(
+                    VehicleField.id != field_id,
+                    VehicleField.is_active == 1,
+                )
+            ).all()
+            if any(
+                " ".join(other.label.split()).casefold() == normalized_label
+                for other in fields
+            ):
+                return False, "يوجد حقل نشط بهذا الاسم؛ أرشفه قبل إعادة تفعيل هذا الحقل."
+        field.is_active = 1 if is_active else 0
+        return True, "تم تفعيل الحقل." if is_active else "تمت أرشفة الحقل مع الاحتفاظ بالقيم."

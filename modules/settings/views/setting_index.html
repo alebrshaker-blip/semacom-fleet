@@ -689,16 +689,66 @@ label {
             <!-- تبويب 6: الحقول الديناميكية -->
             <div id="tab-dynamic-fields" class="tab-pane">
                 <h3>إدارة الحقول المخصصة</h3>
-                <div class="form-row">
-                    <div class="form-group" style="width: 100%;">
-                        <ul class="list-group">
-                            {% for field in vehicle_fields %}
-                            <li class="list-group-item">
-                                <span>{{ field.label }} <code>({{ field.name }})</code></span>
-                            </li>
-                            {% endfor %}
-                        </ul>
+                <p>الحقول مشتركة بين المركبات. أرشفة الحقل تخفيه من النماذج والجداول الجديدة مع الاحتفاظ بالقيم المسجلة سابقاً.</p>
+                <form id="newVehicleFieldForm" class="form-row" onsubmit="createVehicleField(event)">
+                    <div class="form-group col-md-6">
+                        <label for="newVehicleFieldLabel">اسم الحقل</label>
+                        <input id="newVehicleFieldLabel" class="form-control" maxlength="120" required>
                     </div>
+                    <div class="form-group col-md-3">
+                        <label class="d-block" for="newVehicleFieldRequired">الإلزامية</label>
+                        <input id="newVehicleFieldRequired" type="checkbox">
+                        <span>حقل مطلوب</span>
+                    </div>
+                    <div class="form-group col-md-3" style="display:flex;align-items:flex-end;">
+                        <button type="submit" class="btn btn-primary">إضافة الحقل</button>
+                    </div>
+                </form>
+                <div id="vehicleFieldsStatus" role="status" aria-live="polite"></div>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>اسم الحقل</th>
+                                <th>معرّف التخزين</th>
+                                <th>الإلزامية</th>
+                                <th>الحالة والإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for field in vehicle_fields %}
+                            <tr>
+                                <td>
+                                    {% if field.is_active %}
+                                    <input id="vehicleFieldLabel{{ field.id }}" class="form-control" value="{{ field.label }}" maxlength="120" aria-label="اسم الحقل">
+                                    {% else %}
+                                    {{ field.label }}
+                                    {% endif %}
+                                </td>
+                                <td><code>{{ field.name }}</code></td>
+                                <td>
+                                    {% if field.is_active %}
+                                    <input id="vehicleFieldRequired{{ field.id }}" type="checkbox" {% if field.required %}checked{% endif %} aria-label="حقل مطلوب">
+                                    {% else %}
+                                    {{ 'نعم' if field.required else 'لا' }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if field.is_active %}
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="updateVehicleField({{ field.id }})">حفظ</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="setVehicleFieldActive({{ field.id }}, 'archive')">أرشفة</button>
+                                    <span>نشط</span>
+                                    {% else %}
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="setVehicleFieldActive({{ field.id }}, 'restore')">استعادة</button>
+                                    <span>مؤرشف</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4">لا توجد حقول ديناميكية بعد.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -781,6 +831,48 @@ function saveSettingsData(data) {
         await sysAlert(result.message || 'تم حفظ الإعدادات بنجاح', 'الإعدادات', 'success');
         window.location.reload();
     }).catch(error => sysAlert(error.message, 'تعذر الحفظ', 'danger'));
+}
+
+async function submitVehicleFieldRequest(url, body, successTitle) {
+    const status = document.getElementById('vehicleFieldsStatus');
+    status.textContent = 'جارٍ حفظ التغيير...';
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || 'تعذر تحديث الحقل');
+        await sysAlert(result.message, successTitle, 'success');
+        window.location.reload();
+    } catch (error) {
+        status.textContent = error.message || 'تعذر الاتصال بالخادم';
+        await sysAlert(status.textContent, 'الحقول الديناميكية', 'danger');
+    }
+}
+
+function createVehicleField(event) {
+    event.preventDefault();
+    submitVehicleFieldRequest('/settings/dynamic-fields', {
+        label: document.getElementById('newVehicleFieldLabel').value,
+        required: document.getElementById('newVehicleFieldRequired').checked
+    }, 'الحقول الديناميكية');
+}
+
+function updateVehicleField(fieldId) {
+    submitVehicleFieldRequest(`/settings/dynamic-fields/${fieldId}`, {
+        label: document.getElementById(`vehicleFieldLabel${fieldId}`).value,
+        required: document.getElementById(`vehicleFieldRequired${fieldId}`).checked
+    }, 'الحقول الديناميكية');
+}
+
+function setVehicleFieldActive(fieldId, action) {
+    const prompt = action === 'archive'
+        ? 'ستتم أرشفة الحقل وإخفاؤه من الاستخدام الجديد مع الاحتفاظ بالقيم. هل تريد المتابعة؟'
+        : 'هل تريد استعادة هذا الحقل؟';
+    if (!window.confirm(prompt)) return;
+    submitVehicleFieldRequest(`/settings/dynamic-fields/${fieldId}/${action}`, {}, 'الحقول الديناميكية');
 }
 
 async function sendSmtpTestEmail() {

@@ -304,13 +304,26 @@ def get_vehicle_information(connection, vehicle):
 
     known_vehicle_fields = {key for key, _label, source in PUBLIC_FIELDS if source == "vehicle"}
     if _table_exists(connection, "vehicle_fields"):
+        field_columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(vehicle_fields)"
+            ).fetchall()
+        }
+        active_filter = " WHERE is_active = 1" if "is_active" in field_columns else ""
         custom_fields = connection.execute(
-            "SELECT name, label FROM vehicle_fields ORDER BY id"
+            f"SELECT name, label FROM vehicle_fields{active_filter} ORDER BY id"
         ).fetchall()
+        seen_labels = set()
         for field in custom_fields:
             name = field["name"]
-            if name in vehicle.keys() and name not in known_vehicle_fields:
+            normalized_label = " ".join((field["label"] or name).split()).casefold()
+            if (
+                name in vehicle.keys()
+                and name not in known_vehicle_fields
+                and normalized_label not in seen_labels
+            ):
                 values[f"custom:{name}"] = vehicle[name] or "غير مسجل"
+                seen_labels.add(normalized_label)
     return values
 
 
@@ -320,17 +333,26 @@ def get_field_definitions(connection, vehicle):
         for key, label, source in PUBLIC_FIELDS
     ]
     if _table_exists(connection, "vehicle_fields"):
+        field_columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(vehicle_fields)"
+            ).fetchall()
+        }
+        active_filter = " WHERE is_active = 1" if "is_active" in field_columns else ""
+        seen_labels = set()
         for field in connection.execute(
-            "SELECT name, label FROM vehicle_fields ORDER BY id"
+            f"SELECT name, label FROM vehicle_fields{active_filter} ORDER BY id"
         ).fetchall():
+            normalized_label = " ".join((field["label"] or field["name"]).split()).casefold()
             if field["name"] in vehicle.keys() and all(
                 item["key"] != field["name"] for item in definitions
-            ):
+            ) and normalized_label not in seen_labels:
                 definitions.append({
                     "key": f"custom:{field['name']}",
                     "label": field["label"] or field["name"],
                     "value_source": "vehicle",
                 })
+                seen_labels.add(normalized_label)
     return definitions
 
 
