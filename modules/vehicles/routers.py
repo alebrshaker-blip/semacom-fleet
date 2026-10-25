@@ -7,6 +7,7 @@ from core import storage
 from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash, current_app
 from pathlib import Path
 from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import RequestEntityTooLarge
 from modules.vehicles import repository
 from modules.vehicles.controller.vehicles_controller import VehiclesController
 from modules.vehicles.public_access import (
@@ -453,152 +454,203 @@ def public_issue_form(token):
 
 @vehicles_bp.route("/public/<token>/video-upload", methods=["POST"])
 def public_video_upload_url(token):
-    connection = get_connection()
+    connection = None
     try:
+        connection = get_connection()
         ensure_public_tables(connection)
         profile = get_public_profile(connection, token)
         if not profile:
-            return jsonify(error="رابط المركبة غير صالح أو منتهي الصلاحية."), 404
+            return jsonify(success=False, error="رابط المركبة غير صالح أو منتهي الصلاحية."), 404
         if not profile["inquiries_enabled"]:
-            return jsonify(error="إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً."), 403
+            return jsonify(success=False, error="إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً."), 403
         if not settings.SUPABASE_PUBLIC_KEY:
             return jsonify(
+                success=False,
                 error="رفع الفيديو غير مهيأ؛ يرجى ضبط مفتاح Supabase العام."
             ), 503
         payload = request.get_json(silent=True)
         extension = payload.get("extension") if isinstance(payload, dict) else None
-        try:
-            path = create_public_video_upload_path(profile["vehicle_id"], extension)
-            signed_upload = storage.create_signed_upload_url(path)
-        except ValueError as error:
-            return jsonify(error=str(error)), 400
-        except storage.StorageError:
-            current_app.logger.exception("Failed to create a vehicle QR video upload URL")
-            return jsonify(error="تعذر بدء رفع الفيديو حالياً؛ حاول مرة أخرى لاحقاً."), 503
+        path = create_public_video_upload_path(profile["vehicle_id"], extension)
+        signed_upload = storage.create_signed_upload_url(path)
         return jsonify(
+            success=True,
             signed_url=signed_upload["signed_url"],
             path=signed_upload["path"],
             api_key=settings.SUPABASE_PUBLIC_KEY,
         )
+    except RequestEntityTooLarge:
+        return jsonify(
+            success=False,
+            error="تجاوز طلب بدء رفع الفيديو الحد الأقصى المسموح به.",
+        ), 413
+    except ValueError as error:
+        return jsonify(success=False, error=str(error)), 400
+    except storage.StorageError:
+        current_app.logger.exception("Failed to create a vehicle QR video upload URL")
+        return jsonify(
+            success=False,
+            error="تعذر بدء رفع الفيديو حالياً؛ حاول مرة أخرى لاحقاً.",
+        ), 503
+    except Exception:
+        current_app.logger.exception("Unexpected error while preparing a vehicle video upload")
+        return jsonify(
+            success=False,
+            error="حدث خطأ غير متوقع أثناء تجهيز رفع الفيديو.",
+        ), 500
     finally:
-        connection.close()
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                current_app.logger.exception("Failed to close vehicle video upload connection")
 
 
 @vehicles_bp.route("/public/<token>/video-upload/cancel", methods=["POST"])
 def public_cancel_video_upload(token):
-    connection = get_connection()
+    connection = None
     try:
+        connection = get_connection()
         ensure_public_tables(connection)
         profile = get_public_profile(connection, token)
         if not profile:
-            return jsonify(error="رابط المركبة غير صالح أو منتهي الصلاحية."), 404
+            return jsonify(success=False, error="رابط المركبة غير صالح أو منتهي الصلاحية."), 404
         payload = request.get_json(silent=True)
         path = payload.get("path") if isinstance(payload, dict) else None
         if not is_public_video_upload_path(path, profile["vehicle_id"]):
-            return jsonify(error="مسار الفيديو غير صالح."), 400
+            return jsonify(success=False, error="مسار الفيديو غير صالح."), 400
         if not storage.delete_object(path):
-            return jsonify(error="تعذر تنظيف ملف الفيديو المؤقت."), 503
-        return jsonify(deleted=True)
+            return jsonify(success=False, error="تعذر تنظيف ملف الفيديو المؤقت."), 503
+        return jsonify(success=True, deleted=True)
+    except RequestEntityTooLarge:
+        return jsonify(success=False, error="تجاوز طلب تنظيف الفيديو الحد الأقصى المسموح به."), 413
+    except Exception:
+        current_app.logger.exception("Failed to cancel a staged vehicle video upload")
+        return jsonify(success=False, error="تعذر تنظيف ملف الفيديو المؤقت."), 500
     finally:
-        connection.close()
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                current_app.logger.exception("Failed to close vehicle video cleanup connection")
 
 
 @vehicles_bp.route("/public/<token>/submit-issue", methods=["POST"])
 def public_submit_issue(token):
-    connection = get_connection()
+    connection = None
+    profile = None
+    photos = []
+    video_path = None
+    request_limit = MAX_PUBLIC_SUBMISSION_BYTES
     try:
+        connection = get_connection()
         ensure_public_tables(connection)
         profile = get_public_profile(connection, token)
         if not profile:
-            return render_template("vehicles/views/public_not_found.html"), 404
-        vehicle_label = f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -")
+            return jsonify(success=False, error="رابط المركبة غير صالح أو منتهي الصلاحية."), 404
         if not profile["inquiries_enabled"]:
-            return "إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً.", 403
-        request.max_content_length = MAX_PUBLIC_SUBMISSION_BYTES
-        if request.content_length and request.content_length > request.max_content_length:
-            return render_template(
-                "vehicles/views/public_portal.html",
-                mode="issue",
-                token=token,
-                vehicle_label=vehicle_label,
-                inquiries_enabled=True,
-                error="تجاوز إجمالي الملفات الحد المسموح؛ الحد الأقصى ثلاث صور، 5 ميجابايت لكل صورة.",
+            return jsonify(
+                success=False,
+                error="إرسال الاستفسارات والبلاغات غير متاح لهذه المركبة حالياً.",
+            ), 403
+        app_request_limit = current_app.config.get(
+            "MAX_CONTENT_LENGTH", settings.MAX_CONTENT_LENGTH
+        )
+        request_limit = min(
+            MAX_PUBLIC_SUBMISSION_BYTES,
+            app_request_limit if app_request_limit is not None else MAX_PUBLIC_SUBMISSION_BYTES,
+        )
+        if request.content_length and request.content_length > request_limit:
+            return jsonify(
+                success=False,
+                error="تجاوز طلب البلاغ الحد الأقصى المسموح به.",
+                max_bytes=request_limit,
             ), 413
         message = (request.form.get("message") or "").strip()
+        video_path = (request.form.get("video_path") or "").strip() or None
         if not message:
-            return render_template(
-                "vehicles/views/public_portal.html",
-                mode="issue",
-                token=token,
-                vehicle_label=vehicle_label,
-                inquiries_enabled=True,
-                error="يرجى كتابة وصف المشكلة أو الاستفسار.",
-            ), 400
+            raise ValueError("يرجى كتابة وصف المشكلة أو الاستفسار.")
         uploads = request.files.getlist("photos")
         uploads = [upload for upload in uploads if upload and upload.filename]
         if len(uploads) > 3:
-            return render_template(
-                "vehicles/views/public_portal.html",
-                mode="issue",
-                token=token,
-                vehicle_label=vehicle_label,
-                inquiries_enabled=True,
-                error="يمكن إرفاق ثلاث صور كحد أقصى.",
-            ), 400
+            raise ValueError("يمكن إرفاق ثلاث صور كحد أقصى.")
         photos = validate_and_save_photos(uploads)
         video = None
-        video_path = (request.form.get("video_path") or "").strip() or None
-        try:
-            if video_path:
-                if not is_public_video_upload_path(video_path, profile["vehicle_id"]):
-                    raise ValueError("مسار الفيديو المرفوع غير صالح.")
-                video = validate_uploaded_video(video_path, profile["vehicle_id"])
-            save_submission(
-                profile["vehicle_id"],
-                "استفسار أو بلاغ مشكلة",
-                message[:4000],
-                photos=photos,
-                video=video,
+        if video_path:
+            if not is_public_video_upload_path(video_path, profile["vehicle_id"]):
+                raise ValueError("مسار الفيديو المرفوع غير صالح.")
+            video = validate_uploaded_video(video_path, profile["vehicle_id"])
+        save_submission(
+            profile["vehicle_id"],
+            "استفسار أو بلاغ مشكلة",
+            message[:4000],
+            photos=photos,
+            video=video,
+        )
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify(
+                success=True,
+                message=THANK_YOU_MESSAGE,
+                redirect_url=url_for("vehicles.public_vehicle_submissions", token=token),
             )
-        except (OSError, ValueError, storage.StorageError):
-            storage.delete_files(*photos, video)
-            if video_path and is_public_video_upload_path(
-                video_path, profile["vehicle_id"]
-            ):
-                storage.delete_object(video_path)
-            raise
-        except dbapi.Error:
-            current_app.logger.exception("Failed to save a vehicle QR submission")
-            raise
         return render_template(
             "vehicles/views/public_portal.html",
             mode="thanks",
             token=token,
             message=THANK_YOU_MESSAGE,
             inquiries_enabled=True,
-            vehicle_label=vehicle_label,
+            vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
+    except RequestEntityTooLarge:
+        current_app.logger.info("Rejected oversized vehicle QR issue submission")
+        _cleanup_failed_issue_uploads(
+            photos, video_path, profile.get("vehicle_id") if profile else None
+        )
+        return jsonify(
+            success=False,
+            error="تجاوز طلب البلاغ الحد الأقصى المسموح به.",
+            max_bytes=request_limit,
+        ), 413
     except ValueError as error:
-        return render_template(
-            "vehicles/views/public_portal.html",
-            mode="issue",
-            token=token,
-            vehicle_label=vehicle_label,
-            inquiries_enabled=True,
-            error=str(error),
-        ), 400
+        _cleanup_failed_issue_uploads(
+            photos, video_path, profile.get("vehicle_id") if profile else None
+        )
+        return jsonify(success=False, error=str(error)), 400
     except storage.StorageError:
         current_app.logger.exception("Vehicle QR report upload failed")
-        return render_template(
-            "vehicles/views/public_portal.html",
-            mode="issue",
-            token=token,
-            vehicle_label=vehicle_label,
-            inquiries_enabled=True,
+        _cleanup_failed_issue_uploads(
+            photos, video_path, profile.get("vehicle_id") if profile else None
+        )
+        return jsonify(
+            success=False,
             error="تعذر رفع المرفقات حالياً؛ حاول مرة أخرى لاحقاً.",
         ), 503
+    except Exception:
+        current_app.logger.exception("Unexpected error while processing a vehicle QR issue submission")
+        _cleanup_failed_issue_uploads(
+            photos, video_path, profile.get("vehicle_id") if profile else None
+        )
+        return jsonify(
+            success=False,
+            error="حدث خطأ غير متوقع أثناء معالجة البلاغ.",
+        ), 500
     finally:
-        connection.close()
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                current_app.logger.exception("Failed to close vehicle issue submission connection")
+
+
+def _cleanup_failed_issue_uploads(photos, video_path, vehicle_id):
+    try:
+        storage.delete_files(*photos)
+    except Exception:
+        current_app.logger.exception("Failed to clean up vehicle issue photos")
+    if video_path and vehicle_id and is_public_video_upload_path(video_path, vehicle_id):
+        try:
+            storage.delete_object(video_path)
+        except Exception:
+            current_app.logger.exception("Failed to clean up staged vehicle issue video")
 
 
 @vehicles_bp.route("/public-submissions")

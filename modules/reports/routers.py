@@ -932,6 +932,29 @@ def _vehicle_report_options():
         conn.close()
 
 
+def _active_vehicle_field_labels(conn):
+    field_columns = {
+        row['name'] for row in conn.execute('PRAGMA table_info(vehicle_fields)')
+    } if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vehicle_fields'"
+    ).fetchone() else set()
+    if not field_columns:
+        return {}
+
+    active_filter = ' WHERE is_active = 1' if 'is_active' in field_columns else ''
+    labels = {}
+    seen_labels = set()
+    for row in conn.execute(
+        f'SELECT name, label FROM vehicle_fields{active_filter} ORDER BY id'
+    ).fetchall():
+        label = row['label'] or row['name']
+        normalized_label = ' '.join(label.split()).casefold()
+        if normalized_label not in seen_labels:
+            labels[row['name']] = label
+            seen_labels.add(normalized_label)
+    return labels
+
+
 def _vehicle_report_data(filters=None, vehicle_id=None):
     filters = filters or _vehicle_report_filters({})
     conn = dbapi.connect()
@@ -974,22 +997,7 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
             'SELECT * FROM drivers'
         ).fetchall()] if driver_columns else []
         vehicle_columns = [row['name'] for row in conn.execute('PRAGMA table_info(vehicles)')]
-        vehicle_field_columns = {
-            row['name'] for row in conn.execute('PRAGMA table_info(vehicle_fields)')
-        } if conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vehicle_fields'"
-        ).fetchone() else set()
-        custom_filter = ' WHERE is_active = 1' if 'is_active' in vehicle_field_columns else ''
-        custom_vehicle_labels = {}
-        seen_custom_labels = set()
-        if vehicle_field_columns:
-            for row in conn.execute(
-                f'SELECT name, label FROM vehicle_fields{custom_filter} ORDER BY id'
-            ).fetchall():
-                normalized_label = ' '.join((row['label'] or row['name']).split()).casefold()
-                if normalized_label not in seen_custom_labels:
-                    custom_vehicle_labels[row['name']] = row['label']
-                    seen_custom_labels.add(normalized_label)
+        custom_vehicle_labels = _active_vehicle_field_labels(conn)
         vehicle_columns = [
             name for name in vehicle_columns
             if not name.startswith('custom_field_') or name in custom_vehicle_labels
@@ -1019,6 +1027,9 @@ def _vehicle_report_data(filters=None, vehicle_id=None):
 
     result = []
     for vehicle in vehicles:
+        for name in tuple(vehicle):
+            if name.startswith('custom_field_') and name not in custom_vehicle_labels:
+                vehicle.pop(name)
         if vehicle_id is not None and str(vehicle.get('id')) != str(vehicle_id):
             continue
         if any(
@@ -1276,14 +1287,22 @@ def _handover_report_context(params, document=False):
 
 def _driver_report_fields():
     conn = dbapi.connect()
+    conn.row_factory = dbapi.Row
     try:
         driver_columns = [row[1] for row in conn.execute('PRAGMA table_info(drivers)')]
         vehicle_columns = [row[1] for row in conn.execute('PRAGMA table_info(vehicles)')]
+        active_custom_fields = _active_vehicle_field_labels(conn)
     finally:
         conn.close()
     return (
         [{'key': f'driver:{column}', 'label': DRIVER_FIELD_LABELS.get(column, column)} for column in driver_columns],
-        [{'key': f'vehicle:{column}', 'label': VEHICLE_FIELD_LABELS.get(column, column)} for column in vehicle_columns]
+        [
+            {'key': f'vehicle:{column}', 'label': active_custom_fields.get(
+                column, VEHICLE_FIELD_LABELS.get(column, column)
+            )}
+            for column in vehicle_columns
+            if not column.startswith('custom_field_') or column in active_custom_fields
+        ]
     )
 
 

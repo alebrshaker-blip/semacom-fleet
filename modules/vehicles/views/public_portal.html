@@ -208,6 +208,35 @@
     const videoUploadCancelUrl = {{ url_for('vehicles.public_cancel_video_upload', token=token)|tojson }};
     const supabaseAnonKey = {{ supabase_anon_key|tojson }};
 
+    async function readJsonResponse(response) {
+        const body = await response.text();
+        try {
+            return body ? JSON.parse(body) : {};
+        } catch {
+            throw new Error(
+                response.ok
+                    ? "استجابة الخادم غير صالحة."
+                    : `تعذر إكمال الطلب (HTTP ${response.status}).`
+            );
+        }
+    }
+
+    async function submitIssue() {
+        const response = await fetch(issueForm.action, {
+            method: "POST",
+            headers: { "Accept": "application/json" },
+            body: new FormData(issueForm)
+        });
+        const result = await readJsonResponse(response);
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || "تعذر إرسال البلاغ.");
+        }
+        videoStatus.textContent = result.message || "تم استلام البلاغ.";
+        if (result.redirect_url) {
+            window.location.assign(result.redirect_url);
+        }
+    }
+
     function updatePhotoStatus(message) {
         const count = photosInput.files.length;
         photoStatus.textContent = message || (
@@ -258,9 +287,19 @@
 
     issueForm.addEventListener("submit", async function (event) {
         const video = videoInput.files[0];
-        if (!video || videoPathInput.value) return;
-
         event.preventDefault();
+        if (!video || videoPathInput.value) {
+            submitButton.disabled = true;
+            videoStatus.textContent = "جارٍ إرسال البلاغ...";
+            try {
+                await submitIssue();
+            } catch (error) {
+                videoStatus.textContent = error.message || "تعذر إرسال البلاغ.";
+                submitButton.disabled = false;
+            }
+            return;
+        }
+
         if (video.size > 200 * 1024 * 1024) {
             videoStatus.textContent = "يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.";
             return;
@@ -276,8 +315,8 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ extension })
             });
-            const signedResult = await signedResponse.json();
-            if (!signedResponse.ok) {
+            const signedResult = await readJsonResponse(signedResponse);
+            if (!signedResponse.ok || !signedResult.success) {
                 throw new Error(signedResult.error || "تعذر بدء رفع الفيديو.");
             }
             const publicApiKey = signedResult.api_key || signedResult.supabase_key || supabaseAnonKey;
@@ -305,7 +344,7 @@
 
             videoPathInput.value = signedResult.path;
             videoStatus.textContent = "اكتمل رفع الفيديو؛ جارٍ إرسال البلاغ...";
-            issueForm.submit();
+            await submitIssue();
         } catch (error) {
             if (stagedVideoPath) {
                 try {
@@ -317,6 +356,7 @@
                 } catch (cleanupError) {
                     console.error("Failed to clean up staged vehicle video.", cleanupError);
                 }
+                videoPathInput.value = "";
             }
             videoStatus.textContent = error.message || "تعذر رفع الفيديو؛ حاول مرة أخرى.";
             submitButton.disabled = false;
