@@ -206,6 +206,7 @@
     const submitButton = issueForm.querySelector('button[type="submit"]');
     const videoUploadUrl = {{ url_for('vehicles.public_video_upload_url', token=token)|tojson }};
     const videoUploadCancelUrl = {{ url_for('vehicles.public_cancel_video_upload', token=token)|tojson }};
+    const supabaseAnonKey = {{ supabase_anon_key|tojson }};
 
     function updatePhotoStatus(message) {
         const count = photosInput.files.length;
@@ -279,7 +280,7 @@
             if (!signedResponse.ok) {
                 throw new Error(signedResult.error || "تعذر بدء رفع الفيديو.");
             }
-            const publicApiKey = signedResult.api_key || signedResult.supabase_key;
+            const publicApiKey = signedResult.api_key || signedResult.supabase_key || supabaseAnonKey;
             if (!publicApiKey || !signedResult.signed_url || !signedResult.path) {
                 throw new Error("رفع الفيديو غير مهيأ؛ يرجى ضبط مفتاح Supabase العام.");
             }

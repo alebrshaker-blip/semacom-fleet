@@ -444,6 +444,7 @@ def public_issue_form(token):
             mode="issue",
             token=token,
             inquiries_enabled=True,
+            supabase_anon_key=settings.SUPABASE_PUBLIC_KEY,
             vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
     finally:
