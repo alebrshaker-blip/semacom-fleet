@@ -25,11 +25,8 @@
     @media print {
         @page { size: A4 portrait; margin: 0; }
         html, body { width: 100%; height: 100%; margin: 0 !important; padding: 0 !important; }
-        body * { display: none !important; }
-        .qr-print, .qr-print * {
-            visibility: visible !important;
-            display: block !important;
-        }
+        body * { visibility: hidden !important; }
+        .qr-print, .qr-print * { visibility: visible !important; }
         .qr-print {
             position: fixed;
             inset: 0;

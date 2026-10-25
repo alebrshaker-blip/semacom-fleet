@@ -45,13 +45,21 @@
         .vehicle-report-table tr { break-inside: avoid; page-break-inside: avoid; }
         .vehicle-report-table-wrap { overflow: visible; }
         .status-form { display: none; }
+        .single-vehicle-report {
+            height: auto !important;
+            min-height: 0 !important;
+            justify-content: flex-start;
+            padding: 6mm 8mm !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+        }
     }
 </style>
 {% endblock %}
 
 {% block pages %}
 {% for item in report_data %}
-<section class="page-container landscape vehicle-report-page">
+<section class="page-container landscape vehicle-report-page{% if report_type == 'single' %} single-vehicle-report{% endif %}">
     {% include '_print_header.html' %}
     {% if item.is_archived %}
     <h2 class="vehicle-report-title">
@@ -209,4 +217,24 @@
     <div class="report-content text-center text-muted py-5">لا توجد مركبات مطابقة لهذا التقرير.</div>
 </section>
 {% endfor %}
+{% if report_type == 'single' %}
+<script>
+    const singleVehicleReport = document.querySelector(".single-vehicle-report");
+    let originalReportZoom = "";
+
+    window.addEventListener("beforeprint", function () {
+        if (!singleVehicleReport) return;
+
+        originalReportZoom = singleVehicleReport.style.zoom;
+        const pageHeight = (210 * 96) / 25.4;
+        const contentHeight = singleVehicleReport.scrollHeight;
+        const scale = Math.min(1, pageHeight / contentHeight);
+        singleVehicleReport.style.zoom = String(scale);
+    });
+
+    window.addEventListener("afterprint", function () {
+        if (singleVehicleReport) singleVehicleReport.style.zoom = originalReportZoom;
+    });
+</script>
+{% endif %}
 {% endblock %}

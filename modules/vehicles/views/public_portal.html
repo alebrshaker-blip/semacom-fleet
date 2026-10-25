@@ -213,12 +213,24 @@
         try {
             return body ? JSON.parse(body) : {};
         } catch {
+            let message = body.trim();
+            if (message.startsWith("<")) {
+                message = new DOMParser().parseFromString(message, "text/html").body.textContent.trim();
+            }
+            if (!response.ok && message) {
+                throw new Error(message);
+            }
             throw new Error(
                 response.ok
                     ? "استجابة الخادم غير صالحة."
                     : `تعذر إكمال الطلب (HTTP ${response.status}).`
             );
         }
+    }
+
+    function getServerError(result, fallback) {
+        return [result.error, result.message, result.description]
+            .find(message => typeof message === "string" && message.trim()) || fallback;
     }
 
     async function submitIssue() {
@@ -229,7 +241,7 @@
         });
         const result = await readJsonResponse(response);
         if (!response.ok || !result.success) {
-            throw new Error(result.error || "تعذر إرسال البلاغ.");
+            throw new Error(getServerError(result, "تعذر إرسال البلاغ."));
         }
         videoStatus.textContent = result.message || "تم استلام البلاغ.";
         if (result.redirect_url) {
@@ -317,7 +329,7 @@
             });
             const signedResult = await readJsonResponse(signedResponse);
             if (!signedResponse.ok || !signedResult.success) {
-                throw new Error(signedResult.error || "تعذر بدء رفع الفيديو.");
+                throw new Error(getServerError(signedResult, "تعذر بدء رفع الفيديو."));
             }
             const publicApiKey = signedResult.api_key || signedResult.supabase_key || supabaseAnonKey;
             if (!signedResult.signed_url || !signedResult.path) {
