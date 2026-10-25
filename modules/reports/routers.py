@@ -18,6 +18,7 @@ from modules.reports.typography import get_report_typography
 from .services.reports_service import (
     generate_reference_number,
     generate_document_qr,
+    is_embedded_qr,
     init_report_counter_db,
     render_report_pdf,
     QR_DIR,
@@ -58,7 +59,7 @@ reports_bp = Blueprint(
 
 def _discard_files(*paths):
     for path in paths:
-        if not path:
+        if not path or is_embedded_qr(path):
             continue
         if storage.is_url(path):
             if not storage.delete_file(path):
@@ -538,7 +539,7 @@ def _lookup_approved_report(item_id=None, doc_type='accidents_report', approval_
         current_app.logger.exception('Unable to look up a finalized report')
         abort(500, description='تعذر التحقق من اعتماد التقرير')
     if doc_number:
-        if not storage.object_path_from_url(qr_path):
+        if not storage.object_path_from_url(qr_path) and not is_embedded_qr(qr_path):
             try:
                 qr_path = _ensure_document_qr(
                     doc_number, doc_type, item_id, approval_token
@@ -562,7 +563,7 @@ def _ensure_document_qr(doc_number, doc_type, item_id, approval_token=None):
     if not document:
         return None
     stored_qr = document.get('qr_code_path')
-    if storage.object_path_from_url(stored_qr):
+    if storage.object_path_from_url(stored_qr) or is_embedded_qr(stored_qr):
         return stored_qr
     qr_url = generate_document_qr(
         doc_number,
@@ -2347,17 +2348,9 @@ def approve_document_api():
                 'message': 'تعذر الاتصال بالتخزين السحابي لحفظ صور تقرير الحادث؛ حاول مرة أخرى'
             }), 503
     # QR always resolves to the immutable final-report page, never to preview.
-    try:
-        qr_url = generate_document_qr(
-            doc_number, doc_type, item_id, access_token=approval_token
-        )
-    except storage.StorageError:
-        current_app.logger.exception('Unable to store report QR code')
-        _discard_files(*accident_image_paths, *maintenance_photo_paths)
-        return jsonify({
-            'success': False,
-            'message': 'تعذر حفظ رمز QR في التخزين السحابي'
-        }), 503
+    qr_url = generate_document_qr(
+        doc_number, doc_type, item_id, access_token=approval_token
+    )
 
     if doc_type in {'accidents_report', 'accident_single'}:
         html = render_template(

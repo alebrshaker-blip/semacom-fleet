@@ -61,6 +61,9 @@ def _object_path(folder, original_name, extension=None):
 def upload_bytes(data, folder, original_name='', content_type=None, extension=None,
                  path=None, upsert=False):
     """Upload raw bytes under `folder/` (or an explicit `path`); returns the public URL."""
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError('Supabase upload_bytes requires an in-memory bytes-like object.')
+    data = bytes(data)
     path = path or _object_path(folder, original_name, extension)
     content_type = (
         content_type
@@ -68,7 +71,7 @@ def upload_bytes(data, folder, original_name='', content_type=None, extension=No
         or 'application/octet-stream'
     )
     try:
-        bucket = _bucket()
+        bucket = _get_client().storage.from_(settings.SUPABASE_BUCKET)
         bucket.upload(
             path, data,
             {'content-type': content_type, 'upsert': 'true' if upsert else 'false'},
@@ -77,7 +80,10 @@ def upload_bytes(data, folder, original_name='', content_type=None, extension=No
     except StorageError:
         raise
     except Exception as exc:
-        raise StorageError(f'Failed to upload file to Supabase Storage: {exc}') from exc
+        raise StorageError(
+            f'Failed to upload {path} to Supabase Storage bucket '
+            f'{settings.SUPABASE_BUCKET}: {exc}'
+        ) from exc
 
 
 def create_signed_upload_url(path):

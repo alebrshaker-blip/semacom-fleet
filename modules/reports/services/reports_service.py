@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 from core import database as dbapi
 import qrcode
 import io
@@ -19,9 +20,11 @@ from core import storage
 from modules.reports.typography import REPORT_FONT_FILES, get_report_typography
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
-TEMP_UPLOAD_DIR = os.path.join(tempfile.gettempdir(), 'semacom-fleet')
+SYSTEM_TEMP_DIR = '/tmp' if os.name == 'posix' else tempfile.gettempdir()
+TEMP_UPLOAD_DIR = os.path.join(SYSTEM_TEMP_DIR, 'semacom-fleet')
 QR_DIR = os.path.join(TEMP_UPLOAD_DIR, 'qrcodes')
 REPORTS_DIR = os.path.join(TEMP_UPLOAD_DIR, 'reports')
+_LOGGER = logging.getLogger(__name__)
 
 os.makedirs(QR_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -107,7 +110,8 @@ def generate_document_qr(
     access_token: str = None
 ) -> str:
     """
-    Generate a QR code and persist it in Supabase Storage.
+    Generate a QR code and persist it in Supabase Storage when available.
+    An embedded data URL is returned if cloud storage is temporarily unavailable.
     """
     try:
         host_url = request.host_url.rstrip('/')
@@ -140,19 +144,35 @@ def generate_document_qr(
     qr.make(fit=True)
     
     img = qr.make_image(fill_color="#1b365d", back_color="white")
-    
-    clean_doc_num = doc_number.replace('.', '_').replace('-', '_')
-    filename = f"qr_{clean_doc_num}.png"
     buffer = io.BytesIO()
     img.save(buffer, format='PNG')
-    return storage.upload_bytes(
-        buffer.getvalue(),
-        'reports/qrcodes',
-        filename,
-        content_type='image/png',
-        path=f"reports/qrcodes/{filename}",
-        upsert=True,
-    )
+    image_bytes = buffer.getvalue()
+
+    clean_doc_num = doc_number.replace('.', '_').replace('-', '_')
+    filename = f"qr_{clean_doc_num}.png"
+    try:
+        return storage.upload_bytes(
+            image_bytes,
+            'reports/qrcodes',
+            filename,
+            content_type='image/png',
+            path=f"reports/qrcodes/{filename}",
+            upsert=True,
+        )
+    except Exception:
+        _LOGGER.exception(
+            'Unable to upload report QR code %s; using embedded image data',
+            doc_number,
+        )
+        return _embedded_qr_data_url(image_bytes)
+
+
+def _embedded_qr_data_url(image_bytes):
+    return 'data:image/png;base64,' + base64.b64encode(image_bytes).decode('ascii')
+
+
+def is_embedded_qr(value):
+    return isinstance(value, str) and value.startswith('data:image/png;base64,')
 
 
 def merge_report_images(image_sources, output_path, canvas_size=(1800, 1100)):
