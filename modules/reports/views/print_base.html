@@ -659,6 +659,16 @@
     </div>
 
     <script>
+        document.querySelectorAll('.page-container table').forEach(function (table) {
+            if (table.parentElement.closest('table') || table.parentElement.classList.contains('report-table-scroll')) {
+                return;
+            }
+            const wrapper = document.createElement('div');
+            wrapper.className = 'report-table-scroll';
+            table.parentNode.insertBefore(wrapper, table);
+            wrapper.appendChild(table);
+        });
+
         function navigateBack(event) {
             const referrer = document.referrer;
             if (!referrer) return true;

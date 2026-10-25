@@ -64,6 +64,18 @@
             .custom-field-row { grid-template-columns: 1fr; }
         }
         .actions-flex { display: flex; justify-content: space-between; align-items: center; margin-top: 25px; border-top: 1px solid #dee2e6; padding-top: 20px; }
+        @media (max-width: 767.98px) {
+            body { padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+            .card-body { padding: 18px 14px; }
+            .form-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+            .full-width { grid-column: auto; }
+            .form-control, .form-select { min-height: 46px; font-size: 16px; }
+            .section-title { align-items: stretch; flex-direction: column; gap: 10px; }
+            .actions-flex { align-items: stretch; flex-direction: column; gap: 10px; }
+            .actions-flex > * { width: 100%; }
+            .actions-flex .btn { display: flex; width: 100%; min-height: 46px; align-items: center; justify-content: center; margin-top: 8px; }
+            .custom-field-row { grid-template-columns: minmax(0, 1fr); }
+        }
     </style>
 </head>
 <body>

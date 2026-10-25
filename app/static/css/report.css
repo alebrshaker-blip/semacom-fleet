@@ -189,14 +189,29 @@ h3 {
         overflow-wrap: anywhere;
     }
 
-    .page-container table {
-        display: block;
+    .report-table-scroll {
         width: 100%;
         max-width: 100%;
         overflow-x: auto;
+        overflow-y: hidden;
         overscroll-behavior-x: contain;
         -webkit-overflow-scrolling: touch;
+        touch-action: pan-x pan-y;
+    }
+
+    .page-container .report-table-scroll table {
+        display: table;
+        width: max-content !important;
+        min-width: 100%;
+        max-width: none;
         table-layout: auto;
+        overflow: visible;
+    }
+
+    .page-container .report-table-scroll :is(th, td) {
+        white-space: nowrap;
+        overflow-wrap: normal;
+        word-break: normal;
     }
 
     .page-container img,
@@ -223,5 +238,21 @@ h3 {
         min-width: 0;
         max-width: 100%;
         font-size: 16px !important;
+    }
+}
+
+@media print {
+    .report-table-scroll {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+    }
+
+    .report-table-scroll table {
+        display: table !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
     }
 }

@@ -1,6 +1,7 @@
 import json
 import mimetypes
 import os
+import re
 from config import settings
 from core import database as dbapi
 from core import storage
@@ -51,8 +52,10 @@ IMMUTABLE_PUBLIC_FIELDS = {
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov"}
-MAX_VIDEO_BYTES = 25 * 1024 * 1024
+MAX_VIDEO_BYTES = 200 * 1024 * 1024
 MAX_VIDEO_DURATION_SECONDS = 120
+MAX_PUBLIC_SUBMISSION_BYTES = 3 * MAX_IMAGE_BYTES + 1024 * 1024
+PUBLIC_VIDEO_UPLOAD_FOLDER = "vehicle_public_uploads"
 THANK_YOU_MESSAGE = "شكراً لكم، سيتم النظر في طلبكم وإبلاغكم بالرد في أقرب وقت."
 
 
@@ -470,31 +473,42 @@ def _mp4_duration_seconds(payload):
     return duration / timescale
 
 
-def validate_and_save_video(upload):
-    if not upload or not upload.filename:
-        return None
-    extension = Path(secure_filename(upload.filename)).suffix.lower()
+def create_public_video_upload_path(vehicle_id, extension):
+    extension = str(extension or "").lower()
     if extension not in ALLOWED_VIDEO_EXTENSIONS:
         raise ValueError("يرجى إرفاق مقطع بصيغة MP4 أو MOV.")
-    payload = upload.read(MAX_VIDEO_BYTES + 1)
+    return (
+        f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/"
+        f"{uuid.uuid4().hex}{extension}"
+    )
+
+
+def is_public_video_upload_path(path, vehicle_id):
+    prefix = f"{PUBLIC_VIDEO_UPLOAD_FOLDER}/{int(vehicle_id)}/"
+    filename = path[len(prefix):] if isinstance(path, str) and path.startswith(prefix) else ""
+    return bool(re.fullmatch(r"[a-f0-9]{32}\.(mp4|mov)", filename))
+
+
+def validate_uploaded_video(path, vehicle_id):
+    path = str(path or "").strip()
+    if not is_public_video_upload_path(path, vehicle_id):
+        raise ValueError("تعذر التحقق من مقطع الفيديو؛ يرجى رفعه من جديد.")
+    filename = path.rsplit("/", 1)[-1]
+    extension = Path(filename).suffix.lower()
+    size = storage.get_object_size(path)
+    if size <= 0:
+        raise ValueError("ملف الفيديو فارغ أو غير صالح.")
+    if size > MAX_VIDEO_BYTES:
+        raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
+    payload = storage.download_object(path)
     if len(payload) > MAX_VIDEO_BYTES:
-        raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 25 ميجابايت.")
+        raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
     duration = _mp4_duration_seconds(payload)
     if duration is None:
         raise ValueError("تعذر التحقق من مدة المقطع؛ أرفق ملف MP4 أو MOV صالحاً.")
     if duration > MAX_VIDEO_DURATION_SECONDS:
         raise ValueError("يجب ألا تتجاوز مدة مقطع الفيديو دقيقتين.")
-
-    filename = None
-    try:
-        filename = storage.upload_bytes(
-            payload, UPLOAD_FOLDER, extension=extension,
-            content_type="video/quicktime" if extension == ".mov" else "video/mp4",
-        )
-    except storage.StorageError:
-        current_app.logger.exception("Failed to save a vehicle QR report video")
-        raise
-    return filename
+    return storage.get_public_url(path)
 
 
 def save_submission(

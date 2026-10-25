@@ -34,6 +34,9 @@
         .button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
         .button { appearance: none; display: inline-flex; justify-content: center; align-items: center; border: 0; border-radius: 10px; padding: 12px 19px; background: #1b365d; color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
         .button.secondary { background: #eef2f7; color: #243247; }
+        .button[hidden] { display: none; }
+        .photo-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+        .photo-status { display: block; margin-top: 8px; color: #64748b; }
         .alert { padding: 13px 15px; border-radius: 10px; background: #fff0ee; color: #a83226; margin: 12px 0 18px; }
         .success { text-align: center; padding: 20px 8px; }
         .success-mark { width: 68px; height: 68px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: 50%; color: #146c43; background: #e3f5eb; font-size: 34px; }
@@ -108,7 +111,7 @@
         <h2>الاستفسار والإبلاغ عن مشكلة</h2>
         <p>يرجى وصف المشكلة أو الاستفسار، ويمكن إرفاق حتى ثلاث صور ومقطع فيديو قصير لا تتجاوز مدته دقيقتين.</p>
         {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
-        <form method="post" enctype="multipart/form-data" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
+        <form id="issue-form" method="post" enctype="multipart/form-data" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
             <div class="form-row">
                 <label for="message">وصف المشكلة أو الاستفسار</label>
                 <textarea id="message" name="message" maxlength="4000" required>{{ request.form.get('message', '') }}</textarea>
@@ -116,12 +119,20 @@
             <div class="form-row">
                 <label for="photos">الصور المرفقة (اختياري، حتى 3 صور)</label>
                 <input id="photos" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple>
+                <div class="photo-tools">
+                    <button class="button secondary" id="capture-photo-button" type="button">التقاط صورة بالكاميرا</button>
+                    <button class="button secondary" id="clear-photos-button" type="button" hidden>مسح الصور المختارة</button>
+                    <input id="camera-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+                </div>
+                <small id="photo-status" class="photo-status" aria-live="polite">يمكن اختيار حتى 3 صور من المعرض أو التقاطها واحدة تلو الأخرى بالكاميرا.</small>
                 <small>الصيغ المدعومة JPG وPNG وWEBP، بحد أقصى 5 ميجابايت لكل صورة.</small>
             </div>
             <div class="form-row">
                 <label for="video">مقطع فيديو (اختياري، حتى دقيقتين)</label>
-                <input id="video" type="file" name="video" accept="video/mp4,video/quicktime,.mp4,.mov">
-                <small>الصيغ المدعومة MP4 وMOV، بحد أقصى 25 ميجابايت. يتم التحقق من مدة المقطع عند الإرسال.</small>
+                <input id="video" type="file" accept="video/mp4,video/quicktime,.mp4,.mov">
+                <small>الصيغ المدعومة MP4 وMOV، بحد أقصى 200 ميجابايت. يتم التحقق من أن مدة المقطع لا تتجاوز دقيقتين عند الإرسال.</small>
+                <input id="video-path" type="hidden" name="video_path">
+                <small id="video-status" aria-live="polite"></small>
             </div>
             <div class="button-row">
                 <button class="button" type="submit">ترحيل البلاغ</button>
@@ -181,5 +192,132 @@
     </section>
     <footer class="footer">الشركة السعودية للكهرباء والاستثمار — سيماكم</footer>
 </main>
+{% if mode == "issue" %}
+<script>
+    const photosInput = document.getElementById("photos");
+    const cameraPhotoInput = document.getElementById("camera-photo");
+    const capturePhotoButton = document.getElementById("capture-photo-button");
+    const clearPhotosButton = document.getElementById("clear-photos-button");
+    const photoStatus = document.getElementById("photo-status");
+    const issueForm = document.getElementById("issue-form");
+    const videoInput = document.getElementById("video");
+    const videoPathInput = document.getElementById("video-path");
+    const videoStatus = document.getElementById("video-status");
+    const submitButton = issueForm.querySelector('button[type="submit"]');
+    const videoUploadUrl = {{ url_for('vehicles.public_video_upload_url', token=token)|tojson }};
+    const videoUploadCancelUrl = {{ url_for('vehicles.public_cancel_video_upload', token=token)|tojson }};
+
+    function updatePhotoStatus(message) {
+        const count = photosInput.files.length;
+        photoStatus.textContent = message || (
+            count
+                ? `تم اختيار ${count} من 3 صور. يمكنك التقاط صورة أخرى أو اختيار صور من المعرض.`
+                : "يمكن اختيار حتى 3 صور من المعرض أو التقاطها واحدة تلو الأخرى بالكاميرا."
+        );
+        clearPhotosButton.hidden = count === 0;
+    }
+
+    photosInput.addEventListener("change", function () {
+        const selected = Array.from(photosInput.files);
+        if (selected.length > 3) {
+            const transfer = new DataTransfer();
+            selected.slice(0, 3).forEach(file => transfer.items.add(file));
+            photosInput.files = transfer.files;
+            updatePhotoStatus("الحد الأقصى 3 صور؛ تم الاحتفاظ بأول ثلاث صور.");
+            return;
+        }
+        updatePhotoStatus();
+    });
+
+    capturePhotoButton.addEventListener("click", function () {
+        cameraPhotoInput.click();
+    });
+
+    cameraPhotoInput.addEventListener("change", function () {
+        const capturedPhotos = Array.from(cameraPhotoInput.files);
+        cameraPhotoInput.value = "";
+        if (!capturedPhotos.length) return;
+
+        const selectedPhotos = Array.from(photosInput.files);
+        if (selectedPhotos.length + capturedPhotos.length > 3) {
+            updatePhotoStatus("اكتمل الحد الأقصى؛ امسح الاختيار الحالي لإضافة صور أخرى.");
+            return;
+        }
+
+        const transfer = new DataTransfer();
+        selectedPhotos.concat(capturedPhotos).forEach(file => transfer.items.add(file));
+        photosInput.files = transfer.files;
+        updatePhotoStatus();
+    });
+
+    clearPhotosButton.addEventListener("click", function () {
+        photosInput.value = "";
+        updatePhotoStatus();
+    });
+
+    issueForm.addEventListener("submit", async function (event) {
+        const video = videoInput.files[0];
+        if (!video || videoPathInput.value) return;
+
+        event.preventDefault();
+        if (video.size > 200 * 1024 * 1024) {
+            videoStatus.textContent = "يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.";
+            return;
+        }
+        submitButton.disabled = true;
+        videoStatus.textContent = "جارٍ تجهيز رفع الفيديو مباشرةً...";
+        let stagedVideoPath = null;
+
+        try {
+            const extension = video.name.slice(video.name.lastIndexOf(".")).toLowerCase();
+            const signedResponse = await fetch(videoUploadUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ extension })
+            });
+            const signedResult = await signedResponse.json();
+            if (!signedResponse.ok) {
+                throw new Error(signedResult.error || "تعذر بدء رفع الفيديو.");
+            }
+            stagedVideoPath = signedResult.path;
+
+            videoStatus.textContent = "جارٍ رفع الفيديو؛ يرجى إبقاء الصفحة مفتوحة...";
+            const uploadForm = new FormData();
+            uploadForm.append("cacheControl", "3600");
+            uploadForm.append("", video);
+            const uploadResponse = await fetch(signedResult.signed_url, {
+                method: "PUT",
+                headers: {
+                    "x-upsert": "false",
+                    "apikey": signedResult.api_key,
+                    "Authorization": `Bearer ${signedResult.api_key}`
+                },
+                body: uploadForm
+            });
+            if (!uploadResponse.ok) {
+                throw new Error("تعذر رفع الفيديو إلى التخزين؛ تحقق من الاتصال وحاول مجدداً.");
+            }
+
+            videoPathInput.value = signedResult.path;
+            videoStatus.textContent = "اكتمل رفع الفيديو؛ جارٍ إرسال البلاغ...";
+            issueForm.submit();
+        } catch (error) {
+            if (stagedVideoPath) {
+                try {
+                    await fetch(videoUploadCancelUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ path: stagedVideoPath })
+                    });
+                } catch (cleanupError) {
+                    console.error("Failed to clean up staged vehicle video.", cleanupError);
+                }
+            }
+            videoStatus.textContent = error.message || "تعذر رفع الفيديو؛ حاول مرة أخرى.";
+            submitButton.disabled = false;
+        }
+    });
+</script>
+{% endif %}
 </body>
 </html>

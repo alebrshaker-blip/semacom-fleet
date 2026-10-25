@@ -40,6 +40,17 @@ def _bucket():
     return _get_client().storage.from_(settings.SUPABASE_BUCKET)
 
 
+def _validate_object_path(path):
+    if (
+        not isinstance(path, str)
+        or not path
+        or path.startswith("/")
+        or any(part in {"", ".", ".."} for part in path.split("/"))
+    ):
+        raise StorageError("Invalid Supabase Storage object path.")
+    return path
+
+
 def _object_path(folder, original_name, extension=None):
     suffix = extension or Path(secure_filename(original_name or '')).suffix.lower()
     stem = re.sub(r'[^A-Za-z0-9_-]', '', Path(secure_filename(original_name or '')).stem)[:40]
@@ -67,6 +78,78 @@ def upload_bytes(data, folder, original_name='', content_type=None, extension=No
         raise
     except Exception as exc:
         raise StorageError(f'Failed to upload file to Supabase Storage: {exc}') from exc
+
+
+def create_signed_upload_url(path):
+    """Create a short-lived, single-object upload URL for browser-side uploads."""
+    path = _validate_object_path(path)
+    try:
+        result = _bucket().create_signed_upload_url(path)
+        return {
+            "path": path,
+            "signed_url": result["signed_url"],
+        }
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError(
+            f'Failed to create a signed Supabase Storage upload URL: {exc}'
+        ) from exc
+
+
+def get_object_size(path):
+    """Return the size of an existing object, or raise StorageError if unavailable."""
+    path = _validate_object_path(path)
+    folder, name = path.rsplit("/", 1)
+    try:
+        matches = _bucket().list(folder, {"limit": 2, "search": name})
+        for item in matches:
+            if item.get("name") != name:
+                continue
+            size = (item.get("metadata") or {}).get("size")
+            if size is None:
+                break
+            return int(size)
+        raise StorageError("The uploaded Supabase Storage object was not found.")
+    except StorageError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise StorageError("Supabase Storage returned an invalid object size.") from exc
+    except Exception as exc:
+        raise StorageError(f'Failed to inspect Supabase Storage object: {exc}') from exc
+
+
+def download_object(path):
+    """Download an object by its in-bucket path."""
+    path = _validate_object_path(path)
+    try:
+        return _bucket().download(path)
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError(f'Failed to download file from Supabase Storage: {exc}') from exc
+
+
+def get_public_url(path):
+    """Return the configured bucket's public URL for an in-bucket object."""
+    path = _validate_object_path(path)
+    try:
+        return str(_bucket().get_public_url(path)).rstrip('?')
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError(f'Failed to resolve Supabase Storage URL: {exc}') from exc
+
+
+def delete_object(path):
+    """Best-effort removal of an object identified by its in-bucket path."""
+    try:
+        path = _validate_object_path(path)
+        _bucket().remove([path])
+        return True
+    except Exception:
+        _logger.exception('Failed to delete Supabase Storage object %s', path)
+        return False
 
 
 def upload_file(file_storage, folder):

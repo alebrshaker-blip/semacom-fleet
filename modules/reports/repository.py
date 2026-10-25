@@ -109,6 +109,20 @@ def set_final_pdf(doc_number, pdf_path):
         )
 
 
+def set_qr_code_path(doc_number, qr_url):
+    with get_session() as session:
+        session.execute(
+            update(ApprovedDocument)
+            .where(ApprovedDocument.doc_number == doc_number)
+            .values(qr_code_path=qr_url)
+        )
+        session.execute(
+            update(GeneratedReport)
+            .where(GeneratedReport.doc_number == doc_number)
+            .values(qr_code_path=qr_url, local_qr_path=qr_url)
+        )
+
+
 # --- helpers that participate in a caller-managed transaction ---------------
 
 def add_approved_document(session, *, doc_number, doc_type, item_id, file_path,

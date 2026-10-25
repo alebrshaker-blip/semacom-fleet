@@ -638,6 +638,10 @@ main.content-wrapper {
         padding-inline: 10px;
     }
 
+    .content-wrapper :where(*:not(table):not(thead):not(tbody):not(tr):not(th):not(td):not(colgroup)) {
+        max-width: 100%;
+    }
+
     .main-header {
         position: relative;
         z-index: 1000;
@@ -784,6 +788,17 @@ main.content-wrapper {
         touch-action: pan-x pan-y;
     }
 
+    .content-wrapper table th,
+    .content-wrapper table td,
+    .table-scroll table th,
+    .table-scroll table td,
+    .table-responsive table th,
+    .table-responsive table td {
+        white-space: nowrap !important;
+        overflow-wrap: normal;
+        word-break: normal;
+    }
+
     .content-wrapper :is(
         input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
         select,
@@ -796,6 +811,66 @@ main.content-wrapper {
         font-size: 16px !important;
     }
 
+    .content-wrapper form :is(
+        input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="color"]),
+        select,
+        textarea,
+        button,
+        .btn
+    ) {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .content-wrapper td :is(.btn, button, input[type="submit"], input[type="button"]) {
+        display: inline-flex;
+        width: auto;
+        min-width: 40px;
+        max-width: 100%;
+        min-height: 40px;
+        margin: 2px;
+        padding-inline: 10px;
+        white-space: nowrap;
+    }
+
+    .content-wrapper table {
+        width: max-content;
+        min-width: 100%;
+        table-layout: auto;
+    }
+
+    .content-wrapper :is(.card-header, .page-header, .section-header, .toolbar) {
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .content-wrapper :is(.card-header, .page-header, .section-header) > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .content-wrapper :is(.dashboard-grid, .stats-grid, .summary-grid, .info-grid) {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    }
+
+    .content-wrapper :is(img, video, iframe, canvas, svg) {
+        max-width: 100%;
+    }
+
+    .content-wrapper :is(img, video, iframe) {
+        height: auto;
+    }
+
+    .content-wrapper :is(pre, code, .reference-number, .text-nowrap) {
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .content-wrapper :is(.pagination, .page-numbers) {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
     .content-wrapper .card,
     .content-wrapper .card-body,
     .content-wrapper .card-header,
@@ -803,6 +878,18 @@ main.content-wrapper {
     .content-wrapper .container-fluid {
         min-width: 0;
         max-width: 100%;
+    }
+
+    .content-wrapper :is(.nav-tabs, .settings-nav, .settings-container .nav-tabs) {
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+    }
+
+    .content-wrapper :is(.nav-tabs, .settings-nav, .settings-container .nav-tabs) > * {
+        flex: 0 0 auto;
     }
 }
 

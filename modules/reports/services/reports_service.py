@@ -29,7 +29,7 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 
 def init_report_counter_db():
     """إنشاء جداول التقارير والتسلسل والمستندات المعتمدة من نماذج ORM"""
-    from sqlalchemy import select, text
+    from sqlalchemy import text
 
     from core.database import engine, get_session, sync_columns
     from modules.reports.models.report_orm import (
@@ -44,10 +44,28 @@ def init_report_counter_db():
     sync_columns()
 
     with get_session() as session:
-        if session.scalars(select(DocumentSequence.id).limit(1)).first() is None:
-            session.add(DocumentSequence(id=1, last_number=0))
-            # explicit id: advance the SERIAL so later inserts don't collide
-            session.flush()
+        inserted = session.execute(text(
+            "INSERT INTO document_sequence (id, last_number) VALUES (1, 0) "
+            "ON CONFLICT (id) DO NOTHING"
+        ))
+        if inserted.rowcount:
+            session.execute(text("""
+                UPDATE document_sequence
+                SET last_number = GREATEST(
+                    last_number,
+                    COALESCE((
+                        SELECT MAX(CAST(SUBSTRING(doc_number FROM 4) AS BIGINT))
+                        FROM approved_documents
+                        WHERE doc_number ~ '^No\\.[0-9]+$'
+                    ), 0),
+                    COALESCE((
+                        SELECT MAX(CAST(SUBSTRING(doc_number FROM 4) AS BIGINT))
+                        FROM generated_reports
+                        WHERE doc_number ~ '^No\\.[0-9]+$'
+                    ), 0)
+                )
+                WHERE id = 1
+            """))
             session.execute(text(
                 "SELECT setval(pg_get_serial_sequence('document_sequence', 'id'), "
                 "GREATEST((SELECT MAX(id) FROM document_sequence), 1))"
@@ -67,22 +85,16 @@ def generate_reference_number() -> str:
     """
     الدالة الأولى: توليد رقم مرجعي تسلسلي موحد بتركيب No.000000
     """
-    from sqlalchemy import select
+    from sqlalchemy import text
 
     from core.database import get_session
-    from modules.reports.models.report_orm import DocumentSequence
 
     init_report_counter_db()
     with get_session() as session:
-        # row lock makes the increment atomic across concurrent requests
-        sequence = session.scalars(
-            select(DocumentSequence).where(DocumentSequence.id == 1).with_for_update()
-        ).first()
-        if sequence is None:
-            sequence = DocumentSequence(id=1, last_number=0)
-            session.add(sequence)
-        sequence.last_number = (sequence.last_number or 0) + 1
-        seq_num = sequence.last_number
+        seq_num = session.execute(text(
+            "UPDATE document_sequence SET last_number = last_number + 1 "
+            "WHERE id = 1 RETURNING last_number"
+        )).scalar_one()
 
     # صياغة الرقم المرجعي المتسلسل الموحد: No.000001
     return f"No.{seq_num:06d}"
@@ -138,6 +150,8 @@ def generate_document_qr(
         'reports/qrcodes',
         filename,
         content_type='image/png',
+        path=f"reports/qrcodes/{filename}",
+        upsert=True,
     )
 
 
@@ -195,6 +209,18 @@ def merge_report_images(image_sources, output_path, canvas_size=(1800, 1100)):
 
 
 def render_report_pdf(html, output_path, base_url):
+    resolved_output = os.path.realpath(output_path)
+    reports_root = os.path.realpath(REPORTS_DIR)
+    try:
+        output_root = os.path.commonpath((reports_root, resolved_output))
+    except ValueError as error:
+        raise ValueError(
+            'PDF reports must be written under the temporary reports directory'
+        ) from error
+    if output_root != reports_root:
+        raise ValueError('PDF reports must be written under the temporary reports directory')
+    output_path = resolved_output
+
     try:
         from weasyprint import HTML
     except Exception as error:
@@ -335,14 +361,11 @@ class ReportsService:
         }
 
     def process_and_archive_report(self, template_key: str, params: dict) -> dict:
-        """توليد الرقم المرجعي الموحد والـ QR وتأكيد عملية الحفظ والأرشفة"""
-        doc_number = generate_reference_number()
-        item_id = str(params.get('id') or params.get('accident_id') or '1')
-        qr_url = generate_document_qr(doc_number, template_key, item_id)
-        
+        """Reject the legacy API that issued references without archiving a document."""
         return {
-            "status": "success",
-            "doc_number": doc_number,
-            "qr_code_url": qr_url,
-            "message": "تم إنشـاء التقرير المعتمد بنجاح"
+            "status": "error",
+            "message": (
+                "إصدار التقارير يتم من شاشة المعاينة عبر إجراء الاعتماد؛ "
+                "واجهة التوليد القديمة لا تحفظ ملف التقرير ولا يجوز استخدامها للإصدار."
+            )
         }

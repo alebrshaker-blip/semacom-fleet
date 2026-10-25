@@ -64,7 +64,10 @@ def _discard_files(*paths):
             if not storage.delete_file(path):
                 current_app.logger.warning('Unable to remove cloud report artifact %s', path)
         elif os.path.isfile(path):
-            os.remove(path)
+            try:
+                os.remove(path)
+            except OSError:
+                current_app.logger.exception('Unable to remove temporary report artifact %s', path)
 
 
 def _upload_report_artifact(local_path, folder, content_type):
@@ -535,11 +538,41 @@ def _lookup_approved_report(item_id=None, doc_type='accidents_report', approval_
         current_app.logger.exception('Unable to look up a finalized report')
         abort(500, description='تعذر التحقق من اعتماد التقرير')
     if doc_number:
-        if not qr_path:
-            qr_filename = f"qr_{doc_number.replace('.', '_').replace('-', '_')}.png"
-            qr_path = f"/static/uploads/qrcodes/{qr_filename}"
+        if not storage.object_path_from_url(qr_path):
+            try:
+                qr_path = _ensure_document_qr(
+                    doc_number, doc_type, item_id, approval_token
+                )
+            except storage.StorageError:
+                current_app.logger.exception(
+                    'Unable to restore the QR code for finalized report %s', doc_number
+                )
+                abort(503, description='تعذر الاتصال بالتخزين السحابي لاسترجاع رمز QR')
+            except SQLAlchemyError:
+                current_app.logger.exception(
+                    'Unable to persist the restored QR code for report %s', doc_number
+                )
+                abort(503, description='تعذر حفظ بيانات رمز QR؛ حاول مرة أخرى')
         return doc_number, qr_path
     return None, None
+
+
+def _ensure_document_qr(doc_number, doc_type, item_id, approval_token=None):
+    document = reports_repository.get_document(doc_number)
+    if not document:
+        return None
+    stored_qr = document.get('qr_code_path')
+    if storage.object_path_from_url(stored_qr):
+        return stored_qr
+    qr_url = generate_document_qr(
+        doc_number,
+        doc_type,
+        str(item_id),
+        access_token=approval_token or document.get('approval_token'),
+    )
+    reports_repository.set_qr_code_path(doc_number, qr_url)
+    return qr_url
+
 
 def _redirect_to_finalized_report(item_id, doc_type):
     doc_number, _ = _lookup_approved_report(item_id, doc_type)
@@ -731,7 +764,13 @@ def _saved_handover_document_response(handover, handover_id):
         if storage.is_url(report_path):
             try:
                 report_html = storage.download_file(report_path).decode('utf-8')
-            except (storage.StorageError, UnicodeError):
+            except storage.StorageError:
+                current_app.logger.exception(
+                    'Temporary storage failure while reading approved report for handover %s',
+                    handover_id,
+                )
+                abort(503, description='تعذر الاتصال بالتخزين السحابي لعرض وثيقة التسليم')
+            except UnicodeError:
                 current_app.logger.exception(
                     'Unable to read the approved report for handover %s', handover_id
                 )
@@ -1338,6 +1377,8 @@ def api_generate():
         template_key=data.get('template_key'),
         params=data.get('params', {})
     )
+    if result.get('status') != 'success':
+        return jsonify(result), 409
     return jsonify(result)
 
 
@@ -1866,11 +1907,33 @@ def approve_document_api():
         return jsonify({'success': False, 'message': 'معرّف الاعتماد مستخدم لمعاينة تقرير مختلفة'}), 409
     if token_record:
         existing_number = token_record['doc_number']
-        qr_filename = f"qr_{existing_number.replace('.', '_').replace('-', '_')}.png"
+        try:
+            qr_url = _ensure_document_qr(
+                existing_number,
+                doc_type,
+                item_id,
+                approval_token,
+            )
+        except storage.StorageError:
+            current_app.logger.exception(
+                'Unable to restore QR code for approval token %s', approval_token
+            )
+            return jsonify({
+                'success': False,
+                'message': 'تعذر الاتصال بالتخزين السحابي لاسترجاع رمز QR؛ حاول مرة أخرى'
+            }), 503
+        except SQLAlchemyError:
+            current_app.logger.exception(
+                'Unable to persist restored QR code for document %s', existing_number
+            )
+            return jsonify({
+                'success': False,
+                'message': 'تعذر حفظ بيانات رمز QR؛ حاول مرة أخرى'
+            }), 503
         return jsonify({
             'success': True,
             'doc_number': existing_number,
-            'qr_code_url': f"/static/uploads/qrcodes/{qr_filename}",
+            'qr_code_url': qr_url,
             'public_url': url_for(
                 'reports.public_view_document',
                 doc_number=existing_number,
@@ -2244,6 +2307,12 @@ def approve_document_api():
             )
         except ValueError as error:
             return jsonify({'success': False, 'message': str(error)}), 400
+        except storage.StorageError:
+            current_app.logger.exception('Cloud storage unavailable for maintenance report photos')
+            return jsonify({
+                'success': False,
+                'message': 'تعذر الاتصال بالتخزين السحابي لحفظ صور تقرير الصيانة؛ حاول مرة أخرى'
+            }), 503
         except OSError:
             current_app.logger.exception('Unable to save maintenance report photos')
             return jsonify({
@@ -2270,6 +2339,13 @@ def approve_document_api():
             )
         except ValueError as error:
             return jsonify({'success': False, 'message': str(error)}), 400
+        except storage.StorageError:
+            current_app.logger.exception('Cloud storage unavailable for accident report images')
+            _discard_files(*maintenance_photo_paths)
+            return jsonify({
+                'success': False,
+                'message': 'تعذر الاتصال بالتخزين السحابي لحفظ صور تقرير الحادث؛ حاول مرة أخرى'
+            }), 503
     # QR always resolves to the immutable final-report page, never to preview.
     try:
         qr_url = generate_document_qr(
@@ -2538,30 +2614,30 @@ def approve_document_api():
         render_report_pdf(html, final_pdf_path, request.url_root)
     except RuntimeError as error:
         current_app.logger.exception('WeasyPrint runtime is not ready')
-        for generated_path in (
+        _discard_files(
             archived_report_path, final_pdf_path, *accident_image_paths,
-            qr_url,
-            *maintenance_photo_paths
-        ):
-            if generated_path and storage.is_url(generated_path):
-                storage.delete_file(generated_path)
-            elif generated_path and os.path.isfile(generated_path):
-                os.remove(generated_path)
+            qr_url, *maintenance_photo_paths
+        )
         return jsonify({
             'success': False,
             'message': f'تعذر إنشاء PDF: {error}'
         }), 503
+    except OSError:
+        current_app.logger.exception('Temporary filesystem unavailable while rendering report PDF')
+        _discard_files(
+            archived_report_path, final_pdf_path, *accident_image_paths,
+            qr_url, *maintenance_photo_paths
+        )
+        return jsonify({
+            'success': False,
+            'message': 'تعذر حفظ PDF في المجلد المؤقت؛ تحقق من المساحة والصلاحيات ثم حاول مجدداً'
+        }), 503
     except Exception:
         current_app.logger.exception('Unable to render finalized report PDF')
-        for generated_path in (
+        _discard_files(
             archived_report_path, final_pdf_path, *accident_image_paths,
-            qr_url,
-            *maintenance_photo_paths
-        ):
-            if generated_path and storage.is_url(generated_path):
-                storage.delete_file(generated_path)
-            elif generated_path and os.path.isfile(generated_path):
-                os.remove(generated_path)
+            qr_url, *maintenance_photo_paths
+        )
         return jsonify({
             'success': False,
             'message': 'تعذر إنشاء PDF للتقرير النهائي. تحقق من إعداد WeasyPrint والخطوط.'
@@ -2702,6 +2778,27 @@ def approve_document_api():
                 _, existing_qr_url = reports_repository.lookup_approved_report(
                     str(item_id), 'handover_document'
                 )
+                if not storage.object_path_from_url(existing_qr_url):
+                    try:
+                        existing_qr_url = _ensure_document_qr(
+                            existing_number, 'handover_document', item_id
+                        )
+                    except storage.StorageError:
+                        current_app.logger.exception(
+                            'Unable to restore QR code for certified handover %s', item_id
+                        )
+                        return jsonify({
+                            'success': False,
+                            'message': 'تعذر الاتصال بالتخزين السحابي لاسترجاع رمز QR؛ حاول مرة أخرى'
+                        }), 503
+                    except SQLAlchemyError:
+                        current_app.logger.exception(
+                            'Unable to persist restored QR code for handover %s', item_id
+                        )
+                        return jsonify({
+                            'success': False,
+                            'message': 'تعذر حفظ بيانات رمز QR؛ حاول مرة أخرى'
+                        }), 503
                 return jsonify({
                     'success': True,
                     'doc_number': existing_number,
@@ -2916,12 +3013,28 @@ def _ensure_final_pdf(document):
         )
         reports_repository.set_final_pdf(document['doc_number'], pdf_url)
         return io.BytesIO(pdf_bytes)
+    except storage.StorageError:
+        current_app.logger.exception(
+            'Cloud storage unavailable while preparing legacy report %s',
+            document['doc_number'],
+        )
+        if pdf_url:
+            _discard_files(pdf_url)
+        abort(503, description='تعذر الاتصال بالتخزين السحابي للتقرير؛ حاول مرة أخرى')
     except RuntimeError as error:
         current_app.logger.exception(
             'WeasyPrint runtime is unavailable for legacy report %s',
             document['doc_number']
         )
         abort(503, description=str(error))
+    except OSError:
+        current_app.logger.exception(
+            'Temporary filesystem unavailable while preparing report %s',
+            document['doc_number'],
+        )
+        if pdf_url:
+            _discard_files(pdf_url)
+        abort(503, description='تعذر إنشاء ملف PDF في المسار المؤقت؛ حاول مرة أخرى')
     except Exception:
         current_app.logger.exception(
             'Unable to create a PDF for legacy finalized report %s',
@@ -2931,8 +3044,7 @@ def _ensure_final_pdf(document):
             _discard_files(pdf_url)
         abort(500, description='تعذر تجهيز PDF للتقرير المعتمد')
     finally:
-        if os.path.isfile(generated_pdf):
-            os.remove(generated_pdf)
+        _discard_files(generated_pdf)
 
 
 @reports_bp.route('/final/<doc_number>')
