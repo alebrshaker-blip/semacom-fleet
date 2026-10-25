@@ -281,8 +281,8 @@
                 throw new Error(signedResult.error || "تعذر بدء رفع الفيديو.");
             }
             const publicApiKey = signedResult.api_key || signedResult.supabase_key || supabaseAnonKey;
-            if (!publicApiKey || !signedResult.signed_url || !signedResult.path) {
-                throw new Error("رفع الفيديو غير مهيأ؛ يرجى ضبط مفتاح Supabase العام.");
+            if (!signedResult.signed_url || !signedResult.path) {
+                throw new Error("تعذر بدء رفع الفيديو؛ لم يُرجع الخادم رابط الرفع المطلوب.");
             }
             stagedVideoPath = signedResult.path;
 
