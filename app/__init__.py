@@ -6,7 +6,7 @@ from core import database as dbapi
 import sys
 from contextlib import closing
 from pathlib import Path
-from flask import Flask, render_template, Blueprint, redirect, url_for, session, request
+from flask import Flask, render_template, Blueprint, redirect, url_for, session, request, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import settings
 
@@ -477,13 +477,38 @@ def create_app():
         except Exception as e:
             print(f"تنبيه أثناء زراعة إعدادات النظام: {e}")
 
+    def is_public_vehicle_submission_request():
+        return (
+            request.method == "POST"
+            and request.path.startswith("/vehicles/public/")
+            and request.path.endswith((
+                "/submit-issue",
+                "/issue-media-upload",
+                "/video-upload",
+                "/video-upload/cancel",
+            ))
+        )
+
     @app.errorhandler(404)
     def page_not_found(_error):
+        if is_public_vehicle_submission_request():
+            return jsonify(success=False, error="مسار إرسال البلاغ غير متاح."), 404
         return render_template("errors/404.html"), 404
+
+    @app.errorhandler(413)
+    def request_too_large(_error):
+        if is_public_vehicle_submission_request():
+            return jsonify(success=False, error="تجاوز طلب البلاغ الحد الأقصى المسموح به."), 413
+        return _error.get_response()
 
     @app.errorhandler(500)
     def internal_server_error(error):
         app.logger.error("Unhandled server error: %s", error)
+        if is_public_vehicle_submission_request():
+            return jsonify(
+                success=False,
+                error="حدث خطأ غير متوقع أثناء معالجة البلاغ.",
+            ), 500
         return render_template("errors/500.html"), 500
 
     # ==========================================
@@ -506,14 +531,20 @@ def create_app():
             'vehicles.public_request_update',
             'vehicles.public_issue_form',
             'vehicles.public_submit_issue',
+            'vehicles.public_issue_media_upload_url',
+            'vehicles.public_video_upload_url',
+            'vehicles.public_cancel_video_upload',
             'vehicles.public_vehicle_submissions',
         ]
         
         # السماح بصفحة تسجيل الدخول والملفات الثابتة (css/js/images)
         if request.endpoint.startswith('static.'):
             return
-        if request.endpoint in allowed_endpoints and not (
-            'user_id' in session and request.method not in {'GET', 'HEAD', 'OPTIONS'}
+        if request.endpoint in allowed_endpoints and (
+            request.endpoint.startswith('vehicles.public_')
+            or not (
+                'user_id' in session and request.method not in {'GET', 'HEAD', 'OPTIONS'}
+            )
         ):
             return
 
