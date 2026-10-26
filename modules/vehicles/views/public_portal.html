@@ -116,14 +116,14 @@
         <h2>الاستفسار والإبلاغ عن مشكلة</h2>
         <p>يرجى وصف المشكلة أو الاستفسار، ويمكن إرفاق حتى خمس صور والتقاطها بالكاميرا أو اختيارها من المعرض، مع تسجيل صوتي قصير اختياري.</p>
         {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
-        <form id="issue-form" method="post" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
+        <form id="issue-form" method="post" enctype="multipart/form-data" action="{{ url_for('vehicles.public_submit_issue', token=token) }}">
             <div class="form-row">
                 <label for="message">وصف المشكلة أو الاستفسار</label>
                 <textarea id="message" name="message" maxlength="4000" required>{{ request.form.get('message', '') }}</textarea>
             </div>
             <div class="form-row">
                 <label>الصور المرفقة (اختياري، حتى 5 صور)</label>
-                <input id="photos" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+                <input id="photos" name="photos" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple>
                 <div class="photo-tools">
                     <button class="button secondary" id="choose-photos-button" type="button">اختيار من المعرض</button>
                     <button class="button secondary" id="capture-photo-button" type="button">التقاط صورة بالكاميرا</button>
@@ -141,6 +141,8 @@
                     <button class="button secondary" id="stop-audio-recording" type="button" disabled>إيقاف التسجيل</button>
                     <button class="button secondary" id="clear-audio-recording" type="button" hidden>حذف التسجيل</button>
                 </div>
+                <label for="audio-file">أو اختر تسجيلاً صوتياً من الجهاز</label>
+                <input id="audio-file" name="audio" type="file" accept="audio/webm,audio/mp4,audio/ogg,.webm,.m4a,.ogg">
                 <small id="audio-status" class="photo-status" aria-live="polite">يمكنك تسجيل ملاحظة صوتية من ميكروفون الهاتف وإرفاقها بالبلاغ. الحد الأقصى للحجم 5 ميجابايت.</small>
                 <audio id="audio-preview" controls preload="none" hidden style="width:min(100%,520px);margin-top:10px;"></audio>
             </div>
@@ -223,6 +225,7 @@
     const issueForm = document.getElementById("issue-form");
     const audioStatus = document.getElementById("audio-status");
     const audioPreview = document.getElementById("audio-preview");
+    const audioFileInput = document.getElementById("audio-file");
     const startAudioButton = document.getElementById("start-audio-recording");
     const stopAudioButton = document.getElementById("stop-audio-recording");
     const clearAudioButton = document.getElementById("clear-audio-recording");
@@ -423,9 +426,10 @@
         renderSelectedPhotos();
     });
 
-    function clearRecordedAudio() {
+    function clearRecordedAudio(clearFile = true) {
         recordedAudioFile = null;
         audioChunks = [];
+        if (clearFile) audioFileInput.value = "";
         audioPreview.pause();
         audioPreview.removeAttribute("src");
         audioPreview.hidden = true;
@@ -436,6 +440,14 @@
         }
         audioStatus.textContent = "يمكنك تسجيل ملاحظة صوتية من ميكروفون الهاتف وإرفاقها بالبلاغ.";
     }
+
+    audioFileInput.addEventListener("change", () => {
+        const audioFile = audioFileInput.files[0];
+        if (!audioFile) return;
+        clearRecordedAudio(false);
+        clearAudioButton.hidden = false;
+        audioStatus.textContent = `تم اختيار التسجيل الصوتي (${(audioFile.size / (1024 * 1024)).toFixed(2)} ميجابايت).`;
+    });
 
     function stopAudioRecording() {
         if (audioRecorder && audioRecorder.state === "recording") {
@@ -554,12 +566,11 @@
 
         try {
             const photos = [...selectedPhotos];
+            const audioFile = recordedAudioFile || audioFileInput.files[0];
             if (photos.length > maxPhotoCount) {
                 throw new Error(`يمكن إرفاق ${maxPhotoCount} صور كحد أقصى.`);
             }
-            if (recordedAudioFile && (
-                recordedAudioFile.size <= 0 || recordedAudioFile.size > maxAudioBytes
-            )) {
+            if (audioFile && (audioFile.size <= 0 || audioFile.size > maxAudioBytes)) {
                 throw new Error("يجب ألا يتجاوز حجم التسجيل الصوتي 5 ميجابايت.");
             }
 
@@ -575,10 +586,10 @@
             }
 
             let audioUrl = null;
-            if (recordedAudioFile) {
+            if (audioFile) {
                 submitButton.textContent = "جارٍ رفع التسجيل الصوتي...";
                 audioStatus.textContent = "جارٍ رفع التسجيل الصوتي مباشرةً إلى التخزين...";
-                audioUrl = await uploadIssueFile(recordedAudioFile, "audio", stagedPaths);
+                audioUrl = await uploadIssueFile(audioFile, "audio", stagedPaths);
             }
 
             submitButton.textContent = "جارٍ إرسال البلاغ...";

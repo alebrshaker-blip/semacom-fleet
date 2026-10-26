@@ -634,9 +634,10 @@ def public_submit_issue(token):
     photos = []
     video_path = None
     audio_path = None
-    is_json_submission = request.is_json
+    is_json_submission = False
     request_limit = MAX_PUBLIC_SUBMISSION_BYTES
     try:
+        is_json_submission = request.is_json
         connection = get_connection()
         ensure_public_tables(connection)
         profile = get_public_profile(connection, token)
@@ -650,9 +651,14 @@ def public_submit_issue(token):
         app_request_limit = current_app.config.get(
             "MAX_CONTENT_LENGTH", settings.MAX_CONTENT_LENGTH
         )
+        default_request_limit = (
+            MAX_PUBLIC_ISSUE_JSON_BYTES
+            if is_json_submission
+            else MAX_PUBLIC_SUBMISSION_BYTES + MAX_AUDIO_BYTES
+        )
         request_limit = min(
-            MAX_PUBLIC_ISSUE_JSON_BYTES if is_json_submission else MAX_PUBLIC_SUBMISSION_BYTES,
-            app_request_limit if app_request_limit is not None else MAX_PUBLIC_SUBMISSION_BYTES,
+            default_request_limit,
+            app_request_limit if app_request_limit is not None else default_request_limit,
         )
         if request.content_length and request.content_length > request_limit:
             return jsonify(
@@ -714,6 +720,34 @@ def public_submit_issue(token):
             photos = validate_and_save_photos(uploads)
             video = None
             audio = None
+            audio_uploads = [
+                upload for upload in request.files.getlist("audio")
+                if upload and upload.filename
+            ]
+            if len(audio_uploads) > 1:
+                raise ValueError("يمكن إرفاق تسجيل صوتي واحد فقط.")
+            if audio_uploads:
+                audio_upload = audio_uploads[0]
+                extension = Path(audio_upload.filename).suffix.lower()
+                audio_payload = audio_upload.read(MAX_AUDIO_BYTES + 1)
+                if not audio_payload:
+                    raise ValueError("ملف التسجيل الصوتي فارغ أو غير صالح.")
+                if len(audio_payload) > MAX_AUDIO_BYTES:
+                    raise ValueError("يجب ألا يتجاوز حجم التسجيل الصوتي 5 ميجابايت.")
+                audio_path = create_public_audio_upload_path(
+                    profile["vehicle_id"], extension
+                )
+                content_type = {
+                    ".webm": "audio/webm",
+                    ".m4a": "audio/mp4",
+                    ".ogg": "audio/ogg",
+                }[extension]
+                audio = storage.upload_bytes(
+                    audio_payload,
+                    audio_path.rsplit("/", 1)[0],
+                    content_type=content_type,
+                    path=audio_path,
+                )
             if video_path:
                 if not is_public_video_upload_path(video_path, profile["vehicle_id"]):
                     raise ValueError("مسار الفيديو المرفوع غير صالح.")
@@ -728,19 +762,10 @@ def public_submit_issue(token):
             video=video,
             audio=audio,
         )
-        if is_json_submission or request.accept_mimetypes.best == "application/json":
-            return jsonify(
-                success=True,
-                message=THANK_YOU_MESSAGE,
-                redirect_url=url_for("vehicles.public_vehicle_submissions", token=token),
-            )
-        return render_template(
-            "vehicles/views/public_portal.html",
-            mode="thanks",
-            token=token,
+        return jsonify(
+            success=True,
             message=THANK_YOU_MESSAGE,
-            inquiries_enabled=True,
-            vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
+            redirect_url=url_for("vehicles.public_vehicle_submissions", token=token),
         )
     except RequestEntityTooLarge:
         current_app.logger.info("Rejected oversized vehicle QR issue submission")
