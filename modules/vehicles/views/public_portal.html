@@ -144,6 +144,11 @@
                 <small>الصيغ المدعومة JPG وPNG وWEBP، بحد أقصى 5 ميجابايت لكل صورة.</small>
             </div>
             <div class="form-row">
+                <label for="video-file">مقطع فيديو (اختياري، حتى دقيقتين)</label>
+                <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" capture="environment">
+                <small id="video-status" class="photo-status" aria-live="polite">الحد الأقصى للملف الأصلي {{ (max_video_source_bytes // 1000000) }} ميجابايت. سيتم ضغط الفيديو تلقائياً عند الحاجة ليبقى حجم الرفع أقل من 45 ميجابايت، مع الحفاظ على الصوت وتقليل الدقة إلى 720p كحد أقصى.</small>
+            </div>
+            <div class="form-row">
                 <label>تسجيل صوتي (اختياري، حتى دقيقتين)</label>
                 <div class="photo-tools">
                     <button class="button secondary" id="start-audio-recording" type="button">بدء التسجيل</button>
@@ -243,6 +248,8 @@
     const maxPhotoBytes = 5 * 1024 * 1024;
     const selectedPhotos = [];
     const issueForm = document.getElementById("issue-form");
+    const videoFileInput = document.getElementById("video-file");
+    const videoStatus = document.getElementById("video-status");
     const audioStatus = document.getElementById("audio-status");
     const audioPreview = document.getElementById("audio-preview");
     const audioFileInput = document.getElementById("audio-file");
@@ -256,6 +263,10 @@
     const clearAudioButton = document.getElementById("clear-audio-recording");
     const maxAudioBytes = 5 * 1024 * 1024;
     const maxAudioDurationSeconds = 120;
+    const maxVideoUploadBytes = {{ max_video_upload_bytes|tojson }};
+    const maxVideoSourceBytes = {{ max_video_source_bytes|tojson }};
+    const maxVideoCompressionThresholdBytes = {{ max_video_compression_threshold_bytes|tojson }};
+    const maxVideoDurationSeconds = 120;
     let audioRecorder = null;
     let audioStream = null;
     let audioChunks = [];
@@ -297,7 +308,7 @@
             .find(message => typeof message === "string" && message.trim()) || fallback;
     }
 
-    async function submitIssue(photoUrls, audioUrl) {
+    async function submitIssue(photoUrls, audioUrl, videoUrl) {
         const response = await fetch(issueForm.action, {
             method: "POST",
             redirect: "error",
@@ -308,7 +319,8 @@
             body: JSON.stringify({
                 message: document.getElementById("message").value,
                 photo_urls: photoUrls,
-                audio_url: audioUrl
+                audio_url: audioUrl,
+                video_url: videoUrl
             })
         });
         const result = await readJsonResponse(response);
@@ -322,7 +334,9 @@
     }
 
     async function uploadIssueFile(file, kind, stagedPaths) {
-        const fileLabel = kind === "image" ? "الصورة" : "التسجيل الصوتي";
+        const fileLabel = kind === "image"
+            ? "الصورة"
+            : kind === "video" ? "الفيديو" : "التسجيل الصوتي";
         uploadProgress.hidden = false;
         uploadProgressText.textContent = `جاري تجهيز رفع ${fileLabel}...`;
         uploadProgressBar.removeAttribute("value");
@@ -346,9 +360,12 @@
             throw new Error("لم يحدد الخادم الحد الأقصى المسموح به لحجم الملف.");
         }
         if (file.size <= 0 || file.size > maxBytes) {
-            throw new Error(kind === "image"
+            const message = kind === "image"
                 ? "يجب ألا يتجاوز حجم كل صورة 5 ميجابايت."
-                : "يجب ألا يتجاوز حجم التسجيل الصوتي 5 ميجابايت.");
+                : kind === "video"
+                    ? "تعذر ضغط الفيديو إلى الحجم الآمن؛ اختر مقطعاً أقصر أو أقل دقة."
+                    : "يجب ألا يتجاوز حجم التسجيل الصوتي 5 ميجابايت.";
+            throw new Error(message);
         }
         stagedPaths.push(signedResult.path);
 
@@ -371,6 +388,176 @@
         uploadProgressSpinner.hidden = true;
         return signedResult.public_url;
     }
+
+    async function prepareVideoForUpload(file) {
+        if (file.size <= 0 || file.size > maxVideoSourceBytes) {
+            throw new Error(`يجب ألا يتجاوز حجم الفيديو الأصلي ${Math.floor(maxVideoSourceBytes / (1024 * 1024))} ميجابايت.`);
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.playsInline = true;
+        const metadataReady = new Promise((resolve, reject) => {
+            video.onloadedmetadata = resolve;
+            video.onerror = () => reject(new Error("تعذر قراءة الفيديو؛ اختر ملف MP4 أو MOV أو WEBM صالحاً."));
+        });
+        video.src = objectUrl;
+        let audioContext = null;
+        let recordingStream = null;
+        let animationFrameId = null;
+
+        try {
+            await metadataReady;
+            if (!Number.isFinite(video.duration) || video.duration <= 0 || video.duration > maxVideoDurationSeconds) {
+                throw new Error("يجب ألا تتجاوز مدة مقطع الفيديو دقيقتين.");
+            }
+            if (file.size <= maxVideoCompressionThresholdBytes) return file;
+            if (!video.videoWidth || !video.videoHeight) {
+                throw new Error("تعذر قراءة أبعاد الفيديو؛ اختر ملف فيديو صالحاً.");
+            }
+            if (!HTMLCanvasElement.prototype.captureStream || !window.MediaRecorder) {
+                if (file.size <= maxVideoUploadBytes) return file;
+                throw new Error("المتصفح لا يدعم ضغط الفيديو تلقائياً. استخدم متصفحاً حديثاً أو اختر فيديو أقل من 45 ميجابايت.");
+            }
+
+            const scale = Math.min(1, 1280 / video.videoWidth, 720 / video.videoHeight);
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(2, Math.round(video.videoWidth * scale / 2) * 2);
+            canvas.height = Math.max(2, Math.round(video.videoHeight * scale / 2) * 2);
+            const context = canvas.getContext("2d", { alpha: false });
+            if (!context) throw new Error("تعذر تهيئة ضغط الفيديو في هذا المتصفح.");
+
+            recordingStream = canvas.captureStream(24);
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                if (file.size <= maxVideoUploadBytes) return file;
+                throw new Error("لا يدعم المتصفح ضغط الفيديو مع الصوت. استخدم متصفحاً حديثاً أو اختر فيديو أقل من 45 ميجابايت.");
+            }
+            audioContext = new AudioContextClass();
+            const source = audioContext.createMediaElementSource(video);
+            const audioDestination = audioContext.createMediaStreamDestination();
+            source.connect(audioDestination);
+            audioDestination.stream.getAudioTracks().forEach(track => recordingStream.addTrack(track));
+            await audioContext.resume();
+
+            if (typeof MediaRecorder.isTypeSupported !== "function") {
+                if (file.size <= maxVideoUploadBytes) return file;
+                throw new Error("المتصفح لا يدعم ضغط الفيديو تلقائياً. اختر فيديو أقل من 45 ميجابايت أو استخدم متصفحاً حديثاً.");
+            }
+            const supportedMimeType = [
+                "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+                "video/mp4",
+                "video/webm;codecs=vp8,opus",
+                "video/webm",
+            ].find(type => MediaRecorder.isTypeSupported(type));
+            if (!supportedMimeType) {
+                if (file.size <= maxVideoUploadBytes) return file;
+                throw new Error("لا يدعم المتصفح ترميز الفيديو المطلوب للضغط. اختر فيديو أقل من 45 ميجابايت أو استخدم متصفحاً حديثاً.");
+            }
+
+            const targetTotalBitsPerSecond = Math.floor((32_000_000 * 8) / video.duration);
+            const videoBitsPerSecond = Math.max(
+                450_000,
+                Math.min(2_000_000, targetTotalBitsPerSecond - 96_000)
+            );
+            const recorder = new MediaRecorder(recordingStream, {
+                mimeType: supportedMimeType,
+                videoBitsPerSecond,
+                audioBitsPerSecond: 96_000,
+            });
+            const chunks = [];
+            let encodedBytes = 0;
+            let exceededSizeLimit = false;
+            uploadProgress.hidden = false;
+            uploadProgressText.textContent = "جاري ضغط الفيديو تلقائياً إلى حجم مناسب للتخزين...";
+            uploadProgressBar.max = video.duration;
+            uploadProgressBar.value = 0;
+            uploadProgressSpinner.hidden = true;
+
+            return await new Promise((resolve, reject) => {
+                recorder.ondataavailable = event => {
+                    if (!event.data.size) return;
+                    chunks.push(event.data);
+                    encodedBytes += event.data.size;
+                    if (encodedBytes >= maxVideoUploadBytes) {
+                        exceededSizeLimit = true;
+                        if (recorder.state !== "inactive") recorder.stop();
+                    }
+                };
+                recorder.onerror = () => reject(new Error("حدث خطأ أثناء ضغط الفيديو؛ اختر مقطعاً أقصر أو أقل دقة."));
+                recorder.onstop = () => {
+                    if (exceededSizeLimit) {
+                        reject(new Error("تعذر ضغط الفيديو إلى الحجم الآمن؛ اختر مقطعاً أقصر أو أقل دقة."));
+                        return;
+                    }
+                    const mimeType = recorder.mimeType || supportedMimeType;
+                    const extension = mimeType.includes("mp4") ? ".mp4" : ".webm";
+                    const compressedFile = new File(
+                        chunks,
+                        `vehicle-video${extension}`,
+                        { type: mimeType }
+                    );
+                    if (!compressedFile.size || compressedFile.size > maxVideoUploadBytes) {
+                        reject(new Error("تعذر ضغط الفيديو إلى الحجم الآمن؛ اختر مقطعاً أقصر أو أقل دقة."));
+                        return;
+                    }
+                    videoStatus.textContent = `اكتمل ضغط الفيديو: ${(file.size / (1024 * 1024)).toFixed(1)} إلى ${(compressedFile.size / (1024 * 1024)).toFixed(1)} ميجابايت.`;
+                    resolve(compressedFile);
+                };
+                video.ontimeupdate = () => {
+                    uploadProgressBar.value = Math.min(video.duration, video.currentTime);
+                    uploadProgressText.textContent = `جاري ضغط الفيديو... ${Math.floor(video.currentTime)} من ${Math.ceil(video.duration)} ثانية`;
+                };
+                video.onerror = () => {
+                    if (recorder.state !== "inactive") recorder.stop();
+                    reject(new Error("تعذر قراءة الفيديو أثناء الضغط."));
+                };
+                video.onended = () => {
+                    if (recorder.state !== "inactive") recorder.stop();
+                };
+                recorder.start(1000);
+                video.play().then(() => {
+                    let lastFrameAt = 0;
+                    const drawFrame = timestamp => {
+                        if (video.ended || video.paused) return;
+                        if (timestamp - lastFrameAt >= 1000 / 24) {
+                            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            lastFrameAt = timestamp;
+                        }
+                        animationFrameId = requestAnimationFrame(drawFrame);
+                    };
+                    animationFrameId = requestAnimationFrame(drawFrame);
+                }).catch(() => {
+                    if (recorder.state !== "inactive") recorder.stop();
+                    reject(new Error("تعذر تشغيل الفيديو لضغطه؛ اضغط ترحيل مرة أخرى أو اختر فيديو أقل حجماً."));
+                });
+            });
+        } finally {
+            if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+            if (recordingStream) {
+                recordingStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext && audioContext.state !== "closed") {
+                await audioContext.close();
+            }
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+            URL.revokeObjectURL(objectUrl);
+        }
+    }
+
+    videoFileInput.addEventListener("change", () => {
+        const file = videoFileInput.files[0];
+        if (!file) {
+            videoStatus.textContent = "";
+            return;
+        }
+        videoStatus.textContent = file.size > maxVideoCompressionThresholdBytes
+            ? `تم اختيار فيديو بحجم ${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت؛ سيتم ضغطه تلقائياً قبل الرفع.`
+            : `تم اختيار فيديو بحجم ${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت.`;
+    });
 
     function validateImageFile(file) {
         if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
@@ -648,6 +835,15 @@
                 photoUrls.push(await uploadIssueFile(photo, "image", stagedPaths));
             }
 
+            let videoUrl = null;
+            const videoFile = videoFileInput.files[0];
+            if (videoFile) {
+                submitButton.textContent = "جارٍ تجهيز الفيديو...";
+                const preparedVideo = await prepareVideoForUpload(videoFile);
+                submitButton.textContent = "جارٍ رفع مقطع الفيديو...";
+                videoUrl = await uploadIssueFile(preparedVideo, "video", stagedPaths);
+            }
+
             let audioUrl = null;
             if (audioFile) {
                 submitButton.textContent = "جارٍ رفع التسجيل الصوتي...";
@@ -658,7 +854,7 @@
             submitButton.textContent = "جارٍ إرسال البلاغ...";
             audioStatus.textContent = "اكتمل رفع المرفقات؛ جارٍ إرسال بيانات البلاغ...";
             uploadProgress.hidden = true;
-            await submitIssue(photoUrls, audioUrl);
+            await submitIssue(photoUrls, audioUrl, videoUrl);
             stagedPaths.length = 0;
         } catch (error) {
             for (const path of stagedPaths) {
@@ -672,6 +868,9 @@
                 } catch (cleanupError) {
                     console.error("Failed to clean up staged issue media.", cleanupError);
                 }
+            }
+            if (videoFileInput.files[0]) {
+                videoStatus.textContent = error.message || "تعذر تجهيز أو رفع الفيديو.";
             }
             audioStatus.textContent = error instanceof TypeError
                 ? "تعذر الاتصال بالخادم أو التخزين؛ تحقق من الاتصال وحاول مرة أخرى."

@@ -55,7 +55,9 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_COUNT = 5
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm"}
-MAX_VIDEO_BYTES = 200 * 1024 * 1024
+MAX_VIDEO_BYTES = 45_000_000
+MAX_VIDEO_SOURCE_BYTES = 200 * 1024 * 1024
+MAX_VIDEO_COMPRESSION_THRESHOLD_BYTES = 35_000_000
 MAX_VIDEO_DURATION_SECONDS = 120
 ALLOWED_AUDIO_EXTENSIONS = {".webm", ".m4a", ".ogg"}
 MAX_AUDIO_BYTES = 5 * 1024 * 1024
@@ -635,10 +637,10 @@ def validate_uploaded_video(path, vehicle_id):
     if size <= 0:
         raise ValueError("ملف الفيديو فارغ أو غير صالح.")
     if size > MAX_VIDEO_BYTES:
-        raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
+        raise ValueError("يجب ألا يتجاوز حجم الفيديو بعد الضغط 45 ميجابايت.")
     payload = storage.download_object(path)
     if len(payload) > MAX_VIDEO_BYTES:
-        raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
+        raise ValueError("يجب ألا يتجاوز حجم الفيديو بعد الضغط 45 ميجابايت.")
     duration = (
         _webm_duration_seconds(payload)
         if extension == ".webm"

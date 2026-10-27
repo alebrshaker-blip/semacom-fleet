@@ -20,6 +20,8 @@ from modules.vehicles.public_access import (
     MAX_AUDIO_DURATION_SECONDS,
     MAX_IMAGE_COUNT,
     MAX_VIDEO_BYTES,
+    MAX_VIDEO_SOURCE_BYTES,
+    MAX_VIDEO_COMPRESSION_THRESHOLD_BYTES,
     MAX_VIDEO_DURATION_SECONDS,
     THANK_YOU_MESSAGE,
     create_public_image_upload_path,
@@ -497,6 +499,9 @@ def public_issue_form(token):
             token=token,
             inquiries_enabled=True,
             supabase_anon_key=settings.SUPABASE_PUBLIC_KEY,
+            max_video_upload_bytes=MAX_VIDEO_BYTES,
+            max_video_source_bytes=MAX_VIDEO_SOURCE_BYTES,
+            max_video_compression_threshold_bytes=MAX_VIDEO_COMPRESSION_THRESHOLD_BYTES,
             vehicle_label=f"{profile['vehicle_code'] or ''} - {profile['plate_number'] or ''}".strip(" -"),
         )
     finally:
@@ -569,6 +574,7 @@ def public_issue_media_upload_url(token):
             kind=kind,
             content_type=content_type,
             max_bytes=max_bytes,
+            max_source_bytes=MAX_VIDEO_SOURCE_BYTES if kind == "video" else max_bytes,
             max_duration_seconds=max_duration_seconds,
         )
     except RequestEntityTooLarge:
@@ -693,12 +699,7 @@ def public_submit_issue(token):
                     video_path, profile["vehicle_id"]
                 ):
                     raise ValueError("رابط الفيديو المرفق غير صالح.")
-                video_size = storage.get_object_size(video_path)
-                if video_size <= 0:
-                    raise ValueError("ملف الفيديو فارغ أو غير صالح.")
-                if video_size > MAX_VIDEO_BYTES:
-                    raise ValueError("يجب ألا يتجاوز حجم مقطع الفيديو 200 ميجابايت.")
-                video = storage.get_public_url(video_path)
+                video = validate_uploaded_video(video_path, profile["vehicle_id"])
             audio = None
             if audio_url:
                 audio_path = storage.object_path_from_url(audio_url)
